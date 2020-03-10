@@ -16,14 +16,33 @@ fn mlp() {
             Rows = "rows",
             Cols = "cols",
             Zipwith = "zipwith",
+            // List constructor
+            List = "list",
+            // Tensor constructor:
+            // Takes an identifier and a list which represents its shape
+            // e.g. (tensor a (list 1 4))
+            Tensor = "tensor",
             Symbol(String),
         }
     }
 
-    let program = "(relu (zipwith dotprod
-                          (rows
-                           (relu (zipwith dotprod (rows in) (cols w1))))
-                          (cols w2)))".parse().unwrap();
+    let program = "
+     (relu
+      (zipwith dotprod
+       (rows
+        (relu
+         (zipwith dotprod
+          (rows
+           (relu (zipwith dotprod (rows (tensor in (list 1 784)))
+                                  (cols (tensor w1 (list 784 512))))))
+          (cols (tensor w2 (list 512 512)))
+         )
+        )
+       )
+       (cols (tensor w3 (list 512 1)))
+      )
+     )
+     ".parse().unwrap();
 
     // TODO(gus) metadata? using area?
     // TODO(gus) here's a problem: if we represent area as metadata, how do
