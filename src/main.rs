@@ -42,7 +42,9 @@ fn mlp() {
        (cols (tensor w3 (list 512 1)))
       )
      )
-     ".parse().unwrap();
+     "
+    .parse()
+    .unwrap();
 
     // TODO(gus) metadata? using area?
     // TODO(gus) here's a problem: if we represent area as metadata, how do
