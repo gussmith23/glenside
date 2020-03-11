@@ -26,6 +26,57 @@ fn mlp() {
         }
     }
 
+    #[derive(Debug, Clone, Copy)]
+    struct Meta {
+        // TODO(gus) implement tensors with many dimensions by using a vector
+        // here. I just didn't want to mess around with figuring out Vecs in
+        // Rust, and refcounting, etc etc.
+        shape: Option<[i64; 2]>,
+        scalar_value: Option<i64>,
+    }
+    impl PartialEq for Meta {
+        fn eq(&self, other: &Self) -> bool {
+            return self.shape == other.shape && self.scalar_value == other.scalar_value;
+        }
+    }
+    impl egg::Metadata<MlpLanguage> for Meta {
+        type Error = ();
+
+        fn merge(&self, other: &Self) -> Self {
+            assert_eq!(self, other);
+            *self
+        }
+
+        fn make(egraph: &egg::EGraph<MlpLanguage, Self>, enode: &egg::ENode<MlpLanguage>) -> Self {
+            // We only know the value in the case of a Num.
+            use MlpLanguage::*;
+            match enode.op {
+                Tensor => {
+                    // there should be a list in this class.
+                    let list_class = &egraph[enode.children[1]];
+                    let list_node = list_class.iter().find(|enode| enode.op == List).unwrap();
+                    let shape_list = list_node
+                        .children
+                        .iter()
+                        .map(|id| egraph[*id].metadata.scalar_value.unwrap())
+                        .collect::<Vec<i64>>();
+                    Meta {
+                        shape: Some([shape_list[0], shape_list[0]]),
+                        scalar_value: None,
+                    }
+                }
+                Num(i) => Meta {
+                    shape: None,
+                    scalar_value: Some(i),
+                },
+                _ => Meta {
+                    shape: None,
+                    scalar_value: None,
+                },
+            }
+        }
+    }
+
     let program = "
      (relu
       (zipwith dotprod
@@ -51,7 +102,7 @@ fn mlp() {
     // we capture the different areas of different designs that might share
     // an e-class?
 
-    let rules: &[egg::Rewrite<MlpLanguage, ()>] = &[];
+    let rules: &[egg::Rewrite<MlpLanguage, Meta>] = &[];
 
     let runner = egg::Runner::new().with_expr(&program).run(&rules);
 
