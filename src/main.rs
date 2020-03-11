@@ -8,7 +8,7 @@ fn main() {
 fn mlp() {
     egg::define_language! {
         enum MlpLanguage {
-            Num(i32),
+            Num(i64),
             // TODO(gus) do we need this to be an intrinsic? Is this cheating?
             // Without this I'm not sure how to represent a matmul w/o using a lambda.
             Dotprod = "dotprod",
