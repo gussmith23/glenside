@@ -1,4 +1,4 @@
-use egg::{rewrite as rw, *};
+use egg::define_language;
 
 fn main() {
     //dot_product()
@@ -6,7 +6,7 @@ fn main() {
 }
 
 fn mlp() {
-    define_language! {
+    egg::define_language! {
         enum MlpLanguage {
             Num(i32),
             // TODO(gus) do we need this to be an intrinsic? Is this cheating?
@@ -51,9 +51,9 @@ fn mlp() {
     // we capture the different areas of different designs that might share
     // an e-class?
 
-    let rules: &[Rewrite<MlpLanguage, ()>] = &[];
+    let rules: &[egg::Rewrite<MlpLanguage, ()>] = &[];
 
-    let runner = Runner::new().with_expr(&program).run(&rules);
+    let runner = egg::Runner::new().with_expr(&program).run(&rules);
 
     println!(
         "Stopped after {} iterations, reason: {:?}",
@@ -63,8 +63,8 @@ fn mlp() {
     runner.egraph.dot().to_svg("mlp.svg").unwrap();
 }
 
-fn dot_product() {
-    define_language! {
+fn _dot_product() {
+    egg::define_language! {
         enum DotProductLanguage {
             Num(i32),
             Mul = "*",
@@ -76,7 +76,7 @@ fn dot_product() {
 
     // Metadata is simply the i32 value of the class, if known.
     type Meta = Option<i32>;
-    impl Metadata<DotProductLanguage> for Meta {
+    impl egg::Metadata<DotProductLanguage> for Meta {
         type Error = ();
 
         fn merge(&self, other: &Self) -> Self {
@@ -88,8 +88,8 @@ fn dot_product() {
         }
 
         fn make(
-            _egraph: &EGraph<DotProductLanguage, Self>,
-            enode: &ENode<DotProductLanguage>,
+            _egraph: &egg::EGraph<DotProductLanguage, Self>,
+            enode: &egg::ENode<DotProductLanguage>,
         ) -> Self {
             // We only know the value in the case of a Num.
             match enode.op {
@@ -101,28 +101,28 @@ fn dot_product() {
 
     #[derive(Debug)]
     struct Splitter {
-        bound_var: Var,
-        bound: Var,
-        body: Var,
+        bound_var: egg::Var,
+        bound: egg::Var,
+        body: egg::Var,
     }
 
-    impl Applier<DotProductLanguage, Meta> for Splitter {
+    impl egg::Applier<DotProductLanguage, Meta> for Splitter {
         fn apply_one(
             &self,
-            egraph: &mut EGraph<DotProductLanguage, Meta>,
-            _eclass: Id,
-            subst: &Subst,
-        ) -> Vec<Id> {
+            egraph: &mut egg::EGraph<DotProductLanguage, Meta>,
+            _eclass: egg::Id,
+            subst: &egg::Subst,
+        ) -> Vec<egg::Id> {
             // Figure out what the actual value of bound is.
             // Expect it to be known, for now.
-            let bound_id: Id = subst[&self.bound];
+            let bound_id: egg::Id = subst[&self.bound];
             let bound_val = &egraph[bound_id]
                 .metadata
                 .expect("Bound's exact value should be known, for now");
 
             println!("{}", bound_val);
 
-            let bound_var_id: Id = subst[&self.bound_var];
+            let _bound_var_id: egg::Id = subst[&self.bound_var];
 
             // Decide how to split the loop up: by all of its factors
             // https://gist.github.com/qolop/71ef78c394db822756d58cac9993db77
@@ -132,12 +132,16 @@ fn dot_product() {
                 .collect::<Vec<i32>>();
             for factor in factors {
                 let outer_bound = factor;
-                let outer_for_loop_bound_id =
-                    egraph.add(ENode::new(DotProductLanguage::Num(outer_bound), vec![]));
+                let _outer_for_loop_bound_id = egraph.add(egg::ENode::new(
+                    DotProductLanguage::Num(outer_bound),
+                    vec![],
+                ));
 
                 let inner_bound = bound_val / factor;
-                let inner_for_loop_bound_id =
-                    egraph.add(ENode::new(DotProductLanguage::Num(inner_bound), vec![]));
+                let _inner_for_loop_bound_id = egraph.add(egg::ENode::new(
+                    DotProductLanguage::Num(inner_bound),
+                    vec![],
+                ));
 
                 // I want to rewrite the original body so that, anywhere where
                 // the original loop var is used, the new loop var will be used.
@@ -203,23 +207,25 @@ fn dot_product() {
         }
     }
 
-    let dot_product_rules: &[Rewrite<DotProductLanguage, Meta>] = &[
-        rw!("loop-split"; "(for ?bound_var ?bound ?body)" => {
+    let dot_product_rules: &[egg::Rewrite<DotProductLanguage, Meta>] = &[
+        egg::rewrite!("loop-split"; "(for ?bound_var ?bound ?body)" => {
             Splitter {
                 bound_var : "?bound_var".parse().unwrap(),
                 bound : "?bound".parse().unwrap(),
                 body : "?body".parse().unwrap(),
             }
         }),
-        rw!("hw-dot-prod-8"; "(for ?i 8 (* (index ?a ?i) (index ?b ?i)))" => "(hw-dot-prod-8 ?a ?b)"),
-        rw!("hw-dot-prod-8"; "(for ?i 8 (* (index ?a ?i) (index ?b ?i)))" => "(hw-dot-prod-8 ?a ?b)"),
+        egg::rewrite!("hw-dot-prod-8"; "(for ?i 8 (* (index ?a ?i) (index ?b ?i)))" => "(hw-dot-prod-8 ?a ?b)"),
+        egg::rewrite!("hw-dot-prod-8"; "(for ?i 8 (* (index ?a ?i) (index ?b ?i)))" => "(hw-dot-prod-8 ?a ?b)"),
     ];
 
     let program = "(sum (for i 10 (* (index a i) (index b i))))"
         .parse()
         .unwrap();
 
-    let runner = Runner::new().with_expr(&program).run(&dot_product_rules);
+    let runner = egg::Runner::new()
+        .with_expr(&program)
+        .run(&dot_product_rules);
 
     println!(
         "Stopped after {} iterations, reason: {:?}",
