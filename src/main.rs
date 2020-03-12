@@ -34,7 +34,7 @@ fn mlp() {
     // achieve this in general.
     type Shape = Vec<Either<i64, Vec<i64>>>;
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone)]
     struct Meta {
         // TODO(gus) implement tensors with many dimensions by using a vector
         // here. I just didn't want to mess around with figuring out Vecs in
@@ -52,7 +52,7 @@ fn mlp() {
 
         fn merge(&self, other: &Self) -> Self {
             assert_eq!(self, other);
-            *self
+            self.clone()
         }
 
         fn make(egraph: &egg::EGraph<MlpLanguage, Self>, enode: &egg::ENode<MlpLanguage>) -> Self {
