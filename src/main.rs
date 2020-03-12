@@ -99,6 +99,33 @@ fn mlp() {
                         scalar_value: None,
                     }
                 }
+                Rows => {
+                    assert_eq!(enode.children.len(), 1);
+                    let initial_shape: &Shape =
+                        egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                    println!("{:?}", initial_shape);
+                    assert_eq!(initial_shape.len(), 2);
+                    // TODO(gus) should probably check that the shape is of a
+                    // shape we expect
+                    // Transform initial shape: (row (tensor...)) becomes a list
+                    // which has shape (list num_rows (list other_dim...))
+                    // TODO(gus) we're also doing "rows" and "columns" right
+                    // now, which is very specific to 2 dimensions.
+                    // We can generalize this later
+                    let all_but_first: Vec<i64> = initial_shape[1..]
+                        .as_ref()
+                        .into_iter()
+                        .map(|i| i.clone().left().unwrap())
+                        .collect();
+                    let new_shape: Shape = vec![
+                        Left(initial_shape[0].clone().left().unwrap()),
+                        Right(all_but_first),
+                    ];
+                    Meta {
+                        shape: Some(new_shape),
+                        scalar_value: None,
+                    }
+                }
                 Num(i) => Meta {
                     shape: None,
                     scalar_value: Some(i),
