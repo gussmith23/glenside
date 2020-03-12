@@ -39,13 +39,44 @@ fn mlp() {
         // TODO(gus) implement tensors with many dimensions by using a vector
         // here. I just didn't want to mess around with figuring out Vecs in
         // Rust, and refcounting, etc etc.
-        shape: Option<[i64; 2]>,
+        shape: Option<Shape>,
         scalar_value: Option<i64>,
     }
     impl PartialEq for Meta {
         fn eq(&self, other: &Self) -> bool {
             return self.shape == other.shape && self.scalar_value == other.scalar_value;
         }
+    }
+    fn shape_from_enode(
+        enode: &egg::ENode<MlpLanguage>,
+        egraph: &egg::EGraph<MlpLanguage, Meta>,
+    ) -> Shape {
+        enode
+            .children
+            .iter()
+            .map(|id| {
+                match egraph[*id].metadata.scalar_value {
+                    Some(i) => {
+                        // Just return a scalar value
+                        Left(i)
+                    }
+                    None => {
+                        // In this case, it's a list (we assume...)
+                        let list_node = egraph[*id]
+                            .iter()
+                            .find(|enode| enode.op == MlpLanguage::List)
+                            .unwrap();
+                        Right(
+                            list_node
+                                .children
+                                .iter()
+                                .map(|id| egraph[*id].metadata.scalar_value.unwrap())
+                                .collect::<Vec<i64>>(),
+                        )
+                    }
+                }
+            })
+            .collect::<Shape>()
     }
     impl egg::Metadata<MlpLanguage> for Meta {
         type Error = ();
@@ -63,13 +94,8 @@ fn mlp() {
                     // there should be a list in this class.
                     let list_class = &egraph[enode.children[1]];
                     let list_node = list_class.iter().find(|enode| enode.op == List).unwrap();
-                    let shape_list = list_node
-                        .children
-                        .iter()
-                        .map(|id| egraph[*id].metadata.scalar_value.unwrap())
-                        .collect::<Vec<i64>>();
                     Meta {
-                        shape: Some([shape_list[0], shape_list[0]]),
+                        shape: Some(shape_from_enode(list_node, egraph)),
                         scalar_value: None,
                     }
                 }
