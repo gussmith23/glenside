@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 egg = "0.3.0"
+either = "1.5.3"

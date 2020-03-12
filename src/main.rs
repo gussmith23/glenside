@@ -1,4 +1,5 @@
 use egg::define_language;
+use either::*;
 
 fn main() {
     //dot_product()
@@ -25,6 +26,13 @@ fn mlp() {
             Symbol(String),
         }
     }
+
+    // TODO(gus) is this possible? what is this called?
+    // FWIW, this isn't possible as-is, as rust complains of a cycle.
+    //type Shape = Vec<Either<i64, Shape>>;
+    // Only one level deep, will add more as needed. Need to figure out how to
+    // achieve this in general.
+    type Shape = Vec<Either<i64, Vec<i64>>>;
 
     #[derive(Debug, Clone, Copy)]
     struct Meta {
