@@ -16,6 +16,7 @@ fn mlp() {
             Relu = "relu",
             Rows = "rows",
             Cols = "cols",
+            CartesianProduct = "cartesian-product",
             Zipwith = "zipwith",
             // List constructor
             List = "list",
@@ -96,6 +97,16 @@ fn mlp() {
                     let list_node = list_class.iter().find(|enode| enode.op == List).unwrap();
                     Meta {
                         shape: Some(shape_from_enode(list_node, egraph)),
+                        scalar_value: None,
+                    }
+                }
+                CartesianProduct => {
+                    assert_eq!(enode.children.len(), 2);
+                    let initial_shape: &Shape =
+                        egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                    println!("{:?}", initial_shape);
+                    Meta {
+                        shape: None,
                         scalar_value: None,
                     }
                 }
