@@ -78,20 +78,16 @@ fn mlp() {
     }
 
     let program = "
-     (relu
-      (zipwith dotprod
-       (rows
-        (relu
-         (zipwith dotprod
-          (rows
-           (relu (zipwith dotprod (rows (tensor in (list 1 784)))
-                                  (cols (tensor w1 (list 784 512))))))
-          (cols (tensor w2 (list 512 512)))
-         )
-        )
+     (zipwith dotprod
+      (rows
+       (zipwith dotprod
+        (rows
+         (zipwith dotprod (rows (tensor in (list 1 784)))
+                          (cols (tensor w1 (list 784 512)))))
+        (cols (tensor w2 (list 512 512)))
        )
-       (cols (tensor w3 (list 512 1)))
       )
+      (cols (tensor w3 (list 512 1)))
      )
      "
     .parse()
