@@ -13,13 +13,12 @@ fn mlp() {
             // TODO(gus) do we need this to be an intrinsic? Is this cheating?
             // Without this I'm not sure how to represent a matmul w/o using a lambda.
             Dotprod = "dotprod",
-            Relu = "relu",
             Rows = "rows",
             Cols = "cols",
             CartesianProduct = "cartesian-product",
-            Zipwith = "zipwith",
             // List constructor
             List = "list",
+            Map = "map",
             // Tensor constructor:
             // Takes an identifier and a list which represents its shape
             // e.g. (tensor a (list 1 4))
