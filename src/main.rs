@@ -34,6 +34,17 @@ fn mlp() {
     // achieve this in general.
     type Shape = Vec<Either<i64, Vec<Either<i64, Vec<i64>>>>>;
 
+    /// Given a function in MLPLanguage (i.e. dotprod) and an input shape,
+    /// what's the output shape?
+    fn infer_shape(
+        node: &MlpLanguage,
+        inner_shape: &Vec<Either<i64, Vec<i64>>>,
+    ) -> Vec<Either<i64, Vec<i64>>> {
+        match node {
+            _ => panic!(),
+        }
+    }
+
     #[derive(Debug, Clone)]
     struct Meta {
         // TODO(gus) implement tensors with many dimensions by using a vector
@@ -165,13 +176,69 @@ fn mlp() {
                         scalar_value: None,
                     }
                 }
+                Cols => {
+                    assert_eq!(enode.children.len(), 1);
+                    let initial_shape: &Shape =
+                        egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                    println!("Cols: {:?}", initial_shape);
+                    assert_eq!(initial_shape.len(), 2);
+                    let all_but_second: Vec<Either<i64, Vec<i64>>> = initial_shape[0..1]
+                        .as_ref()
+                        .into_iter()
+                        .map(|i| Left(i.clone().left().unwrap()))
+                        .collect();
+                    let new_shape: Shape = vec![
+                        Left(initial_shape[1].clone().left().unwrap()),
+                        Right(all_but_second),
+                    ];
+                    Meta {
+                        shape: Some(new_shape),
+                        scalar_value: None,
+                    }
+                }
+                Map => {
+                    assert_eq!(enode.children.len(), 2);
+                    let shape: &Shape = egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
+                    println!("Map input shape: {:?}", shape);
+                    let mut new_shape: Shape = shape.clone();
+                    // we assume the last thing in the top level shape describes
+                    // the list's elements' shape. (All things in the list have
+                    // the same shape; that's a limitation of our shape type
+                    // system.)
+                    new_shape[shape.len() - 1] = Right(infer_shape(
+                        &enode.op,
+                        shape.last().unwrap().as_ref().right().unwrap(),
+                    ));
+                    Meta {
+                        shape: Some(new_shape),
+                        scalar_value: None,
+                    }
+                }
+                Dotprod => {
+                    assert_eq!(enode.children.len(), 0);
+                    println!("Dotprod");
+                    Meta {
+                        shape: None,
+                        scalar_value: None,
+                    }
+                }
+                List => {
+                    println!("List");
+                    Meta {
+                        shape: None,
+                        scalar_value: None,
+                    }
+                }
+                Symbol(_) => {
+                    println!("Symbol");
+                    Meta {
+                        shape: None,
+                        scalar_value: None,
+                    }
+                }
                 Num(i) => Meta {
                     shape: None,
                     scalar_value: Some(i),
-                },
-                _ => Meta {
-                    shape: None,
-                    scalar_value: None,
                 },
             }
         }
