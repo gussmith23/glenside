@@ -32,7 +32,7 @@ fn mlp() {
     //type Shape = Vec<Either<i64, Shape>>;
     // Only one level deep, will add more as needed. Need to figure out how to
     // achieve this in general.
-    type Shape = Vec<Either<i64, Vec<i64>>>;
+    type Shape = Vec<Either<i64, Vec<Either<i64, Vec<i64>>>>>;
 
     #[derive(Debug, Clone)]
     struct Meta {
@@ -70,8 +70,8 @@ fn mlp() {
                             list_node
                                 .children
                                 .iter()
-                                .map(|id| egraph[*id].metadata.scalar_value.unwrap())
-                                .collect::<Vec<i64>>(),
+                                .map(|id| Left(egraph[*id].metadata.scalar_value.unwrap()))
+                                .collect::<Vec<Either<i64, _>>>(),
                         )
                     }
                 }
@@ -122,10 +122,10 @@ fn mlp() {
                     // TODO(gus) we're also doing "rows" and "columns" right
                     // now, which is very specific to 2 dimensions.
                     // We can generalize this later
-                    let all_but_first: Vec<i64> = initial_shape[1..]
+                    let all_but_first: Vec<Either<i64, Vec<i64>>> = initial_shape[1..]
                         .as_ref()
                         .into_iter()
-                        .map(|i| i.clone().left().unwrap())
+                        .map(|i| Left(i.clone().left().unwrap()))
                         .collect();
                     let new_shape: Shape = vec![
                         Left(initial_shape[0].clone().left().unwrap()),
