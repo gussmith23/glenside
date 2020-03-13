@@ -101,11 +101,40 @@ fn mlp() {
                 }
                 CartesianProduct => {
                     assert_eq!(enode.children.len(), 2);
-                    let initial_shape: &Shape =
+                    let initial_shape_left: &Shape =
                         egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                    println!("{:?}", initial_shape);
+                    assert_eq!(initial_shape_left.len(), 2);
+                    let initial_shape_right: &Shape =
+                        egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
+                    assert_eq!(initial_shape_left.len(), 2);
+                    println!(
+                        "CartesianProduct: {:?}, {:?}",
+                        initial_shape_left, initial_shape_right
+                    );
+                    // TODO(gus) i think right now we need the innermost dims to
+                    // match. While this makes sense for a matmul implemented
+                    // with a cartesian product, it doesn't make sense for
+                    // cartesian product in general.
+                    assert_eq!(
+                        initial_shape_left[1].as_ref().right().unwrap(),
+                        initial_shape_right[1].as_ref().right().unwrap(),
+                    );
+                    let innermost_shape: Vec<i64> = initial_shape_left[1]
+                        .as_ref()
+                        .right()
+                        .unwrap()
+                        .iter()
+                        .map(|i| i.clone().left().unwrap())
+                        .collect();
+                    let new_inner_shape: Vec<Either<i64, Vec<i64>>> =
+                        vec![Left(2), Right(innermost_shape)];
+                    let new_shape: Shape = vec![
+                        Left(*initial_shape_left[0].as_ref().left().unwrap()),
+                        Left(*initial_shape_right[0].as_ref().left().unwrap()),
+                        Right(new_inner_shape),
+                    ];
                     Meta {
-                        shape: None,
+                        shape: Some(new_shape),
                         scalar_value: None,
                     }
                 }
