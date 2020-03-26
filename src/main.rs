@@ -39,9 +39,26 @@ fn mlp() {
     fn infer_shape(
         node: &MlpLanguage,
         inner_shape: &Vec<Either<i64, Vec<i64>>>,
-    ) -> Vec<Either<i64, Vec<i64>>> {
+    ) -> Either<i64, Vec<Either<i64, Vec<i64>>>> {
+        use MlpLanguage::*;
         match node {
-            _ => panic!(),
+            Dotprod => {
+                // TODO(gus) a BIG assumption that's making our lives easier
+                // right now and probably hurting us in the long run is that
+                // dotprod doesn't take two arguments, but it takes one argument
+                // which is a pair of vectors in a "tuple".
+                println!("dotprod input shape: {:?}", inner_shape);
+                // Check for tuple of size 2
+                assert_eq!(inner_shape.len(), 2);
+                assert_eq!(*inner_shape[0].as_ref().left().unwrap(), 2);
+                let right: &Vec<_> = inner_shape[1].as_ref().right().unwrap();
+                assert_eq!(right.len(), 1);
+                Left(1)
+            }
+            _ => {
+                println!("Unrecognized node type: {:?}", node);
+                panic!()
+            }
         }
     }
 
@@ -217,17 +234,30 @@ fn mlp() {
                 Map => {
                     assert_eq!(enode.children.len(), 2);
                     let shape: &Shape = egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
+
+                    // Get the MlpLanguage op that is being mapped onto the
+                    // input.
+                    let class: &egg::EClass<MlpLanguage, Meta> = &egraph[enode.children[0]];
+                    // Assume that the class only has one child, which is an
+                    // MlpLanguage op with no children. The fact that it has no
+                    // children means it's not a call.
+                    assert_eq!(class.len(), 1);
+                    let node: &egg::ENode<MlpLanguage> = &class.nodes[0];
+                    assert_eq!(node.children.len(), 0);
+                    let op: &MlpLanguage = &node.op;
+
                     println!("Map input shape: {:?}", shape);
+                    println!("Map op: {:?}", op);
                     let mut new_shape: Shape = shape.clone();
                     // TODO(gus)
                     // we assume the last thing in the top level shape describes
                     // the list's elements' shape. (All things in the list have
                     // the same shape; that's a limitation of our shape type
                     // system.)
-                    new_shape[shape.len() - 1] = Right(infer_shape(
-                        &enode.op,
+                    new_shape[shape.len() - 1] = infer_shape(
+                        op,
                         shape.last().unwrap().as_ref().right().unwrap(),
-                    ));
+                    );
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
