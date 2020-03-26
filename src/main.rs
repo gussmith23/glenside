@@ -52,6 +52,24 @@ fn mlp() {
         // Rust, and refcounting, etc etc.
         shape: Option<Shape>,
         scalar_value: Option<i64>,
+        // If this eclass represents an op in the language, what op?
+        // I'm adding this because I am using ops in the language as
+        // first-class citizens (e.g. I can pass Dotprod to Map).
+        // When it comes time to inspect a Map that takes an op, for example, I
+        // need to be able to quickly figure out what the op represented by the
+        // eclass is.
+        // I specifically need this in the following context: I have an
+        // infer_shape function that takes an op and an input shape and tells me
+        // what the output shape will be. I need to be able to get the op.
+        // TODO(gus) I think this is a hack honestly---what I should do is have
+        // a metadata slot for "infer shape" functions. When metadata merges, we
+        // can combine the list of these functions. When we need to infer a
+        // shape, we can run all of the functions and make sure their outputs
+        // all match.
+        //op: Option<MlpLanguage>,
+        // Actually, for right now, I'm going to take the even easier route and
+        // assume that any eclass who is expected to be a usage of an op as a
+        // first-class type will only have a single enode, which should be an op.
     }
     impl PartialEq for Meta {
         fn eq(&self, other: &Self) -> bool {
