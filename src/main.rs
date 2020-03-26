@@ -219,6 +219,7 @@ fn mlp() {
                     let shape: &Shape = egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
                     println!("Map input shape: {:?}", shape);
                     let mut new_shape: Shape = shape.clone();
+                    // TODO(gus)
                     // we assume the last thing in the top level shape describes
                     // the list's elements' shape. (All things in the list have
                     // the same shape; that's a limitation of our shape type
