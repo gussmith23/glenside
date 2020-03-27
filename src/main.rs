@@ -306,7 +306,7 @@ fn mlp() {
          )
         )
        )
-       (cols (tensor w3 (list 512 1)))
+       (cols (tensor w3 (list 512 10)))
       )
      )
      "
