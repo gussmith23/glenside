@@ -257,10 +257,9 @@ fn mlp() {
                     // the list's elements' shape. (All things in the list have
                     // the same shape; that's a limitation of our shape type
                     // system.)
-                    new_shape[shape.len() - 1] = infer_shape(
-                        op,
-                        shape.last().unwrap().as_ref().right().unwrap(),
-                    );
+                    new_shape[shape.len() - 1] =
+                        infer_shape(op, shape.last().unwrap().as_ref().right().unwrap());
+                    println!("Map new shape: {:?}", new_shape);
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
