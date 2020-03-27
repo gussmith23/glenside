@@ -23,6 +23,9 @@ fn mlp() {
             // Takes an identifier and a list which represents its shape
             // e.g. (tensor a (list 1 4))
             Tensor = "tensor",
+            // Like numpy's squeeze, but just squeezes from right.
+            // Currently, converts things with shape, e.g., (1,2,3,1) to (1, 2,3)
+            SqueezeRight = "squeeze-right",
             Symbol(String),
         }
     }
@@ -263,6 +266,27 @@ fn mlp() {
                         scalar_value: None,
                     }
                 }
+                SqueezeRight => {
+                    assert_eq!(enode.children.len(), 1);
+                    let shape: &Shape = egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                    // TODO(gus) right now, only able to squeeze things like
+                    // [Left(..), Left(..), Left(..)...], i.e., not using any
+                    // Right(..)s.
+                    // TODO(gus) this is definitely not performant.
+                    let squeezed: Shape = shape
+                        .into_iter()
+                        .rev()
+                        .skip_while(|&i| *i.as_ref().left().unwrap() == 1)
+                        .cloned()
+                        .collect::<Shape>()
+                        .into_iter()
+                        .rev()
+                        .collect();
+                    Meta {
+                        shape: Some(squeezed),
+                        scalar_value: None,
+                    }
+                }
                 Dotprod => {
                     assert_eq!(enode.children.len(), 0);
                     println!("Dotprod");
@@ -297,12 +321,15 @@ fn mlp() {
      (map dotprod
       (cartesian-product
        (rows
-        (map dotprod
-         (cartesian-product
-          (rows
-           (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
-                                           (cols (tensor w1 (list 784 512))))))
-          (cols (tensor w2 (list 512 512)))
+        (squeeze-right
+         (map dotprod
+          (cartesian-product
+           (rows
+            (squeeze-right
+             (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
+                                             (cols (tensor w1 (list 784 512)))))))
+           (cols (tensor w2 (list 512 512)))
+          )
          )
         )
        )
