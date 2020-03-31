@@ -364,21 +364,6 @@ fn mlp() {
     // we capture the different areas of different designs that might share
     // an e-class?
 
-    // TODO(gus) what should this pattern actually be?
-    let dot_prod_pattern: egg::Pattern<MlpLanguage> = "
-    (map dotprod
-     (cartesian-product
-      (rows ?t1)
-      (cols ?t2)
-      )
-    )"
-    .parse()
-    .unwrap();
-    let mut egraph = egg::EGraph::<MlpLanguage, Meta>::default();
-    egraph.add_expr(&program);
-    use egg::Searcher;
-    let matches = dot_prod_pattern.search(&egraph);
-    println!("{:#?}", matches);
 
     // TODO(gus) we shouldn't need the squeeze-rights here. those are needed
     // only because my shape type system (in the metadata) doesn't have
