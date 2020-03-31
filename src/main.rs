@@ -258,8 +258,19 @@ fn mlp() {
                     // the list's elements' shape. (All things in the list have
                     // the same shape; that's a limitation of our shape type
                     // system.)
-                    new_shape[shape.len() - 1] =
+                    // TODO(gus) if infer_shape returns Left(1), what do we do?
+                    // do we remove the dimension entirely?
+                    // that's what i'm going to do now, because it is solving a
+                    // headache for me---but it may cause more down the road.
+                    // I think the type system is rotten. Worth a try but lists
+                    // and tensors should probably just be different.
+                    let inferred_shape =
                         infer_shape(op, shape.last().unwrap().as_ref().right().unwrap());
+                    if inferred_shape == Left(1) {
+                        new_shape.remove(new_shape.len() - 1);
+                    } else {
+                        new_shape[shape.len() - 1] = inferred_shape;
+                    }
                     //println!("Map new shape: {:?}", new_shape);
                     Meta {
                         shape: Some(new_shape),
@@ -335,24 +346,19 @@ fn mlp() {
     }
 
     let program = "
-     (squeeze-right
-      (map dotprod
-       (cartesian-product
-        (rows
-         (squeeze-right
-          (map dotprod
-           (cartesian-product
-            (rows
-             (squeeze-right
-              (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
-                                              (cols (tensor w1 (list 784 512)))))))
-            (cols (tensor w2 (list 512 512)))
-           )
-          )
+     (map dotprod
+      (cartesian-product
+       (rows
+        (map dotprod
+         (cartesian-product
+          (rows
+           (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
+                                           (cols (tensor w1 (list 784 512))))))
+          (cols (tensor w2 (list 512 512)))
          )
         )
-        (cols (tensor w3 (list 512 10)))
        )
+       (cols (tensor w3 (list 512 10)))
       )
      )
      "
@@ -364,20 +370,13 @@ fn mlp() {
     // we capture the different areas of different designs that might share
     // an e-class?
 
-
-    // TODO(gus) we shouldn't need the squeeze-rights here. those are needed
-    // only because my shape type system (in the metadata) doesn't have
-    // broadcasting.
-    // So I think I need to implement broadcasting.
     let rewrite = egg::rewrite!("tensorize-dot-product";
-    "(squeeze-right
-      (map dotprod
-       (cartesian-product
-        (rows ?t1)
-        (cols ?t2)
-       )
+    "(map dotprod
+      (cartesian-product
+       (rows ?t1)
+       (cols ?t2)
       )
-     )"=>"(squeeze-right (bsg_systolic_array_weight_stationary ?t1 ?t2))");
+     )"=>"(bsg_systolic_array_weight_stationary ?t1 ?t2)");
 
     let rules: &[egg::Rewrite<MlpLanguage, Meta>] = &[rewrite];
 
