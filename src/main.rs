@@ -317,22 +317,24 @@ fn mlp() {
     }
 
     let program = "
-     (map dotprod
-      (cartesian-product
-       (rows
-        (squeeze-right
-         (map dotprod
-          (cartesian-product
-           (rows
-            (squeeze-right
-             (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
-                                             (cols (tensor w1 (list 784 512)))))))
-           (cols (tensor w2 (list 512 512)))
+     (squeeze-right
+      (map dotprod
+       (cartesian-product
+        (rows
+         (squeeze-right
+          (map dotprod
+           (cartesian-product
+            (rows
+             (squeeze-right
+              (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
+                                              (cols (tensor w1 (list 784 512)))))))
+            (cols (tensor w2 (list 512 512)))
+           )
           )
          )
         )
+        (cols (tensor w3 (list 512 10)))
        )
-       (cols (tensor w3 (list 512 10)))
       )
      )
      "
