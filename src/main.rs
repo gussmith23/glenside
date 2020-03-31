@@ -26,6 +26,7 @@ fn mlp() {
             // Like numpy's squeeze, but just squeezes from right.
             // Currently, converts things with shape, e.g., (1,2,3,1) to (1, 2,3)
             SqueezeRight = "squeeze-right",
+            BsgSystolicArray = "bsg_systolic_array_weight_stationary",
             Symbol(String),
         }
     }
@@ -301,6 +302,23 @@ fn mlp() {
                         scalar_value: None,
                     }
                 }
+                BsgSystolicArray => {
+                    assert_eq!(enode.children.len(), 2);
+                    let left_shape = &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                    let right_shape = &egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
+                    // TODO(gus) very rough approx of what's actually right.
+                    assert_eq!(left_shape[1], right_shape[0]);
+                    assert_eq!(left_shape[2..], right_shape[2..]);
+                    assert!(left_shape[2..]
+                        .iter()
+                        .all(|i| *i.as_ref().left().unwrap() == 1));
+                    let new_shape: Shape =
+                        [&left_shape[0..1], &right_shape[1..2], &left_shape[2..]].concat();
+                    Meta {
+                        shape: Some(new_shape),
+                        scalar_value: None,
+                    }
+                }
                 Symbol(_) => {
                     //println!("Symbol");
                     Meta {
@@ -346,7 +364,37 @@ fn mlp() {
     // we capture the different areas of different designs that might share
     // an e-class?
 
-    let rules: &[egg::Rewrite<MlpLanguage, Meta>] = &[];
+    // TODO(gus) what should this pattern actually be?
+    let dot_prod_pattern: egg::Pattern<MlpLanguage> = "
+    (map dotprod
+     (cartesian-product
+      (rows ?t1)
+      (cols ?t2)
+      )
+    )"
+    .parse()
+    .unwrap();
+    let mut egraph = egg::EGraph::<MlpLanguage, Meta>::default();
+    egraph.add_expr(&program);
+    use egg::Searcher;
+    let matches = dot_prod_pattern.search(&egraph);
+    println!("{:#?}", matches);
+
+    // TODO(gus) we shouldn't need the squeeze-rights here. those are needed
+    // only because my shape type system (in the metadata) doesn't have
+    // broadcasting.
+    // So I think I need to implement broadcasting.
+    let rewrite = egg::rewrite!("tensorize-dot-product";
+    "(squeeze-right
+      (map dotprod
+       (cartesian-product
+        (rows ?t1)
+        (cols ?t2)
+       )
+      )
+     )"=>"(squeeze-right (bsg_systolic_array_weight_stationary ?t1 ?t2))");
+
+    let rules: &[egg::Rewrite<MlpLanguage, Meta>] = &[rewrite];
 
     let runner = egg::Runner::new().with_expr(&program).run(&rules);
 
