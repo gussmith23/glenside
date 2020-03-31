@@ -50,7 +50,7 @@ fn mlp() {
                 // right now and probably hurting us in the long run is that
                 // dotprod doesn't take two arguments, but it takes one argument
                 // which is a pair of vectors in a "tuple".
-                println!("dotprod input shape: {:?}", inner_shape);
+                //println!("dotprod input shape: {:?}", inner_shape);
                 // Check for tuple of size 2
                 assert_eq!(inner_shape.len(), 2);
                 assert_eq!(*inner_shape[0].as_ref().left().unwrap(), 2);
@@ -59,7 +59,7 @@ fn mlp() {
                 Left(1)
             }
             _ => {
-                println!("Unrecognized node type: {:?}", node);
+                //println!("Unrecognized node type: {:?}", node);
                 panic!()
             }
         }
@@ -156,10 +156,10 @@ fn mlp() {
                     let initial_shape_right: &Shape =
                         egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
                     assert_eq!(initial_shape_left.len(), 2);
-                    println!(
-                        "CartesianProduct: {:?}, {:?}",
-                        initial_shape_left, initial_shape_right
-                    );
+                    // println!(
+                    //     "CartesianProduct: {:?}, {:?}",
+                    //     initial_shape_left, initial_shape_right
+                    // );
                     // TODO(gus) i think right now we need the innermost dims to
                     // match. While this makes sense for a matmul implemented
                     // with a cartesian product, it doesn't make sense for
@@ -191,7 +191,7 @@ fn mlp() {
                     assert_eq!(enode.children.len(), 1);
                     let initial_shape: &Shape =
                         egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                    println!("{:?}", initial_shape);
+                    //println!("{:?}", initial_shape);
                     assert_eq!(initial_shape.len(), 2);
                     // TODO(gus) should probably check that the shape is of a
                     // shape we expect
@@ -218,7 +218,7 @@ fn mlp() {
                     assert_eq!(enode.children.len(), 1);
                     let initial_shape: &Shape =
                         egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                    println!("Cols: {:?}", initial_shape);
+                    //println!("Cols: {:?}", initial_shape);
                     assert_eq!(initial_shape.len(), 2);
                     let all_but_second: Vec<Either<i64, Vec<i64>>> = initial_shape[0..1]
                         .as_ref()
@@ -249,8 +249,8 @@ fn mlp() {
                     assert_eq!(node.children.len(), 0);
                     let op: &MlpLanguage = &node.op;
 
-                    println!("Map input shape: {:?}", shape);
-                    println!("Map op: {:?}", op);
+                    //println!("Map input shape: {:?}", shape);
+                    //println!("Map op: {:?}", op);
                     let mut new_shape: Shape = shape.clone();
                     // TODO(gus)
                     // we assume the last thing in the top level shape describes
@@ -259,7 +259,7 @@ fn mlp() {
                     // system.)
                     new_shape[shape.len() - 1] =
                         infer_shape(op, shape.last().unwrap().as_ref().right().unwrap());
-                    println!("Map new shape: {:?}", new_shape);
+                    //println!("Map new shape: {:?}", new_shape);
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
@@ -288,21 +288,21 @@ fn mlp() {
                 }
                 Dotprod => {
                     assert_eq!(enode.children.len(), 0);
-                    println!("Dotprod");
+                    //println!("Dotprod");
                     Meta {
                         shape: None,
                         scalar_value: None,
                     }
                 }
                 List => {
-                    println!("List");
+                    //println!("List");
                     Meta {
                         shape: None,
                         scalar_value: None,
                     }
                 }
                 Symbol(_) => {
-                    println!("Symbol");
+                    //println!("Symbol");
                     Meta {
                         shape: None,
                         scalar_value: None,
@@ -413,7 +413,7 @@ fn _dot_product() {
                 .metadata
                 .expect("Bound's exact value should be known, for now");
 
-            println!("{}", bound_val);
+            //println!("{}", bound_val);
 
             let _bound_var_id: egg::Id = subst[&self.bound_var];
 
