@@ -66,6 +66,8 @@ fn mlp() {
         }
     }
 
+    type DataType = f64;
+
     #[derive(Debug, Clone)]
     struct Meta {
         // TODO(gus) implement tensors with many dimensions by using a vector
@@ -91,6 +93,8 @@ fn mlp() {
         // Actually, for right now, I'm going to take the even easier route and
         // assume that any eclass who is expected to be a usage of an op as a
         // first-class type will only have a single enode, which should be an op.
+        // Tensor value. Should replace scalar_value.
+        value: Option<ndarray::ArrayD<DataType>>,
     }
     impl PartialEq for Meta {
         fn eq(&self, other: &Self) -> bool {
@@ -147,6 +151,7 @@ fn mlp() {
                     Meta {
                         shape: Some(shape_from_enode(list_node, egraph)),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 CartesianProduct => {
@@ -186,6 +191,7 @@ fn mlp() {
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 Rows => {
@@ -213,6 +219,7 @@ fn mlp() {
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 Cols => {
@@ -233,6 +240,7 @@ fn mlp() {
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 Map => {
@@ -275,6 +283,7 @@ fn mlp() {
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 SqueezeRight => {
@@ -296,6 +305,7 @@ fn mlp() {
                     Meta {
                         shape: Some(squeezed),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 Dotprod => {
@@ -304,6 +314,7 @@ fn mlp() {
                     Meta {
                         shape: None,
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 List => {
@@ -311,6 +322,7 @@ fn mlp() {
                     Meta {
                         shape: None,
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 BsgSystolicArray => {
@@ -328,6 +340,7 @@ fn mlp() {
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 Symbol(name) => {
@@ -341,11 +354,13 @@ fn mlp() {
                             _ => panic!("No shape defined for {}", name),
                         }),
                         scalar_value: None,
+                        value: None,
                     }
                 }
                 Num(i) => Meta {
                     shape: None,
                     scalar_value: Some(*i),
+                    value: None,
                 },
             }
         }
