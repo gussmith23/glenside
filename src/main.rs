@@ -139,7 +139,7 @@ fn mlp() {
         fn make(egraph: &egg::EGraph<MlpLanguage, Self>, enode: &egg::ENode<MlpLanguage>) -> Self {
             // We only know the value in the case of a Num.
             use MlpLanguage::*;
-            match enode.op {
+            match &enode.op {
                 Tensor => {
                     // there should be a list in this class.
                     let list_class = &egraph[enode.children[1]];
@@ -339,7 +339,7 @@ fn mlp() {
                 }
                 Num(i) => Meta {
                     shape: None,
-                    scalar_value: Some(i),
+                    scalar_value: Some(*i),
                 },
             }
         }
