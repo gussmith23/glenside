@@ -9,23 +9,13 @@ fn main() {
 fn mlp() {
     egg::define_language! {
         enum MlpLanguage {
-            Num(i64),
             // TODO(gus) do we need this to be an intrinsic? Is this cheating?
             // Without this I'm not sure how to represent a matmul w/o using a lambda.
             Dotprod = "dotprod",
             Rows = "rows",
             Cols = "cols",
             CartesianProduct = "cartesian-product",
-            // List constructor
-            List = "list",
             Map = "map",
-            // Tensor constructor:
-            // Takes an identifier and a list which represents its shape
-            // e.g. (tensor a (list 1 4))
-            Tensor = "tensor",
-            // Like numpy's squeeze, but just squeezes from right.
-            // Currently, converts things with shape, e.g., (1,2,3,1) to (1, 2,3)
-            SqueezeRight = "squeeze-right",
             BsgSystolicArray = "bsg_systolic_array_weight_stationary",
             Symbol(String),
         }
@@ -101,37 +91,6 @@ fn mlp() {
             return self.shape == other.shape && self.scalar_value == other.scalar_value;
         }
     }
-    fn shape_from_enode(
-        enode: &egg::ENode<MlpLanguage>,
-        egraph: &egg::EGraph<MlpLanguage, Meta>,
-    ) -> Shape {
-        enode
-            .children
-            .iter()
-            .map(|id| {
-                match egraph[*id].metadata.scalar_value {
-                    Some(i) => {
-                        // Just return a scalar value
-                        Left(i)
-                    }
-                    None => {
-                        // In this case, it's a list (we assume...)
-                        let list_node = egraph[*id]
-                            .iter()
-                            .find(|enode| enode.op == MlpLanguage::List)
-                            .unwrap();
-                        Right(
-                            list_node
-                                .children
-                                .iter()
-                                .map(|id| Left(egraph[*id].metadata.scalar_value.unwrap()))
-                                .collect::<Vec<Either<i64, _>>>(),
-                        )
-                    }
-                }
-            })
-            .collect::<Shape>()
-    }
     impl egg::Metadata<MlpLanguage> for Meta {
         type Error = ();
 
@@ -144,16 +103,6 @@ fn mlp() {
             // We only know the value in the case of a Num.
             use MlpLanguage::*;
             match &enode.op {
-                Tensor => {
-                    // there should be a list in this class.
-                    let list_class = &egraph[enode.children[1]];
-                    let list_node = list_class.iter().find(|enode| enode.op == List).unwrap();
-                    Meta {
-                        shape: Some(shape_from_enode(list_node, egraph)),
-                        scalar_value: None,
-                        value: None,
-                    }
-                }
                 CartesianProduct => {
                     assert_eq!(enode.children.len(), 2);
                     let initial_shape_left: &Shape =
@@ -286,39 +235,9 @@ fn mlp() {
                         value: None,
                     }
                 }
-                SqueezeRight => {
-                    assert_eq!(enode.children.len(), 1);
-                    let shape: &Shape = egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                    // TODO(gus) right now, only able to squeeze things like
-                    // [Left(..), Left(..), Left(..)...], i.e., not using any
-                    // Right(..)s.
-                    // TODO(gus) this is definitely not performant.
-                    let squeezed: Shape = shape
-                        .into_iter()
-                        .rev()
-                        .skip_while(|&i| *i.as_ref().left().unwrap() == 1)
-                        .cloned()
-                        .collect::<Shape>()
-                        .into_iter()
-                        .rev()
-                        .collect();
-                    Meta {
-                        shape: Some(squeezed),
-                        scalar_value: None,
-                        value: None,
-                    }
-                }
                 Dotprod => {
                     assert_eq!(enode.children.len(), 0);
                     //println!("Dotprod");
-                    Meta {
-                        shape: None,
-                        scalar_value: None,
-                        value: None,
-                    }
-                }
-                List => {
-                    //println!("List");
                     Meta {
                         shape: None,
                         scalar_value: None,
@@ -357,11 +276,6 @@ fn mlp() {
                         value: None,
                     }
                 }
-                Num(i) => Meta {
-                    shape: None,
-                    scalar_value: Some(*i),
-                    value: None,
-                },
             }
         }
     }
