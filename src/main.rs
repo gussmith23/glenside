@@ -330,10 +330,16 @@ fn mlp() {
                         scalar_value: None,
                     }
                 }
-                Symbol(_) => {
+                Symbol(name) => {
                     //println!("Symbol");
                     Meta {
-                        shape: None,
+                        shape: Some(match &name[..] {
+                            "in" => vec![Left(1), Left(784)],
+                            "w1" => vec![Left(784), Left(512)],
+                            "w2" => vec![Left(512), Left(512)],
+                            "w3" => vec![Left(512), Left(10)],
+                            _ => panic!("No shape defined for {}", name),
+                        }),
                         scalar_value: None,
                     }
                 }
@@ -352,13 +358,13 @@ fn mlp() {
         (map dotprod
          (cartesian-product
           (rows
-           (map dotprod (cartesian-product (rows (tensor in (list 1 784)))
-                                           (cols (tensor w1 (list 784 512))))))
-          (cols (tensor w2 (list 512 512)))
+           (map dotprod (cartesian-product (rows in)
+                                           (cols w1))))
+          (cols w2)
          )
         )
        )
-       (cols (tensor w3 (list 512 10)))
+       (cols w3)
       )
      )
      "
