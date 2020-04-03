@@ -1,5 +1,6 @@
 use egg::define_language;
 use either::*;
+use std::collections::HashMap;
 
 fn main() {
     //dot_product()
@@ -18,6 +19,183 @@ fn mlp() {
             Map = "map",
             BsgSystolicArray = "bsg_systolic_array_weight_stationary",
             Symbol(String),
+        }
+    }
+
+    type Environment<'a> = HashMap<&'a str, Value>;
+
+    // The type system of our program. We support tensors (which support values,
+    // as 0-dim tensors) and lists. We could imagine adding other datatypes in
+    // the future (e.g. trees).
+    // TODO(gus) how to represent user-defined ADTs?
+    #[derive(Clone)]
+    enum Value {
+        Tensor(ndarray::ArrayD<DataType>),
+        List(std::vec::Vec<Value>),
+        Function(fn(Value) -> Value),
+        None,
+    }
+
+    fn interpret_eclass(
+        egraph: &egg::EGraph<MlpLanguage, Meta>,
+        eclass: &egg::EClass<MlpLanguage, Meta>,
+        env: &Environment,
+    ) -> Value {
+        let _results = eclass
+            .nodes
+            .iter()
+            .map(|enode| interpret_enode(egraph, enode, env));
+        panic!()
+    }
+
+    // I'm just doing this for now; it may not actually be what we want in the
+    // end.
+    //type Result = Meta;
+    // Woah, this is giving a crazy error that is pointing to the
+    // define_language macro usage. Not Donna deal with that right now.
+    // TODO I'm wondering if the metadata can just act as an interpreter? It
+    // kind of serves that purpose already.
+
+    fn interpret_enode(
+        egraph: &egg::EGraph<MlpLanguage, Meta>,
+        enode: &egg::ENode<MlpLanguage>,
+        env: &Environment,
+    ) -> Value {
+        use MlpLanguage::*;
+        match &enode.op {
+            Symbol(name) => env[&name[..]].clone(),
+            Dotprod => {
+                // Evaluating Dotprod produces different results based on
+                // whether it gets arguments. Actually, this is true of all
+                // functions. If it doesn't get any arguments, then it should
+                // evaluate to a callable function.
+                match enode.children.len() {
+                    0 => {
+                        fn dotprod(list: Value) -> Value {
+                            let list: std::vec::Vec<Value> = match list {
+                                Value::List(l) => l,
+                                _ => panic!(),
+                            };
+                            assert_eq!(list.len(), 2);
+
+                            let left: &ndarray::ArrayD<DataType> = match &list[0] {
+                                Value::Tensor(t) => t,
+                                _ => panic!(),
+                            };
+                            let right: &ndarray::ArrayD<DataType> = match &list[1] {
+                                Value::Tensor(t) => t,
+                                _ => panic!(),
+                            };
+
+                            assert_eq!(left.ndim(), 1);
+                            assert_eq!(right.ndim(), 1);
+
+                            use std::iter::FromIterator;
+                            let left: ndarray::Array1<DataType> =
+                                ndarray::Array::from_iter(left.iter().cloned());
+                            let right: ndarray::Array1<DataType> =
+                                ndarray::Array::from_iter(right.iter().cloned());
+
+                            Value::Tensor(ndarray::Array::from_elem(
+                                ndarray::IxDyn(&[]),
+                                left.dot(&right),
+                            ))
+                        }
+                        Value::Function(dotprod)
+                    }
+                    _ => panic!(),
+                }
+            }
+            Rows => {
+                // There should be one arg: a single tensor.
+                assert_eq!(enode.children.len(), 1);
+                // Expect that the result of interpreting it is a tensor.
+                let arg_as_tensor: ndarray::ArrayD<DataType> =
+                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
+                        Value::Tensor(t) => t,
+                        _ => panic!(),
+                    };
+
+                Value::List(
+                    arg_as_tensor
+                        .axis_iter(ndarray::Axis(1))
+                        .map(|view| Value::Tensor(view.to_owned()))
+                        .collect::<std::vec::Vec<Value>>(),
+                )
+            }
+            Cols => {
+                // There should be one arg: a single tensor.
+                assert_eq!(enode.children.len(), 1);
+                // Expect that the result of interpreting it is a tensor.
+                let arg_as_tensor: ndarray::ArrayD<DataType> =
+                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
+                        Value::Tensor(t) => t,
+                        _ => panic!(),
+                    };
+
+                Value::List(
+                    arg_as_tensor
+                        .axis_iter(ndarray::Axis(0))
+                        .map(|view| Value::Tensor(view.to_owned()))
+                        .collect::<std::vec::Vec<Value>>(),
+                )
+            }
+            CartesianProduct => {
+                // There should be two args, both of which should be lists.
+                assert_eq!(enode.children.len(), 2);
+                let left: std::vec::Vec<Value> =
+                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
+                        Value::List(l) => l,
+                        _ => panic!(),
+                    };
+                let right: std::vec::Vec<Value> =
+                    match interpret_eclass(egraph, &egraph[enode.children[1]], env) {
+                        Value::List(l) => l,
+                        _ => panic!(),
+                    };
+
+                // TODO(gus) figuring out exactly what should be the output of
+                // CartesianProduct. It's a headache. I see three options:
+                // 1. A 1-d List of pairs (Lists) of Tensors.
+                // 2. A 2-d List of pairs (Lists) of Tensors.
+                // 3. A Tensor whose elements are pairs (Lists) of Tensors.
+                // I have a lot of notes on my thinking. Going to go with some
+                // variant of 3.
+                // Scratch that. That would require adding another tensor type
+                // to our list of types. Don't want to do that for some reason.
+                // Going with option 1 now.
+
+                use itertools::iproduct;
+                Value::List(
+                    iproduct!(left, right)
+                        .map(|tuple| Value::List(vec![tuple.0, tuple.1]))
+                        .collect(),
+                )
+            }
+            Map => {
+                assert_eq!(enode.children.len(), 2);
+
+                // The first child of map is a function, passed as an argument.
+                // For example, a dot-product node with no children. In the
+                // future we may support other things that will evaluate to
+                // functions.
+                // The node should evaluate to a function value in our
+                // interpreter.
+                let function: fn(Value) -> Value =
+                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
+                        Value::Function(f) => f,
+                        _ => panic!(),
+                    };
+
+                let input_list: std::vec::Vec<Value> =
+                    match interpret_eclass(egraph, &egraph[enode.children[1]], env) {
+                        Value::List(l) => l,
+                        _ => panic!(),
+                    };
+
+                Value::List(input_list.iter().cloned().map(function).collect())
+            }
+            _ => panic!(),
         }
     }
 
