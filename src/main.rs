@@ -537,6 +537,56 @@ fn mlp() {
     .parse()
     .unwrap();
 
+    fn load_npy(path: &str) -> ndarray::ArrayD<DataType> {
+        ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+    fn pack_interpreter_input(array: ndarray::ArrayD<DataType>) -> Value {
+        Value::ShapedList(
+            ndarray::ArrayD::<ListValue>::from_shape_vec(
+                array.shape(),
+                array
+                    .iter()
+                    .cloned()
+                    .map(|scalar| ListValue::Scalar(scalar))
+                    .collect(),
+            )
+            .unwrap(),
+        )
+    }
+    let in_val = pack_interpreter_input(load_npy("in.npy"));
+    let w1_val = pack_interpreter_input(load_npy("w1.npy"));
+    let w2_val = pack_interpreter_input(load_npy("w2.npy"));
+    let w3_val = pack_interpreter_input(load_npy("w3.npy"));
+    let out_true = load_npy("out.npy");
+    let mut env = Environment::new();
+    env.insert("in", in_val);
+    env.insert("w1", w1_val);
+    env.insert("w2", w2_val);
+    env.insert("w3", w3_val);
+    let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
+    let out = interpret_eclass(&egraph, &egraph[id], &env);
+
+    fn unpack_interpreter_output(output: Value) -> ndarray::ArrayD<DataType> {
+        match output {
+            Value::ShapedList(t) => ndarray::ArrayD::<DataType>::from_shape_vec(
+                t.shape(),
+                t.iter()
+                    .cloned()
+                    .map(|list_val| match list_val {
+                        ListValue::Scalar(s) => s,
+                        _ => panic!(),
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+            _ => panic!(),
+        }
+    }
+    let out = unpack_interpreter_output(out);
+
+    use approx::AbsDiffEq;
+    assert!(out_true.abs_diff_eq(&out, 1e-8));
+
     // TODO(gus) metadata? using area?
     // TODO(gus) here's a problem: if we represent area as metadata, how do
     // we capture the different areas of different designs that might share
