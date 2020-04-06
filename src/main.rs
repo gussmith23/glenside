@@ -16,7 +16,8 @@ fn mlp() {
             Rows = "rows",
             Cols = "cols",
             CartesianProduct = "cartesian-product",
-            Map = "map",
+            // Map over a shaped list
+            ShapedMap = "shaped-map",
             BsgSystolicArray = "bsg_systolic_array_weight_stationary",
             Symbol(String),
         }
@@ -172,7 +173,7 @@ fn mlp() {
                         .collect(),
                 )
             }
-            Map => {
+            ShapedMap => {
                 assert_eq!(enode.children.len(), 2);
 
                 // The first child of map is a function, passed as an argument.
@@ -245,8 +246,8 @@ fn mlp() {
         scalar_value: Option<i64>,
         // If this eclass represents an op in the language, what op?
         // I'm adding this because I am using ops in the language as
-        // first-class citizens (e.g. I can pass Dotprod to Map).
-        // When it comes time to inspect a Map that takes an op, for example, I
+        // first-class citizens (e.g. I can pass Dotprod to ShapedMap).
+        // When it comes time to inspect a ShapedMap that takes an op, for example, I
         // need to be able to quickly figure out what the op represented by the
         // eclass is.
         // I specifically need this in the following context: I have an
@@ -370,7 +371,7 @@ fn mlp() {
                         value: None,
                     }
                 }
-                Map => {
+                ShapedMap => {
                     assert_eq!(enode.children.len(), 2);
                     let shape: &Shape = egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
 
@@ -459,13 +460,13 @@ fn mlp() {
     }
 
     let program = "
-     (map dotprod
+     (shaped-map dotprod
       (cartesian-product
        (rows
-        (map dotprod
+        (shaped-map dotprod
          (cartesian-product
           (rows
-           (map dotprod (cartesian-product (rows in)
+           (shaped-map dotprod (cartesian-product (rows in)
                                            (cols w1))))
           (cols w2)
          )
@@ -484,7 +485,7 @@ fn mlp() {
     // an e-class?
 
     let rewrite = egg::rewrite!("tensorize-dot-product";
-    "(map dotprod
+    "(shaped-map dotprod
       (cartesian-product
        (rows ?t1)
        (cols ?t2)
