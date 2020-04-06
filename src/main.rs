@@ -29,12 +29,24 @@ fn mlp() {
     // as 0-dim tensors) and lists. We could imagine adding other datatypes in
     // the future (e.g. trees).
     // TODO(gus) how to represent user-defined ADTs?
-    #[derive(Clone)]
+    // StreamValue are the actual value types that can appear in streams.
+    #[derive(Clone, PartialEq, Debug)]
+    enum ListValue {
+        Scalar(DataType),
+        // TODO(gus) Doing this may open up a huge can of worms. I'm not quite
+        // sure how to design the language though, and this is the easiest way
+        // to get what I want: I want to be able to have Streams of Values.
+        //Value(Value),
+        //CartesianProductElement(ndarray::ArrayD<DataType>, ndarray::ArrayD<DataType>),
+        Value(Value),
+    }
+    #[derive(Clone, PartialEq, Debug)]
     enum Value {
-        Tensor(ndarray::ArrayD<DataType>),
-        List(std::vec::Vec<Value>),
-        Function(fn(Value) -> Value),
-        None,
+        List(std::vec::Vec<ListValue>),
+        // Box needed for indirection, otherwise we have recursive structure.
+        Tuple2(Box<ListValue>, Box<ListValue>),
+        ShapedList(ndarray::ArrayD<ListValue>),
+        Function(fn(ListValue) -> ListValue),
     }
 
     fn interpret_eclass(
@@ -42,11 +54,20 @@ fn mlp() {
         eclass: &egg::EClass<MlpLanguage, Meta>,
         env: &Environment,
     ) -> Value {
-        let _results = eclass
+        let results: std::vec::Vec<Value> = eclass
             .nodes
             .iter()
-            .map(|enode| interpret_enode(egraph, enode, env));
-        panic!()
+            .map(|enode: &egg::ENode<MlpLanguage>| interpret_enode(egraph, enode, env))
+            .collect();
+        assert!(results.len() > 0);
+        let result: Value = results
+            .iter()
+            // TODO(gus) not good for performance.
+            .fold(
+                results[0].clone(),
+                |v1: Value, v2: &Value| if v1 == *v2 { v1 } else { panic!() },
+            );
+        result
     }
 
     // I'm just doing this for now; it may not actually be what we want in the
@@ -72,19 +93,28 @@ fn mlp() {
                 // evaluate to a callable function.
                 match enode.children.len() {
                     0 => {
-                        fn dotprod(list: Value) -> Value {
-                            let list: std::vec::Vec<Value> = match list {
-                                Value::List(l) => l,
-                                _ => panic!(),
-                            };
-                            assert_eq!(list.len(), 2);
-
-                            let left: &ndarray::ArrayD<DataType> = match &list[0] {
-                                Value::Tensor(t) => t,
-                                _ => panic!(),
-                            };
-                            let right: &ndarray::ArrayD<DataType> = match &list[1] {
-                                Value::Tensor(t) => t,
+                        // Expects a StreamValue::Pair as input.
+                        fn dotprod(pair: ListValue) -> ListValue {
+                            // Unpack the tensors to dot-product.
+                            let (left, right): (
+                                ndarray::ArrayD<ListValue>,
+                                ndarray::ArrayD<ListValue>,
+                            ) = match pair {
+                                ListValue::Value(v) => match v {
+                                    Value::Tuple2(left, right) => match (*left, *right) {
+                                        (ListValue::Value(left), ListValue::Value(right)) => {
+                                            match (left, right) {
+                                                (
+                                                    Value::ShapedList(left),
+                                                    Value::ShapedList(right),
+                                                ) => (left, right),
+                                                _ => panic!(),
+                                            }
+                                        }
+                                        _ => panic!(),
+                                    },
+                                    _ => panic!(),
+                                },
                                 _ => panic!(),
                             };
 
@@ -92,15 +122,22 @@ fn mlp() {
                             assert_eq!(right.ndim(), 1);
 
                             use std::iter::FromIterator;
-                            let left: ndarray::Array1<DataType> =
-                                ndarray::Array::from_iter(left.iter().cloned());
-                            let right: ndarray::Array1<DataType> =
-                                ndarray::Array::from_iter(right.iter().cloned());
+                            fn unpack_and_flatten(
+                                t: ndarray::ArrayD<ListValue>,
+                            ) -> ndarray::Array1<DataType> {
+                                ndarray::Array::from_iter(
+                                    t.iter()
+                                        .map(|el| match el {
+                                            ListValue::Scalar(s) => s,
+                                            _ => panic!(),
+                                        })
+                                        .cloned(),
+                                )
+                            };
+                            let left = unpack_and_flatten(left);
+                            let right = unpack_and_flatten(right);
 
-                            Value::Tensor(ndarray::Array::from_elem(
-                                ndarray::IxDyn(&[]),
-                                left.dot(&right),
-                            ))
+                            ListValue::Scalar(left.dot(&right))
                         }
                         Value::Function(dotprod)
                     }
@@ -111,45 +148,48 @@ fn mlp() {
                 // There should be one arg: a single tensor.
                 assert_eq!(enode.children.len(), 1);
                 // Expect that the result of interpreting it is a tensor.
-                let arg_as_tensor: ndarray::ArrayD<DataType> =
+                let arg_as_tensor: ndarray::ArrayD<ListValue> =
                     match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                        Value::Tensor(t) => t,
-                        _ => panic!(),
-                    };
-
-                Value::List(
-                    arg_as_tensor
-                        .axis_iter(ndarray::Axis(1))
-                        .map(|view| Value::Tensor(view.to_owned()))
-                        .collect::<std::vec::Vec<Value>>(),
-                )
-            }
-            Cols => {
-                // There should be one arg: a single tensor.
-                assert_eq!(enode.children.len(), 1);
-                // Expect that the result of interpreting it is a tensor.
-                let arg_as_tensor: ndarray::ArrayD<DataType> =
-                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                        Value::Tensor(t) => t,
+                        Value::ShapedList(t) => t,
                         _ => panic!(),
                     };
 
                 Value::List(
                     arg_as_tensor
                         .axis_iter(ndarray::Axis(0))
-                        .map(|view| Value::Tensor(view.to_owned()))
-                        .collect::<std::vec::Vec<Value>>(),
+                        .map(|view| ListValue::Value(Value::ShapedList(view.to_owned())))
+                        .collect::<std::vec::Vec<ListValue>>(),
+                )
+            }
+            Cols => {
+                // There should be one arg: a single tensor.
+                assert_eq!(enode.children.len(), 1);
+                // Expect that the result of interpreting it is a tensor.
+                let arg_as_tensor: ndarray::ArrayD<ListValue> =
+                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
+                        Value::ShapedList(t) => t,
+                        _ => panic!(),
+                    };
+
+                Value::List(
+                    arg_as_tensor
+                        .axis_iter(ndarray::Axis(1))
+                        .map(|view| ListValue::Value(Value::ShapedList(view.to_owned())))
+                        .collect::<std::vec::Vec<ListValue>>(),
                 )
             }
             CartesianProduct => {
+                // Semantics of cartesian product:
+                // Rightmost thing varies the fastest.
+
                 // There should be two args, both of which should be lists.
                 assert_eq!(enode.children.len(), 2);
-                let left: std::vec::Vec<Value> =
+                let left: std::vec::Vec<ListValue> =
                     match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
                         Value::List(l) => l,
                         _ => panic!(),
                     };
-                let right: std::vec::Vec<Value> =
+                let right: std::vec::Vec<ListValue> =
                     match interpret_eclass(egraph, &egraph[enode.children[1]], env) {
                         Value::List(l) => l,
                         _ => panic!(),
@@ -165,13 +205,25 @@ fn mlp() {
                 // Scratch that. That would require adding another tensor type
                 // to our list of types. Don't want to do that for some reason.
                 // Going with option 1 now.
+                // For what it's worth, I'm back on doing 3.
+
+                let new_shape = vec![left.len(), right.len()];
 
                 use itertools::iproduct;
-                Value::List(
-                    iproduct!(left, right)
-                        .map(|tuple| Value::List(vec![tuple.0, tuple.1]))
-                        .collect(),
-                )
+                let product_vector: std::vec::Vec<ListValue> = iproduct!(left, right)
+                    .map(|tuple| {
+                        ListValue::Value(Value::Tuple2(
+                            Box::<_>::new(tuple.0),
+                            Box::<_>::new(tuple.1),
+                        ))
+                    })
+                    .collect();
+
+                let reshaped_into_tensor: ndarray::ArrayD<ListValue> =
+                    ndarray::ArrayD::<ListValue>::from_shape_vec(new_shape, product_vector)
+                        .unwrap();
+
+                Value::ShapedList(reshaped_into_tensor)
             }
             ShapedMap => {
                 assert_eq!(enode.children.len(), 2);
@@ -182,19 +234,25 @@ fn mlp() {
                 // functions.
                 // The node should evaluate to a function value in our
                 // interpreter.
-                let function: fn(Value) -> Value =
+                let function: fn(ListValue) -> ListValue =
                     match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
                         Value::Function(f) => f,
                         _ => panic!(),
                     };
 
-                let input_list: std::vec::Vec<Value> =
+                let input_shaped_list: ndarray::ArrayD<ListValue> =
                     match interpret_eclass(egraph, &egraph[enode.children[1]], env) {
-                        Value::List(l) => l,
+                        Value::ShapedList(t) => t,
                         _ => panic!(),
                     };
 
-                Value::List(input_list.iter().cloned().map(function).collect())
+                Value::ShapedList(
+                    ndarray::ArrayD::<ListValue>::from_shape_vec(
+                        input_shaped_list.shape(),
+                        input_shaped_list.iter().cloned().map(function).collect(),
+                    )
+                    .unwrap(),
+                )
             }
             _ => panic!(),
         }
