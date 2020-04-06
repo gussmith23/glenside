@@ -444,8 +444,6 @@ fn mlp() {
                     assert_eq!(node.children.len(), 0);
                     let op: &MlpLanguage = &node.op;
 
-                    //println!("Map input shape: {:?}", shape);
-                    //println!("Map op: {:?}", op);
                     let mut new_shape: Shape = shape.clone();
                     // TODO(gus)
                     // we assume the last thing in the top level shape describes
@@ -465,7 +463,6 @@ fn mlp() {
                     } else {
                         new_shape[shape.len() - 1] = inferred_shape;
                     }
-                    //println!("Map new shape: {:?}", new_shape);
                     Meta {
                         shape: Some(new_shape),
                         scalar_value: None,
