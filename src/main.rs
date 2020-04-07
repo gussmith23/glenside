@@ -561,6 +561,7 @@ fn mlp() {
     env.insert("w2", w2_val);
     env.insert("w3", w3_val);
     let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
+    egraph.dot().to_svg("mlp-before-rewrites.svg").unwrap();
     let out = interpret_eclass(&egraph, &egraph[id], &env);
 
     fn unpack_interpreter_output(output: Value) -> ndarray::ArrayD<DataType> {
@@ -606,7 +607,7 @@ fn mlp() {
         runner.iterations.len(),
         runner.stop_reason
     );
-    runner.egraph.dot().to_svg("mlp.svg").unwrap();
+    runner.egraph.dot().to_svg("mlp-after-rewrites.svg").unwrap();
 }
 
 fn _dot_product() {
