@@ -686,7 +686,11 @@ fn mlp() {
         runner.iterations.len(),
         runner.stop_reason
     );
-    runner.egraph.dot().to_svg("mlp-after-rewrites.svg").unwrap();
+    runner
+        .egraph
+        .dot()
+        .to_svg("mlp-after-rewrites.svg")
+        .unwrap();
 }
 
 fn _dot_product() {
