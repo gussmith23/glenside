@@ -49,9 +49,9 @@ fn mlp() {
         Function(fn(ListValue) -> ListValue),
     }
 
-    fn interpret_eclass(
-        egraph: &egg::EGraph<MlpLanguage, Meta>,
-        eclass: &egg::EClass<MlpLanguage, Meta>,
+    fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
+        egraph: &egg::EGraph<MlpLanguage, M>,
+        eclass: &egg::EClass<MlpLanguage, M>,
         env: &Environment,
     ) -> Value {
         let results: std::vec::Vec<Value> = eclass
@@ -78,8 +78,8 @@ fn mlp() {
     // TODO I'm wondering if the metadata can just act as an interpreter? It
     // kind of serves that purpose already.
 
-    fn interpret_enode(
-        egraph: &egg::EGraph<MlpLanguage, Meta>,
+    fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
+        egraph: &egg::EGraph<MlpLanguage, M>,
         enode: &egg::ENode<MlpLanguage>,
         env: &Environment,
     ) -> Value {
