@@ -1,5 +1,6 @@
 use egg::define_language;
 use either::*;
+use ndarray::s;
 use std::collections::HashMap;
 
 fn main() {
@@ -19,6 +20,10 @@ fn mlp() {
             // Map over a shaped list
             ShapedMap = "shaped-map",
             BsgSystolicArray = "bsg_systolic_array_weight_stationary",
+            // Slice into list/tensor/whatever we're calling them
+            Slice = "slice",
+            // TODO(gus) this will probably need to be signed at some point?
+            Usize(usize),
             Symbol(String),
         }
     }
@@ -47,6 +52,11 @@ fn mlp() {
         Tuple2(Box<ListValue>, Box<ListValue>),
         ShapedList(ndarray::ArrayD<ListValue>),
         Function(fn(ListValue) -> ListValue),
+        // TODO(gus) is this a problem? If we have this, we might as well remove
+        // ListValue entirely, right?
+        //Scalar(DataType),
+        // Ok, maybe that later, but we actually need integers:
+        Usize(usize),
     }
 
     fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
@@ -255,6 +265,53 @@ fn mlp() {
                 )
             }
             _ => panic!(),
+            Slice => {
+                // TODO(gus) this is true for our minimal working example, not
+                // expected to be true in the future, definitely not.
+                assert_eq!(enode.children.len(), 5);
+
+                let tensor: ndarray::ArrayD<_> =
+                    match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
+                        Value::ShapedList(t) => t,
+                        _ => panic!(),
+                    };
+
+                assert_eq!(tensor.shape().len(), 2);
+
+                let ((row_slice_start, row_slice_end), (col_slice_start, col_slice_end)): (
+                    (usize, usize),
+                    (usize, usize),
+                ) = match enode.children[1..5]
+                    .iter()
+                    .map(|eclass_id: &u32| {
+                        match interpret_eclass(egraph, &egraph[*eclass_id], env) {
+                            Value::Usize(u) => u,
+                            _ => panic!(),
+                        }
+                    })
+                    .collect::<std::vec::Vec<usize>>()
+                    .as_slice()
+                {
+                    [row_slice_start, row_slice_end, col_slice_start, col_slice_end] => (
+                        (*row_slice_start, *row_slice_end),
+                        (*col_slice_start, *col_slice_end),
+                    ),
+                    _ => panic!(),
+                };
+
+                // A  consistent problem I was having with this library
+                // was with converting to dynamic-dimension tensors.
+                // Found out I can use into_dyn().
+                Value::ShapedList(
+                    tensor
+                        .slice_move(s![
+                            row_slice_start..row_slice_end,
+                            col_slice_start..col_slice_end
+                        ])
+                        .into_dyn(),
+                )
+            }
+            Usize(u) => Value::Usize(*u),
         }
     }
 
@@ -496,6 +553,8 @@ fn mlp() {
                         value: None,
                     }
                 }
+                Slice => panic!(),
+                Usize(_) => panic!(),
                 Symbol(name) => {
                     //println!("Symbol");
                     Meta {
@@ -513,6 +572,26 @@ fn mlp() {
             }
         }
     }
+
+    let slice_test_program_1 = "(slice a 0 1 0 1)".parse().unwrap();
+    let slice_test_program_2 = "(slice a 1 2 0 2)".parse().unwrap();
+    let input = pack_interpreter_input(
+        ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
+    );
+    let mut env = Environment::new();
+    env.insert("a", input);
+    let (egraph, id) = egg::EGraph::<MlpLanguage, ()>::from_expr(&slice_test_program_1);
+    let out = unpack_interpreter_output(interpret_eclass(&egraph, &egraph[id], &env));
+    assert_eq!(
+        out,
+        ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 1], vec![1.]).unwrap()
+    );
+    let (egraph, id) = egg::EGraph::<MlpLanguage, ()>::from_expr(&slice_test_program_2);
+    let out = unpack_interpreter_output(interpret_eclass(&egraph, &egraph[id], &env));
+    assert_eq!(
+        out,
+        ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 2], vec![3., 4.]).unwrap()
+    );
 
     let program = "
      (shaped-map dotprod
