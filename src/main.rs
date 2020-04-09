@@ -264,7 +264,6 @@ fn mlp() {
                     .unwrap(),
                 )
             }
-            _ => panic!(),
             Slice => {
                 // TODO(gus) this is true for our minimal working example, not
                 // expected to be true in the future, definitely not.
@@ -312,6 +311,7 @@ fn mlp() {
                 )
             }
             Usize(u) => Value::Usize(*u),
+            BsgSystolicArray => panic!(),
         }
     }
 
