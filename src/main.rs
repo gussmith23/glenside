@@ -1,6 +1,7 @@
 use egg::define_language;
 use either::*;
 use ndarray::s;
+use num_traits::identities::Zero;
 use std::collections::HashMap;
 
 fn main() {
@@ -22,6 +23,7 @@ fn mlp() {
             BsgSystolicArray = "bsg_systolic_array_weight_stationary",
             // Slice into list/tensor/whatever we're calling them
             Slice = "slice",
+            ShapedAdd = "shaped-add",
             // TODO(gus) this will probably need to be signed at some point?
             Usize(usize),
             Symbol(String),
@@ -59,6 +61,60 @@ fn mlp() {
         Usize(usize),
     }
 
+    impl std::ops::Add for ListValue {
+        type Output = ListValue;
+
+        fn add(self: ListValue, other: ListValue) -> ListValue {
+            match self {
+                ListValue::Scalar(s) => match other {
+                    ListValue::Scalar(s2) => ListValue::Scalar(s + s2),
+                    _ => panic!(),
+                },
+                ListValue::Value(v) => match other {
+                    ListValue::Value(v2) => ListValue::Value(v + v2),
+                    _ => panic!(),
+                },
+            }
+        }
+    }
+
+    // impl num_traits::identities::Zero for ListValue {
+    //     fn zero() {
+    //         // TODO(gus) This seems bad
+    //         ListValue::Scalar(DataType::zero())
+    // }
+
+    impl std::ops::Add for Value {
+        type Output = Value;
+
+        fn add(self: Value, other: Value) -> Value {
+            match self {
+                Value::List(v) => match other {
+                    Value::List(v2) => Value::List({
+                        assert_eq!(v.len(), v2.len());
+                        v.iter()
+                            .zip(v2.iter())
+                            .map(|(a, b)| a.clone() + b.clone())
+                            .collect()
+                    }),
+                    _ => panic!(),
+                },
+                Value::ShapedList(t) => match other {
+                    Value::ShapedList(t2) => Value::ShapedList(t + t2),
+                    _ => panic!(),
+                },
+                Value::Tuple2(a, b) => match other {
+                    Value::Tuple2(a2, b2) => Value::Tuple2(Box::new(*a + *a2), Box::new(*b + *b2)),
+                    _ => panic!(),
+                },
+                Value::Usize(u) => match other {
+                    Value::Usize(u2) => Value::Usize(u + u2),
+                    _ => panic!(),
+                },
+                Value::Function(_) => panic!(),
+            }
+        }
+    }
     fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
         egraph: &egg::EGraph<MlpLanguage, M>,
         eclass: &egg::EClass<MlpLanguage, M>,
@@ -311,6 +367,28 @@ fn mlp() {
                 )
             }
             Usize(u) => Value::Usize(*u),
+            ShapedAdd => {
+                let tensors: std::vec::Vec<ndarray::ArrayD<_>> = enode
+                    .children
+                    .iter()
+                    .map(
+                        |eclass| match interpret_eclass(egraph, &egraph[*eclass], env) {
+                            Value::ShapedList(t) => t,
+                            _ => panic!(),
+                        },
+                    )
+                    .collect();
+
+                assert!(tensors.len() > 0);
+
+                Value::ShapedList(tensors.iter().fold(
+                    ndarray::Array::from_elem(
+                        tensors[0].shape(),
+                        ListValue::Scalar(DataType::zero()),
+                    ),
+                    |acc, t| acc + t,
+                ))
+            }
             BsgSystolicArray => panic!(),
         }
     }
@@ -555,6 +633,7 @@ fn mlp() {
                 }
                 Slice => panic!(),
                 Usize(_) => panic!(),
+                ShapedAdd => panic!(),
                 Symbol(name) => {
                     //println!("Symbol");
                     Meta {
@@ -591,6 +670,23 @@ fn mlp() {
     assert_eq!(
         out,
         ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 2], vec![3., 4.]).unwrap()
+    );
+
+    let shaped_add_test_program_1 = "(shaped-add a b)".parse().unwrap();
+    let a = pack_interpreter_input(
+        ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
+    );
+    let b = pack_interpreter_input(
+        ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![2., 3., -4., -5.]).unwrap(),
+    );
+    let mut env = Environment::new();
+    env.insert("a", a);
+    env.insert("b", b);
+    let (egraph, id) = egg::EGraph::<MlpLanguage, ()>::from_expr(&shaped_add_test_program_1);
+    let out = unpack_interpreter_output(interpret_eclass(&egraph, &egraph[id], &env));
+    assert_eq!(
+        out,
+        ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![3., 5., -1., -1.]).unwrap()
     );
 
     let program = "
