@@ -14,6 +14,10 @@ fn mlp() {
         enum MlpLanguage {
             // TODO(gus) do we need this to be an intrinsic? Is this cheating?
             // Without this I'm not sure how to represent a matmul w/o using a lambda.
+            // TODO(gus) a more updated todo here would be: do we want to
+            // consider (sooner rather than later) whether we can break down
+            // dot product into its component parts (that is, whether it would
+            // be valuable to, and then, whether it would be possible)
             Dotprod = "dotprod",
             Rows = "rows",
             Cols = "cols",
