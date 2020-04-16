@@ -6,7 +6,8 @@ use std::collections::HashMap;
 
 fn main() {
     //dot_product()
-    mlp()
+    //mlp()
+    single_matrix_multiply()
 }
 
 egg::define_language! {
@@ -640,6 +641,14 @@ impl egg::Metadata<MlpLanguage> for Meta {
                         "w1" => vec![Left(784), Left(512)],
                         "w2" => vec![Left(512), Left(512)],
                         "w3" => vec![Left(512), Left(10)],
+                        // TODO(gus) have to figure out a way around this. Max
+                        // seems to think the tensors should just go into the
+                        // egraph. I was hoping to have some kind of environment
+                        // that we could wrap the egraph in (would have to be
+                        // accessible from here), but Max doesn't have that nor
+                        // does he plan to implement it.
+                        "single-matrix-multiply-input-a" => vec![Left(64), Left(64)],
+                        "single-matrix-multiply-input-b" => vec![Left(64), Left(64)],
                         _ => panic!("No shape defined for {}", name),
                     }),
                     scalar_value: None,
@@ -650,7 +659,71 @@ impl egg::Metadata<MlpLanguage> for Meta {
     }
 }
 
-fn mlp() {
+fn load_npy(path: &str) -> ndarray::ArrayD<DataType> {
+    ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+}
+fn pack_interpreter_input(array: ndarray::ArrayD<DataType>) -> Value {
+    Value::ShapedList(
+        ndarray::ArrayD::<ListValue>::from_shape_vec(
+            array.shape(),
+            array
+                .iter()
+                .cloned()
+                .map(|scalar| ListValue::Scalar(scalar))
+                .collect(),
+        )
+        .unwrap(),
+    )
+}
+fn unpack_interpreter_output(output: Value) -> ndarray::ArrayD<DataType> {
+    match output {
+        Value::ShapedList(t) => ndarray::ArrayD::<DataType>::from_shape_vec(
+            t.shape(),
+            t.iter()
+                .cloned()
+                .map(|list_val| match list_val {
+                    ListValue::Scalar(s) => s,
+                    _ => panic!(),
+                })
+                .collect(),
+        )
+        .unwrap(),
+        _ => panic!(),
+    }
+}
+
+fn single_matrix_multiply() {
+    let program = "
+     (shaped-map dotprod
+      (cartesian-product
+       (rows single-matrix-multiply-input-a)
+       (cols single-matrix-multiply-input-b)
+      )
+     )
+     "
+    .parse()
+    .unwrap();
+
+    let a_val = pack_interpreter_input(load_npy("single_matrix_multiply_input_a.npy"));
+    let b_val = pack_interpreter_input(load_npy("single_matrix_multiply_input_b.npy"));
+    let out_true = load_npy("single_matrix_multiply_output.npy");
+    let mut env = Environment::new();
+    env.insert("single-matrix-multiply-input-a", a_val);
+    env.insert("single-matrix-multiply-input-b", b_val);
+    let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
+    egraph
+        .dot()
+        .to_svg("single-matrix-multiply-before-rewrites.svg")
+        .unwrap();
+    let out = interpret_eclass(&egraph, &egraph[id], &env);
+
+    let out = unpack_interpreter_output(out);
+
+    use approx::AbsDiffEq;
+    assert!(out_true.abs_diff_eq(&out, 1e-8));
+}
+
+fn _mlp() {
     let slice_test_program_1 = "(slice a 0 1 0 1)".parse().unwrap();
     let slice_test_program_2 = "(slice a 1 2 0 2)".parse().unwrap();
     let input = pack_interpreter_input(
