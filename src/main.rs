@@ -721,6 +721,39 @@ fn single_matrix_multiply() {
 
     use approx::AbsDiffEq;
     assert!(out_true.abs_diff_eq(&out, 1e-8));
+
+    struct SplitConcatApplier {
+        a: egg::Var,
+    };
+    impl egg::Applier<MlpLanguage, Meta> for SplitConcatApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut egg::EGraph<MlpLanguage, Meta>,
+            _id: egg::Id,
+            subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let a: egg::Id = subst[&self.a];
+            let shape = &egraph[a].metadata.shape;
+            println!("{:?}", shape);
+            vec![]
+        }
+    }
+    fn has_shape(
+        var: &'static str,
+    ) -> impl Fn(&mut egg::EGraph<MlpLanguage, Meta>, egg::Id, &egg::Subst) -> bool {
+        let var = var.parse().unwrap();
+        move |egraph, _, subst| !egraph[subst[&var]].metadata.shape.is_none()
+    }
+    fn is_symbol(
+        var: &'static str,
+    ) -> impl Fn(&mut egg::EGraph<MlpLanguage, Meta>, egg::Id, &egg::Subst) -> bool {
+        let var = var.parse().unwrap();
+        // TODO(gus) should this be `all` or `any` or something else entirely?
+        move |egraph, _, subst| egraph[subst[&var]].nodes.iter().map(|enode| match enode.op { MlpLanguage::Symbol(_) => true, _ => false}).all(|x| x)
+    }
+    let rw = egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a"));
+
+    egg::Runner::new().with_expr(&program).run(&vec![rw]);
 }
 
 fn _mlp() {
