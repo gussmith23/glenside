@@ -28,6 +28,7 @@ egg::define_language! {
         // Slice into list/tensor/whatever we're calling them
         Slice = "slice",
         ShapedAdd = "shaped-add",
+        Concat = "concat",
         // TODO(gus) this will probably need to be signed at some point?
         Usize(usize),
         Symbol(String),
@@ -389,6 +390,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             ))
         }
         BsgSystolicArray => panic!(),
+        Concat => panic!(),
     }
 }
 
@@ -630,8 +632,101 @@ impl egg::Metadata<MlpLanguage> for Meta {
                     value: None,
                 }
             }
-            Slice => panic!(),
-            Usize(_) => panic!(),
+            Slice => {
+                // TODO(gus) left off here.
+                let shape_to_be_sliced: &Shape =
+                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                // It should be a vector of scalars only.
+                let shape_to_be_sliced: std::vec::Vec<i64> = shape_to_be_sliced
+                    .iter()
+                    .map(|i| *i.as_ref().left().unwrap())
+                    .collect();
+                let slice_indices: std::vec::Vec<usize> = enode.children[1..]
+                    .iter()
+                    .map(
+                        |id| match interpret_eclass(&egraph, &egraph[*id], &HashMap::default()) {
+                            Value::Usize(u) => u,
+                            _ => panic!(),
+                        },
+                    )
+                    .collect();
+
+                // For every dimension, there should be two slice indices:
+                // ( [beginning, end) )
+                // Note that this is a pretty restrictive syntax for now.
+                assert_eq!(0, slice_indices.len() % 2);
+                assert_eq!(shape_to_be_sliced.len(), slice_indices.len() / 2);
+
+                let mut new_shape = shape_to_be_sliced.clone();
+
+                for dim_i in 0..shape_to_be_sliced.len() {
+                    let dim_val: i64 = shape_to_be_sliced[dim_i];
+                    let slice_start: usize = slice_indices[dim_i * 2];
+                    let slice_end: usize = slice_indices[dim_i * 2 + 1];
+                    use std::convert::TryInto;
+                    assert!(slice_end <= dim_val.try_into().unwrap());
+                    assert!(slice_start <= slice_end);
+                    if slice_end - slice_start > 0 {
+                        // If the slice actually needs to produce values...
+                        assert!(slice_start < dim_val.try_into().unwrap());
+                    }
+
+                    new_shape[dim_i] = (slice_end - slice_start).try_into().unwrap();
+                }
+                let new_shape: Shape = new_shape.iter().map(|i| Left(*i)).collect();
+
+                Meta {
+                    shape: Some(new_shape),
+                    scalar_value: None,
+                    value: None,
+                }
+            }
+            Concat => {
+                // Need at least two arrays and always need one axis
+                assert!(enode.children.len() >= 3);
+                let shapes: std::vec::Vec<&Shape> = (0..(enode.children.len() - 1))
+                    .map(|i| egraph[enode.children[i]].metadata.shape.as_ref().unwrap())
+                    .collect();
+                // They should be vectors of scalars only.
+                let shapes: std::vec::Vec<std::vec::Vec<i64>> = shapes
+                    .iter()
+                    .map(|shape| shape.iter().map(|i| *i.as_ref().left().unwrap()).collect())
+                    .collect();
+                let concat_axis: usize = match interpret_eclass(
+                    &egraph,
+                    &egraph[enode.children[enode.children.len() - 1]],
+                    &HashMap::default(),
+                ) {
+                    Value::Usize(u) => u,
+                    _ => panic!(),
+                };
+
+                assert!((0..shapes.len()).all(|i| shapes[i].len() == shapes[0].len()));
+                // The two shapes must be equal, except for along the concat
+                // axis.
+                assert!((0..shapes[0].len()).all(|i| i == concat_axis
+                    || ((0..shapes.len()).all(|j| shapes[j][i] == shapes[0][i]))));
+
+                let mut new_shape = shapes[0].clone();
+                new_shape[concat_axis] += (1..shapes.len())
+                    .map(|i| shapes[i][concat_axis])
+                    .sum::<i64>();
+                let new_shape: Shape = new_shape.iter().map(|i| Left(*i)).collect();
+                println!("concat input shapes: {:?}", shapes);
+                println!("concat output shape: {:?}", new_shape);
+
+                Meta {
+                    shape: Some(new_shape),
+                    scalar_value: None,
+                    value: None,
+                }
+            }
+            Usize(_) => Meta {
+                shape: None,
+                // TODO(gus) ugh, this isn't necessarily right, is it?
+                scalar_value: None,
+                value: None,
+            },
             ShapedAdd => panic!(),
             Symbol(name) => {
                 //println!("Symbol");
@@ -733,9 +828,55 @@ fn single_matrix_multiply() {
             subst: &egg::Subst,
         ) -> std::vec::Vec<egg::Id> {
             let a: egg::Id = subst[&self.a];
-            let shape = &egraph[a].metadata.shape;
+            let shape = &egraph[a].metadata.shape.as_ref().unwrap();
             println!("{:?}", shape);
-            vec![]
+
+            let shape: std::vec::Vec<i64> =
+                shape.iter().map(|i| *i.as_ref().left().unwrap()).collect();
+            assert_eq!(shape.len(), 2);
+            assert_eq!(0, shape[0] % 16);
+            assert_eq!(0, shape[1] % 16);
+
+            let mut to_be_concatted_along_axis_0 = std::vec::Vec::default();
+            for i in 0..shape[0] / 16 {
+                let mut to_be_concatted_along_axis_1 = std::vec::Vec::default();
+                for j in 0..shape[1] / 16 {
+                    use std::convert::TryInto;
+                    let x_slice_start = (16 * i).try_into().unwrap();
+                    let x_slice_end = (16 * (i + 1)).try_into().unwrap();
+                    let y_slice_start = (16 * j).try_into().unwrap();
+                    let y_slice_end = (16 * (j + 1)).try_into().unwrap();
+                    let x_slice_start_id: egg::Id =
+                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(x_slice_start)));
+                    let x_slice_end_id: egg::Id =
+                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(x_slice_end)));
+                    let y_slice_start_id: egg::Id =
+                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(y_slice_start)));
+                    let y_slice_end_id: egg::Id =
+                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(y_slice_end)));
+                    to_be_concatted_along_axis_1.push(egraph.add(egg::ENode::new(
+                        MlpLanguage::Slice,
+                        vec![
+                            a,
+                            x_slice_start_id,
+                            x_slice_end_id,
+                            y_slice_start_id,
+                            y_slice_end_id,
+                        ],
+                    )));
+                }
+                // Args should be a list of the sliced arrays, plus the axis
+                // along which to stitch them back together.
+                let mut args: std::vec::Vec<egg::Id> = to_be_concatted_along_axis_1;
+                args.push(egraph.add(egg::ENode::leaf(MlpLanguage::Usize(1))));
+                to_be_concatted_along_axis_0
+                    .push(egraph.add(egg::ENode::new(MlpLanguage::Concat, args)));
+            }
+            let mut args: std::vec::Vec<egg::Id> = to_be_concatted_along_axis_0;
+            args.push(egraph.add(egg::ENode::leaf(MlpLanguage::Usize(0))));
+            let concat_id: egg::Id = egraph.add(egg::ENode::new(MlpLanguage::Concat, args));
+
+            vec![concat_id]
         }
     }
     fn has_shape(
@@ -749,11 +890,25 @@ fn single_matrix_multiply() {
     ) -> impl Fn(&mut egg::EGraph<MlpLanguage, Meta>, egg::Id, &egg::Subst) -> bool {
         let var = var.parse().unwrap();
         // TODO(gus) should this be `all` or `any` or something else entirely?
-        move |egraph, _, subst| egraph[subst[&var]].nodes.iter().map(|enode| match enode.op { MlpLanguage::Symbol(_) => true, _ => false}).all(|x| x)
+        move |egraph, _, subst| {
+            egraph[subst[&var]]
+                .nodes
+                .iter()
+                .map(|enode| match enode.op {
+                    MlpLanguage::Symbol(_) => true,
+                    _ => false,
+                })
+                .all(|x| x)
+        }
     }
     let rw = egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a"));
 
-    egg::Runner::new().with_expr(&program).run(&vec![rw]);
+    let runner = egg::Runner::new().with_expr(&program).run(&vec![rw]);
+    runner
+        .egraph
+        .dot()
+        .to_svg("single-matrix-multiply-after-rewrites.svg")
+        .unwrap();
 }
 
 fn _mlp() {
