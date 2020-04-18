@@ -396,7 +396,89 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             ))
         }
         BsgSystolicArray => panic!(),
-        Concat => panic!(),
+        Concat => {
+            // TODO(gus) this is true for our minimal working example, not
+            // expected to be true in the future, definitely not.
+            assert!(enode.children.len() >= 3);
+
+            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = (0..(enode.children.len() - 1))
+                .map(
+                    |i| match interpret_eclass(egraph, &egraph[enode.children[i]], env) {
+                        Value::ShapedList(t) => t,
+                        _ => panic!(),
+                    },
+                )
+                .collect();
+
+            let concat_axis: usize = match interpret_eclass(
+                egraph,
+                &egraph[enode.children[enode.children.len() - 1]],
+                env,
+            ) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            // Have to stack manually, because ndarray::stack doesn't actually
+            // support tensors holding values that don't implement Copy! :(
+
+            let shapes: std::vec::Vec<&[usize]> = tensors.iter().map(|t| t.shape()).collect();
+            // All have equal number of dimensions
+            assert!(shapes.iter().all(|shape| shape.len() == shapes[0].len()));
+            // All dimensions match, except for along the concat axis.
+            assert!((0..shapes[0].len())
+                .all(|i| i == concat_axis
+                    || ((0..shapes.len()).all(|j| shapes[j][i] == shapes[0][i]))));
+
+            let mut new_shape: std::vec::Vec<usize> = shapes[0].to_vec();
+            new_shape[concat_axis] += (1..shapes.len())
+                .map(|i| shapes[i][concat_axis])
+                .sum::<usize>();
+            let new_shape = new_shape;
+
+            let mut new_tensor: ndarray::ArrayD<_> = ndarray::Array::default(new_shape.to_vec());
+            let mut current_start_index: usize = 0;
+            for i in 0..tensors.len() {
+                let original_concat_axis_size: usize = shapes[i][concat_axis];
+                use std::convert::TryFrom;
+                let slices: std::vec::Vec<ndarray::SliceOrIndex> = (0..new_shape.len())
+                    .map(|axis| {
+                        if axis == concat_axis {
+                            ndarray::SliceOrIndex::Slice {
+                                start: isize::try_from(current_start_index).unwrap(),
+                                end: Some(
+                                    isize::try_from(
+                                        current_start_index + original_concat_axis_size,
+                                    )
+                                    .unwrap(),
+                                ),
+                                step: 1,
+                            }
+                        } else {
+                            ndarray::SliceOrIndex::Slice {
+                                start: 0,
+                                end: None,
+                                step: 1,
+                            }
+                        }
+                    })
+                    .collect();
+                let slice_info: ndarray::SliceInfo<
+                    std::vec::Vec<ndarray::SliceOrIndex>,
+                    ndarray::IxDyn,
+                > = ndarray::SliceInfo::new(slices).unwrap();
+
+                new_tensor
+                    .slice_mut(slice_info.as_ref())
+                    .assign(&tensors[i]);
+
+                current_start_index += original_concat_axis_size;
+            }
+
+            assert_eq!(current_start_index, new_shape[concat_axis]);
+
+            Value::ShapedList(new_tensor)
+        }
     }
 }
 
