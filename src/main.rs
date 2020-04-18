@@ -66,6 +66,12 @@ enum Value {
     Usize(usize),
 }
 
+impl std::default::Default for ListValue {
+    fn default() -> Self {
+        ListValue::Scalar(DataType::default())
+    }
+}
+
 impl std::ops::Add for ListValue {
     type Output = ListValue;
 
