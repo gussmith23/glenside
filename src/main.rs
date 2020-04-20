@@ -126,25 +126,126 @@ impl std::ops::Add for Value {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+enum MemoizedInterpreterResult {
+    InterpretedValue(Value),
+    StillInterpreting,
+}
+
+type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
+
 fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
     egraph: &egg::EGraph<MlpLanguage, M>,
     eclass: &egg::EClass<MlpLanguage, M>,
     env: &Environment,
-) -> Value {
-    let results: std::vec::Vec<Value> = eclass
+    // TODO(gus) shoot, i think i'm mixing up where to put the "mut". Should
+    // probably not be on both.
+    mut memo_map: &mut MemoizationMap,
+) -> MemoizedInterpreterResult {
+    if memo_map.contains_key(&eclass.id) {
+        // TODO(gus) is this right?
+        return memo_map[&eclass.id].clone();
+    }
+
+    // Insert a flag saying that we are now interpreting this eclass. As we
+    // recurse, if we hit this eclass again, we'll know we have a recursive
+    // cycle, which we handle later in this function.
+    match memo_map.insert(eclass.id, MemoizedInterpreterResult::StillInterpreting) {
+        Some(_) => panic!(),
+        None => (),
+    }
+
+    assert!(eclass.nodes.len() > 0);
+    let mut results: std::vec::Vec<MemoizedInterpreterResult> = eclass
         .nodes
         .iter()
-        .map(|enode: &egg::ENode<MlpLanguage>| interpret_enode(egraph, enode, env))
+        .map(|enode: &egg::ENode<MlpLanguage>| interpret_enode(egraph, enode, env, &mut memo_map))
         .collect();
-    assert!(results.len() > 0);
-    let result: Value = results
-        .iter()
-        // TODO(gus) not good for performance.
-        .fold(
-            results[0].clone(),
-            |v1: Value, v2: &Value| if v1 == *v2 { v1 } else { panic!() },
-        );
-    result
+    let pre_filtered_length = results.len();
+
+    // At this point, we'll have a MemoizedInterpreterResult for every enode in
+    // the eclass. These all represent potential values for the entire eclass.
+    // That is, the whole point of the egraph is that eclasses contain
+    // expressions with equivalent values. So, if our interpreter is built
+    // correctly, each MemoizedInterpreterResult will be one of two things:
+    // 1. an InterpretedValue holding the eclass's correct value, or
+    // 2. a StillInterpreting, if the enode recursively depends on the eclass.
+
+    // Now, we check two things:
+    // 1. There's at least one InterpretedValue---i.e. at least one of the
+    //    enodes resolved to a concrete value and doesn't recursively depend on
+    //    its own eclass. Without this, we have no way to even guess the value
+    //    of this eclass.
+    // 2. All of the InterpretedValues have the same value. This should be true
+    //    if the interpreter is built correctly and if the rewrites are correct.
+
+    let filtered_results: std::vec::Vec<Value> = results
+        .drain(..)
+        .filter(|result| match result {
+            MemoizedInterpreterResult::InterpretedValue(_) => true,
+            _ => false,
+        })
+        .map(|result| match result {
+            MemoizedInterpreterResult::InterpretedValue(v) => v,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert!(filtered_results.len() > 0, "This eclass's enodes all depend recursively on this eclass! Cannot interpret to a concrete value!");
+    assert!(
+        filtered_results.iter().all(|v| *v == filtered_results[0]),
+        "This class's enodes don't all evaluate to the same value!"
+    );
+
+    if filtered_results.len() < pre_filtered_length {
+        // Some StillInterpreting values were cut out. Might want to log
+        // something here later on.
+    }
+
+    // Now, if there were any StillInterpreting results, we will "guess" their
+    // value to be the concrete value that the rest of the enodes interpreted
+    // to. We do this by officially setting the eclass's value in the map.
+    assert!(match &memo_map.get(&eclass.id).unwrap() {
+        &MemoizedInterpreterResult::StillInterpreting => true,
+        _ => panic!(),
+    });
+    // TODO(gus) cloning, inefficient and lazy
+    match memo_map.insert(
+        eclass.id,
+        MemoizedInterpreterResult::InterpretedValue(filtered_results[0].clone()),
+    ) {
+        Some(MemoizedInterpreterResult::StillInterpreting) => (),
+        Some(MemoizedInterpreterResult::InterpretedValue(_)) => panic!(),
+        None => panic!(),
+    }
+
+    // After we guess, check that things all come out to the same value.
+    // We may want to disable this for running-time reasons.
+    let check_after_guess = true;
+    if check_after_guess {
+        // We're essentially just doing the same thing that we did above!
+        let results: std::vec::Vec<MemoizedInterpreterResult> = eclass
+            .nodes
+            .iter()
+            .map(|enode: &egg::ENode<MlpLanguage>| {
+                interpret_enode(egraph, enode, env, &mut memo_map)
+            })
+            .collect();
+
+        assert!(results.iter().all(|result| match result {
+            MemoizedInterpreterResult::InterpretedValue(v) =>
+                v == match memo_map.get(&eclass.id).unwrap() {
+                    // TODO(gus) probably inefficient
+                    MemoizedInterpreterResult::InterpretedValue(v) => v,
+                    MemoizedInterpreterResult::StillInterpreting => panic!(),
+                },
+            MemoizedInterpreterResult::StillInterpreting =>
+                panic!("After guessing, we still get a StillInterpreting result!"),
+        }));
+    }
+
+    // TODO(gus) probably inefficient
+    memo_map.get(&eclass.id).unwrap().clone()
 }
 
 // I'm just doing this for now; it may not actually be what we want in the
@@ -159,10 +260,11 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
     egraph: &egg::EGraph<MlpLanguage, M>,
     enode: &egg::ENode<MlpLanguage>,
     env: &Environment,
-) -> Value {
+    memo_map: &mut MemoizationMap,
+) -> MemoizedInterpreterResult {
     use MlpLanguage::*;
     match &enode.op {
-        Symbol(name) => env[&name[..]].clone(),
+        Symbol(name) => MemoizedInterpreterResult::InterpretedValue(env[&name[..]].clone()),
         Dotprod => {
             // Evaluating Dotprod produces different results based on
             // whether it gets arguments. Actually, this is true of all
@@ -215,7 +317,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
 
                         ListValue::Scalar(left.dot(&right))
                     }
-                    Value::Function(dotprod)
+                    MemoizedInterpreterResult::InterpretedValue(Value::Function(dotprod))
                 }
                 _ => panic!(),
             }
@@ -223,36 +325,50 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
         Rows => {
             // There should be one arg: a single tensor.
             assert_eq!(enode.children.len(), 1);
-            // Expect that the result of interpreting it is a tensor.
-            let arg_as_tensor: ndarray::ArrayD<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                    Value::ShapedList(t) => t,
-                    _ => panic!(),
-                };
 
-            Value::List(
+            // Expect that the result of interpreting it is a tensor.
+            // TODO(gus) clean up this syntax.
+            let arg_as_tensor = interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
+            let arg_as_tensor = match arg_as_tensor {
+                // Return early if we've found a recursive cycle
+                MemoizedInterpreterResult::StillInterpreting => {
+                    return MemoizedInterpreterResult::StillInterpreting
+                }
+                MemoizedInterpreterResult::InterpretedValue(v) => v,
+            };
+            let arg_as_tensor: ndarray::ArrayD<ListValue> = match arg_as_tensor {
+                Value::ShapedList(t) => t,
+                _ => panic!(),
+            };
+
+            MemoizedInterpreterResult::InterpretedValue(Value::List(
                 arg_as_tensor
                     .axis_iter(ndarray::Axis(0))
                     .map(|view| ListValue::Value(Value::ShapedList(view.to_owned())))
                     .collect::<std::vec::Vec<ListValue>>(),
-            )
+            ))
         }
         Cols => {
             // There should be one arg: a single tensor.
             assert_eq!(enode.children.len(), 1);
             // Expect that the result of interpreting it is a tensor.
             let arg_as_tensor: ndarray::ArrayD<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                    Value::ShapedList(t) => t,
-                    _ => panic!(),
+                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
+                    MemoizedInterpreterResult::StillInterpreting => {
+                        return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::ShapedList(t) => t,
+                        _ => panic!(),
+                    },
                 };
 
-            Value::List(
+            MemoizedInterpreterResult::InterpretedValue(Value::List(
                 arg_as_tensor
                     .axis_iter(ndarray::Axis(1))
                     .map(|view| ListValue::Value(Value::ShapedList(view.to_owned())))
                     .collect::<std::vec::Vec<ListValue>>(),
-            )
+            ))
         }
         CartesianProduct => {
             // Semantics of cartesian product:
@@ -261,14 +377,24 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             // There should be two args, both of which should be lists.
             assert_eq!(enode.children.len(), 2);
             let left: std::vec::Vec<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                    Value::List(l) => l,
-                    _ => panic!(),
+                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
+                    MemoizedInterpreterResult::StillInterpreting => {
+                        return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::List(l) => l,
+                        _ => panic!(),
+                    },
                 };
             let right: std::vec::Vec<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[1]], env) {
-                    Value::List(l) => l,
-                    _ => panic!(),
+                match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
+                    MemoizedInterpreterResult::StillInterpreting => {
+                        return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::List(l) => l,
+                        _ => panic!(),
+                    },
                 };
 
             // TODO(gus) figuring out exactly what should be the output of
@@ -298,7 +424,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             let reshaped_into_tensor: ndarray::ArrayD<ListValue> =
                 ndarray::ArrayD::<ListValue>::from_shape_vec(new_shape, product_vector).unwrap();
 
-            Value::ShapedList(reshaped_into_tensor)
+            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(reshaped_into_tensor))
         }
         ShapedMap => {
             assert_eq!(enode.children.len(), 2);
@@ -310,24 +436,34 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             // The node should evaluate to a function value in our
             // interpreter.
             let function: fn(ListValue) -> ListValue =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                    Value::Function(f) => f,
-                    _ => panic!(),
+                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
+                    MemoizedInterpreterResult::StillInterpreting => {
+                        return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::Function(f) => f,
+                        _ => panic!(),
+                    },
                 };
 
             let input_shaped_list: ndarray::ArrayD<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[1]], env) {
-                    Value::ShapedList(t) => t,
-                    _ => panic!(),
+                match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
+                    MemoizedInterpreterResult::StillInterpreting => {
+                        return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::ShapedList(t) => t,
+                        _ => panic!(),
+                    },
                 };
 
-            Value::ShapedList(
+            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(
                 ndarray::ArrayD::<ListValue>::from_shape_vec(
                     input_shaped_list.shape(),
                     input_shaped_list.iter().cloned().map(function).collect(),
                 )
                 .unwrap(),
-            )
+            ))
         }
         Slice => {
             // TODO(gus) this is true for our minimal working example, not
@@ -335,9 +471,14 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             assert_eq!(enode.children.len(), 5);
 
             let tensor: ndarray::ArrayD<_> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env) {
-                    Value::ShapedList(t) => t,
-                    _ => panic!(),
+                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
+                    MemoizedInterpreterResult::StillInterpreting => {
+                        return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::ShapedList(t) => t,
+                        _ => panic!(),
+                    },
                 };
 
             assert_eq!(tensor.shape().len(), 2);
@@ -347,12 +488,17 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 (usize, usize),
             ) = match enode.children[1..5]
                 .iter()
-                .map(
-                    |eclass_id: &u32| match interpret_eclass(egraph, &egraph[*eclass_id], env) {
-                        Value::Usize(u) => u,
-                        _ => panic!(),
-                    },
-                )
+                .map(|eclass_id: &u32| {
+                    match interpret_eclass(egraph, &egraph[*eclass_id], env, memo_map) {
+                        // TODO(gus) this panic is me just being lazy. if
+                        // StillInterpreting is found, we should return
+                        MemoizedInterpreterResult::StillInterpreting => panic!(),
+                        MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                            Value::Usize(u) => u,
+                            _ => panic!(),
+                        },
+                    }
+                })
                 .collect::<std::vec::Vec<usize>>()
                 .as_slice()
             {
@@ -366,34 +512,39 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             // A  consistent problem I was having with this library
             // was with converting to dynamic-dimension tensors.
             // Found out I can use into_dyn().
-            Value::ShapedList(
+            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(
                 tensor
                     .slice_move(s![
                         row_slice_start..row_slice_end,
                         col_slice_start..col_slice_end
                     ])
                     .into_dyn(),
-            )
+            ))
         }
-        Usize(u) => Value::Usize(*u),
+        Usize(u) => MemoizedInterpreterResult::InterpretedValue(Value::Usize(*u)),
         ShapedAdd => {
             let tensors: std::vec::Vec<ndarray::ArrayD<_>> = enode
                 .children
                 .iter()
                 .map(
-                    |eclass| match interpret_eclass(egraph, &egraph[*eclass], env) {
-                        Value::ShapedList(t) => t,
-                        _ => panic!(),
+                    |eclass| match interpret_eclass(egraph, &egraph[*eclass], env, memo_map) {
+                        // TODO(gus) this panic is me just being lazy. if
+                        // StillInterpreting is found, we should return
+                        MemoizedInterpreterResult::StillInterpreting => panic!(),
+                        MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                            Value::ShapedList(t) => t,
+                            _ => panic!(),
+                        },
                     },
                 )
                 .collect();
 
             assert!(tensors.len() > 0);
 
-            Value::ShapedList(tensors.iter().fold(
+            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(tensors.iter().fold(
                 ndarray::Array::from_elem(tensors[0].shape(), ListValue::Scalar(DataType::zero())),
                 |acc, t| acc + t,
-            ))
+            )))
         }
         BsgSystolicArray => panic!(),
         Concat => {
@@ -401,22 +552,44 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             // expected to be true in the future, definitely not.
             assert!(enode.children.len() >= 3);
 
-            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = (0..(enode.children.len() - 1))
-                .map(
-                    |i| match interpret_eclass(egraph, &egraph[enode.children[i]], env) {
+            println!("Interpreting: {:?}", enode);
+            // TODO(gus) it seems like there's a loop.
+            // concat a has concat b as a child. concat b has concat a as a child.
+            let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode.children
+                [0..enode.children.len() - 1]
+                .iter()
+                .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
+                .collect();
+            if tensors.iter().any(|t| match t {
+                MemoizedInterpreterResult::StillInterpreting => true,
+                _ => false,
+            }) {
+                return MemoizedInterpreterResult::StillInterpreting;
+            }
+            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = tensors
+                .drain(..)
+                .map(|result| match result {
+                    MemoizedInterpreterResult::StillInterpreting => panic!(),
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::ShapedList(t) => t,
                         _ => panic!(),
                     },
-                )
+                })
                 .collect();
 
             let concat_axis: usize = match interpret_eclass(
                 egraph,
                 &egraph[enode.children[enode.children.len() - 1]],
                 env,
+                memo_map,
             ) {
-                Value::Usize(u) => u,
-                _ => panic!(),
+                MemoizedInterpreterResult::StillInterpreting => {
+                    return MemoizedInterpreterResult::StillInterpreting
+                }
+                MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                    Value::Usize(u) => u,
+                    _ => panic!(),
+                },
             };
 
             // Have to stack manually, because ndarray::stack doesn't actually
@@ -477,7 +650,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
 
             assert_eq!(current_start_index, new_shape[concat_axis]);
 
-            Value::ShapedList(new_tensor)
+            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(new_tensor))
         }
     }
 }
@@ -731,12 +904,20 @@ impl egg::Metadata<MlpLanguage> for Meta {
                     .collect();
                 let slice_indices: std::vec::Vec<usize> = enode.children[1..]
                     .iter()
-                    .map(
-                        |id| match interpret_eclass(&egraph, &egraph[*id], &HashMap::default()) {
-                            Value::Usize(u) => u,
-                            _ => panic!(),
-                        },
-                    )
+                    .map(|id| {
+                        match interpret_eclass(
+                            &egraph,
+                            &egraph[*id],
+                            &HashMap::default(),
+                            &mut MemoizationMap::default(),
+                        ) {
+                            MemoizedInterpreterResult::StillInterpreting => panic!(),
+                            MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                                Value::Usize(u) => u,
+                                _ => panic!(),
+                            },
+                        }
+                    })
                     .collect();
 
                 // For every dimension, there should be two slice indices:
@@ -784,9 +965,13 @@ impl egg::Metadata<MlpLanguage> for Meta {
                     &egraph,
                     &egraph[enode.children[enode.children.len() - 1]],
                     &HashMap::default(),
+                    &mut MemoizationMap::default(),
                 ) {
-                    Value::Usize(u) => u,
-                    _ => panic!(),
+                    MemoizedInterpreterResult::StillInterpreting => panic!(),
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::Usize(u) => u,
+                        _ => panic!(),
+                    },
                 };
 
                 assert!((0..shapes.len()).all(|i| shapes[i].len() == shapes[0].len()));
@@ -858,20 +1043,23 @@ fn pack_interpreter_input(array: ndarray::ArrayD<DataType>) -> Value {
         .unwrap(),
     )
 }
-fn unpack_interpreter_output(output: Value) -> ndarray::ArrayD<DataType> {
+fn unpack_interpreter_output(output: MemoizedInterpreterResult) -> ndarray::ArrayD<DataType> {
     match output {
-        Value::ShapedList(t) => ndarray::ArrayD::<DataType>::from_shape_vec(
-            t.shape(),
-            t.iter()
-                .cloned()
-                .map(|list_val| match list_val {
-                    ListValue::Scalar(s) => s,
-                    _ => panic!(),
-                })
-                .collect(),
-        )
-        .unwrap(),
-        _ => panic!(),
+        MemoizedInterpreterResult::StillInterpreting => panic!(),
+        MemoizedInterpreterResult::InterpretedValue(v) => match v {
+            Value::ShapedList(t) => ndarray::ArrayD::<DataType>::from_shape_vec(
+                t.shape(),
+                t.iter()
+                    .cloned()
+                    .map(|list_val| match list_val {
+                        ListValue::Scalar(s) => s,
+                        _ => panic!(),
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+            _ => panic!(),
+        },
     }
 }
 
@@ -898,7 +1086,7 @@ fn single_matrix_multiply() {
         .dot()
         .to_svg("single-matrix-multiply-before-rewrites.svg")
         .unwrap();
-    let out = interpret_eclass(&egraph, &egraph[id], &env);
+    let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
 
     let out = unpack_interpreter_output(out);
 
@@ -999,7 +1187,12 @@ fn single_matrix_multiply() {
         .to_svg("single-matrix-multiply-after-rewrites.svg")
         .unwrap();
 
-    let out = interpret_eclass(&runner.egraph, &runner.egraph[id], &env);
+    let out = interpret_eclass(
+        &runner.egraph,
+        &runner.egraph[id],
+        &env,
+        &mut MemoizationMap::new(),
+    );
     let _out = unpack_interpreter_output(out);
 }
 
@@ -1012,13 +1205,23 @@ fn _mlp() {
     let mut env = Environment::new();
     env.insert("a", input);
     let (egraph, id) = egg::EGraph::<MlpLanguage, ()>::from_expr(&slice_test_program_1);
-    let out = unpack_interpreter_output(interpret_eclass(&egraph, &egraph[id], &env));
+    let out = unpack_interpreter_output(interpret_eclass(
+        &egraph,
+        &egraph[id],
+        &env,
+        &mut MemoizationMap::new(),
+    ));
     assert_eq!(
         out,
         ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 1], vec![1.]).unwrap()
     );
     let (egraph, id) = egg::EGraph::<MlpLanguage, ()>::from_expr(&slice_test_program_2);
-    let out = unpack_interpreter_output(interpret_eclass(&egraph, &egraph[id], &env));
+    let out = unpack_interpreter_output(interpret_eclass(
+        &egraph,
+        &egraph[id],
+        &env,
+        &mut MemoizationMap::new(),
+    ));
     assert_eq!(
         out,
         ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 2], vec![3., 4.]).unwrap()
@@ -1035,7 +1238,12 @@ fn _mlp() {
     env.insert("a", a);
     env.insert("b", b);
     let (egraph, id) = egg::EGraph::<MlpLanguage, ()>::from_expr(&shaped_add_test_program_1);
-    let out = unpack_interpreter_output(interpret_eclass(&egraph, &egraph[id], &env));
+    let out = unpack_interpreter_output(interpret_eclass(
+        &egraph,
+        &egraph[id],
+        &env,
+        &mut MemoizationMap::new(),
+    ));
     assert_eq!(
         out,
         ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![3., 5., -1., -1.]).unwrap()
@@ -1089,24 +1297,7 @@ fn _mlp() {
     env.insert("w3", w3_val);
     let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
     egraph.dot().to_svg("mlp-before-rewrites.svg").unwrap();
-    let out = interpret_eclass(&egraph, &egraph[id], &env);
-
-    fn unpack_interpreter_output(output: Value) -> ndarray::ArrayD<DataType> {
-        match output {
-            Value::ShapedList(t) => ndarray::ArrayD::<DataType>::from_shape_vec(
-                t.shape(),
-                t.iter()
-                    .cloned()
-                    .map(|list_val| match list_val {
-                        ListValue::Scalar(s) => s,
-                        _ => panic!(),
-                    })
-                    .collect(),
-            )
-            .unwrap(),
-            _ => panic!(),
-        }
-    }
+    let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
     let out = unpack_interpreter_output(out);
 
     use approx::AbsDiffEq;
