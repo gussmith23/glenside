@@ -1,10 +1,12 @@
 use egg::define_language;
 use either::*;
+use log::{debug, info};
 use ndarray::s;
 use num_traits::identities::Zero;
 use std::collections::HashMap;
 
 fn main() {
+    env_logger::init();
     //dot_product()
     //mlp()
     single_matrix_multiply()
@@ -131,6 +133,9 @@ impl std::ops::Add for Value {
 enum MemoizedInterpreterResult {
     InterpretedValue(Value),
     StillInterpreting,
+    // When an eclass cannot be interpreted, because all of its enodes
+    // recursively depend on themselves.
+    CanNotInterpret,
 }
 
 type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
@@ -143,6 +148,9 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
     // probably not be on both.
     mut memo_map: &mut MemoizationMap,
 ) -> MemoizedInterpreterResult {
+    info!("Interpreting eclass {}", eclass.id);
+    debug!("{:?}", eclass);
+
     if memo_map.contains_key(&eclass.id) {
         // TODO(gus) is this right?
         return memo_map[&eclass.id].clone();
@@ -191,7 +199,21 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
             _ => unreachable!(),
         })
         .collect();
-    assert!(filtered_results.len() > 0, "This eclass's enodes all depend recursively on this eclass! Cannot interpret to a concrete value!");
+    debug!("{:?}", pre_filtered_length);
+    debug!("{:?}", filtered_results.len());
+    debug!("{:?}", eclass);
+    //assert!(filtered_results.len() > 0, "This eclass's enodes all depend recursively on this eclass! Cannot interpret to a concrete value!");
+    if filtered_results.len() == 0 {
+        debug!(
+            "eclass {} evaluates to CanNotInterpret. Hoping for the best!",
+            eclass.id
+        );
+        match memo_map.insert(eclass.id, MemoizedInterpreterResult::CanNotInterpret) {
+            Some(MemoizedInterpreterResult::StillInterpreting) => (),
+            _ => panic!(),
+        }
+        return MemoizedInterpreterResult::CanNotInterpret;
+    }
     assert!(
         filtered_results.iter().all(|v| *v == filtered_results[0]),
         "This class's enodes don't all evaluate to the same value!"
@@ -215,8 +237,7 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
         MemoizedInterpreterResult::InterpretedValue(filtered_results[0].clone()),
     ) {
         Some(MemoizedInterpreterResult::StillInterpreting) => (),
-        Some(MemoizedInterpreterResult::InterpretedValue(_)) => panic!(),
-        None => panic!(),
+        _ => panic!(),
     }
 
     // After we guess, check that things all come out to the same value.
@@ -237,8 +258,13 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
                 v == match memo_map.get(&eclass.id).unwrap() {
                     // TODO(gus) probably inefficient
                     MemoizedInterpreterResult::InterpretedValue(v) => v,
-                    MemoizedInterpreterResult::StillInterpreting => panic!(),
+                    _ => panic!(),
                 },
+            MemoizedInterpreterResult::CanNotInterpret => {
+                // TODO(gus) remove this once I figure out if this is expected.
+                debug!("CanNotInterpret found while checking");
+                true
+            }
             MemoizedInterpreterResult::StillInterpreting =>
                 panic!("After guessing, we still get a StillInterpreting result!"),
         }));
@@ -262,9 +288,13 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
     env: &Environment,
     memo_map: &mut MemoizationMap,
 ) -> MemoizedInterpreterResult {
+    debug!("interpreting enode: {:?}", enode);
     use MlpLanguage::*;
     match &enode.op {
-        Symbol(name) => MemoizedInterpreterResult::InterpretedValue(env[&name[..]].clone()),
+        Symbol(name) => {
+            debug!("interpreting symbol");
+            MemoizedInterpreterResult::InterpretedValue(env[&name[..]].clone())
+        }
         Dotprod => {
             // Evaluating Dotprod produces different results based on
             // whether it gets arguments. Actually, this is true of all
@@ -334,6 +364,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 MemoizedInterpreterResult::StillInterpreting => {
                     return MemoizedInterpreterResult::StillInterpreting
                 }
+                MemoizedInterpreterResult::CanNotInterpret => {
+                    return MemoizedInterpreterResult::CanNotInterpret
+                }
                 MemoizedInterpreterResult::InterpretedValue(v) => v,
             };
             let arg_as_tensor: ndarray::ArrayD<ListValue> = match arg_as_tensor {
@@ -356,6 +389,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::CanNotInterpret => {
+                        return MemoizedInterpreterResult::CanNotInterpret
                     }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::ShapedList(t) => t,
@@ -381,6 +417,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
                     }
+                    MemoizedInterpreterResult::CanNotInterpret => {
+                        return MemoizedInterpreterResult::CanNotInterpret
+                    }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::List(l) => l,
                         _ => panic!(),
@@ -390,6 +429,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::CanNotInterpret => {
+                        return MemoizedInterpreterResult::CanNotInterpret
                     }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::List(l) => l,
@@ -440,6 +482,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
                     }
+                    MemoizedInterpreterResult::CanNotInterpret => {
+                        return MemoizedInterpreterResult::CanNotInterpret
+                    }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::Function(f) => f,
                         _ => panic!(),
@@ -450,6 +495,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
+                    }
+                    MemoizedInterpreterResult::CanNotInterpret => {
+                        return MemoizedInterpreterResult::CanNotInterpret
                     }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::ShapedList(t) => t,
@@ -475,6 +523,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
                     }
+                    MemoizedInterpreterResult::CanNotInterpret => {
+                        return MemoizedInterpreterResult::CanNotInterpret
+                    }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::ShapedList(t) => t,
                         _ => panic!(),
@@ -492,11 +543,11 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                     match interpret_eclass(egraph, &egraph[*eclass_id], env, memo_map) {
                         // TODO(gus) this panic is me just being lazy. if
                         // StillInterpreting is found, we should return
-                        MemoizedInterpreterResult::StillInterpreting => panic!(),
                         MemoizedInterpreterResult::InterpretedValue(v) => match v {
                             Value::Usize(u) => u,
                             _ => panic!(),
                         },
+                        _ => panic!(),
                     }
                 })
                 .collect::<std::vec::Vec<usize>>()
@@ -528,13 +579,12 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 .iter()
                 .map(
                     |eclass| match interpret_eclass(egraph, &egraph[*eclass], env, memo_map) {
-                        // TODO(gus) this panic is me just being lazy. if
-                        // StillInterpreting is found, we should return
-                        MemoizedInterpreterResult::StillInterpreting => panic!(),
                         MemoizedInterpreterResult::InterpretedValue(v) => match v {
                             Value::ShapedList(t) => t,
                             _ => panic!(),
                         },
+                        // TODO(gus) this panic is me just being lazy.
+                        _ => panic!(),
                     },
                 )
                 .collect();
@@ -560,6 +610,13 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 .iter()
                 .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
                 .collect();
+            // TODO(gus) the order of this and the next if block matters!
+            if tensors.iter().any(|t| match t {
+                MemoizedInterpreterResult::CanNotInterpret => true,
+                _ => false,
+            }) {
+                return MemoizedInterpreterResult::CanNotInterpret;
+            }
             if tensors.iter().any(|t| match t {
                 MemoizedInterpreterResult::StillInterpreting => true,
                 _ => false,
@@ -569,11 +626,11 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             let tensors: std::vec::Vec<ndarray::ArrayD<_>> = tensors
                 .drain(..)
                 .map(|result| match result {
-                    MemoizedInterpreterResult::StillInterpreting => panic!(),
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::ShapedList(t) => t,
                         _ => panic!(),
                     },
+                    _ => panic!(),
                 })
                 .collect();
 
@@ -585,6 +642,9 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             ) {
                 MemoizedInterpreterResult::StillInterpreting => {
                     return MemoizedInterpreterResult::StillInterpreting
+                }
+                MemoizedInterpreterResult::CanNotInterpret => {
+                    return MemoizedInterpreterResult::CanNotInterpret
                 }
                 MemoizedInterpreterResult::InterpretedValue(v) => match v {
                     Value::Usize(u) => u,
@@ -911,11 +971,11 @@ impl egg::Metadata<MlpLanguage> for Meta {
                             &HashMap::default(),
                             &mut MemoizationMap::default(),
                         ) {
-                            MemoizedInterpreterResult::StillInterpreting => panic!(),
                             MemoizedInterpreterResult::InterpretedValue(v) => match v {
                                 Value::Usize(u) => u,
                                 _ => panic!(),
                             },
+                            _ => panic!(),
                         }
                     })
                     .collect();
@@ -967,11 +1027,11 @@ impl egg::Metadata<MlpLanguage> for Meta {
                     &HashMap::default(),
                     &mut MemoizationMap::default(),
                 ) {
-                    MemoizedInterpreterResult::StillInterpreting => panic!(),
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
                         Value::Usize(u) => u,
                         _ => panic!(),
                     },
+                    _ => panic!(),
                 };
 
                 assert!((0..shapes.len()).all(|i| shapes[i].len() == shapes[0].len()));
@@ -1045,7 +1105,6 @@ fn pack_interpreter_input(array: ndarray::ArrayD<DataType>) -> Value {
 }
 fn unpack_interpreter_output(output: MemoizedInterpreterResult) -> ndarray::ArrayD<DataType> {
     match output {
-        MemoizedInterpreterResult::StillInterpreting => panic!(),
         MemoizedInterpreterResult::InterpretedValue(v) => match v {
             Value::ShapedList(t) => ndarray::ArrayD::<DataType>::from_shape_vec(
                 t.shape(),
@@ -1060,6 +1119,7 @@ fn unpack_interpreter_output(output: MemoizedInterpreterResult) -> ndarray::Arra
             .unwrap(),
             _ => panic!(),
         },
+        _ => panic!(),
     }
 }
 
@@ -1193,7 +1253,8 @@ fn single_matrix_multiply() {
         &env,
         &mut MemoizationMap::new(),
     );
-    let _out = unpack_interpreter_output(out);
+    let out = unpack_interpreter_output(out);
+    assert!(out_true.abs_diff_eq(&out, 1e-8));
 }
 
 fn _mlp() {
