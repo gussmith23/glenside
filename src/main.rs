@@ -991,12 +991,16 @@ fn single_matrix_multiply() {
     }
     let rw = egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a"));
 
-    let runner = egg::Runner::new().with_expr(&program).run(&vec![rw]);
+    let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
+    let runner = egg::Runner::new().with_egraph(egraph).run(&vec![rw]);
     runner
         .egraph
         .dot()
         .to_svg("single-matrix-multiply-after-rewrites.svg")
         .unwrap();
+
+    let out = interpret_eclass(&runner.egraph, &runner.egraph[id], &env);
+    let _out = unpack_interpreter_output(out);
 }
 
 fn _mlp() {
