@@ -1512,8 +1512,10 @@ fn single_matrix_multiply() {
 
     let rws = vec![
         egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a")),
-        egg::rewrite!("bubble-concat-through-rows"; "(rows (concat ?a ?b ?c ?d ?axis))"
-                      => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) ?axis)"),
+        egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b ?c ?d 0))"
+                      => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) 0)"),
+        egg::rewrite!("bubble-concat-through-rows-axis-1"; "(rows (concat ?a ?b ?c ?d 1))"
+                      => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) 1)"),
         egg::rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b ?c ?d 0))"
                       => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 1)"),
         egg::rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b ?c ?d 1))"
