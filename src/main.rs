@@ -1518,6 +1518,32 @@ fn single_matrix_multiply() {
                       => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 1)"),
         egg::rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b ?c ?d 1))"
                       => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 0)"),
+        // TODO(gus) this isn't the only way this could be done.
+        // Also there's gotta be a name for this in terms of algebraic rules
+        // TODO(gus) would it make our pattern-matching life easier if (1) we
+        // put the axes at the start of concat and (2) we used cons cells?
+        egg::rewrite!("bubble-concat-through-cartesian-product-axes-0-0";
+                      "(cartesian-product (concat ?a1 ?a2 ?a3 ?a4 0) (concat ?b1 ?b2 ?b3 ?b4 0))"
+                      // TODO(gus) check this
+                      => "(concat
+                           (concat (cartesian-product ?a1 ?b1)
+                                   (cartesian-product ?a1 ?b2)
+                                   (cartesian-product ?a1 ?b3)
+                                   (cartesian-product ?a1 ?b4) 1)
+                           (concat (cartesian-product ?a2 ?b1)
+                                   (cartesian-product ?a2 ?b2)
+                                   (cartesian-product ?a2 ?b3)
+                                   (cartesian-product ?a2 ?b4) 1)
+                           (concat (cartesian-product ?a3 ?b1)
+                                   (cartesian-product ?a3 ?b2)
+                                   (cartesian-product ?a3 ?b3)
+                                   (cartesian-product ?a3 ?b4) 1)
+                           (concat (cartesian-product ?a4 ?b1)
+                                   (cartesian-product ?a4 ?b2)
+                                   (cartesian-product ?a4 ?b3)
+                                   (cartesian-product ?a4 ?b4) 1)
+                           0)"
+        ),
         // egg::rewrite!("bubble-concat-through-cartesian-product"; "(cartesian-product (concat ?a ?b ?c ?d ?axis) (concat ?e ?f ?g ?h ?axis))" =>
         // // TODO(gus) I think this one's where the magic happens :)
         // {BubbleConcatThroughCartesianProductApplier{
