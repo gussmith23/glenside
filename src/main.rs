@@ -2,6 +2,7 @@ use egg::define_language;
 use either::*;
 use log::{debug, info};
 use ndarray::s;
+use ndarray::Dimension;
 use num_traits::identities::Zero;
 use std::collections::HashMap;
 
@@ -1126,53 +1127,286 @@ fn unpack_interpreter_output(output: MemoizedInterpreterResult) -> ndarray::Arra
     }
 }
 
+egg::define_language! {
+    enum SingleMatrixMultiplyLanguage {
+        Rows = "rows",
+        Cols = "cols",
+        CartesianProduct = "cartesian-product",
+        // Map dot product:
+        // for a tensor with shape
+        // [a1, ..., an, 2, b],
+        // the result is a new tensor with shape
+        // [a1, ..., an]
+        // Whose elements are the dot product of the two b-length vectors at
+        // each position in the original array.
+        MapDotProduct = "map-dot-product",
+        BsgSystolicArray = "bsg_systolic_array_weight_stationary",
+        // Slice into list/tensor/whatever we're calling them
+        Slice = "slice",
+        Concat = "concat",
+        // TODO(gus) this will probably need to be signed at some point?
+        Usize(usize),
+        Symbol(String),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SingleMatrixMultiplyMeta {
+    shape: Option<ndarray::IxDyn>,
+    usize_value: Option<usize>,
+}
+impl egg::Metadata<SingleMatrixMultiplyLanguage> for SingleMatrixMultiplyMeta {
+    type Error = ();
+
+    fn merge(&self, other: &Self) -> Self {
+        assert_eq!(self, other);
+        self.clone()
+    }
+
+    fn make(
+        egraph: &egg::EGraph<SingleMatrixMultiplyLanguage, Self>,
+        enode: &egg::ENode<SingleMatrixMultiplyLanguage>,
+    ) -> Self {
+        // We only know the value in the case of a Num.
+        use SingleMatrixMultiplyLanguage::*;
+        match &enode.op {
+            CartesianProduct => {
+                // This cartesian product works a little differently from
+                // before, given the new, simplified shape system.
+                // It wants to pair up the very last dimension of the two
+                // input arrays. I.e. it views the two input arrays as
+                // having shapes
+                // [a1, a2, ..., an, c]
+                // [b1, b2, ..., bn, c]
+                // And sees them essentially as two tensors of vectors:
+                // input 1 is a [a1, ..., an] sized tensor of c-length vectors
+                // similar for input 2.
+                // So I think our only requirement is that the last dimension
+                // is the same size. And then the resulting size is
+                // [a1, ... an, b1, ..., bn, 2, c].
+                // Right now i'm just implementing it for input arrays with 2
+                // dimensions, though.
+                assert_eq!(enode.children.len(), 2);
+                let initial_shape_left: &ndarray::IxDyn =
+                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                assert_eq!(initial_shape_left.as_array_view().len(), 2);
+                let initial_shape_right: &ndarray::IxDyn =
+                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                assert_eq!(initial_shape_right.as_array_view().len(), 2);
+                assert_eq!(
+                    initial_shape_left[initial_shape_left.as_array_view().len() - 1],
+                    initial_shape_right[initial_shape_right.as_array_view().len() - 1],
+                );
+
+                // New shape is [a1, ..., an, b1, ..., bn, c].
+                let mut new_shape: Vec<usize> = initial_shape_left
+                    .as_array_view()
+                    .iter()
+                    .take(initial_shape_left.as_array_view().len() - 1)
+                    .copied()
+                    .collect();
+                new_shape.extend(
+                    initial_shape_right
+                        .as_array_view()
+                        .iter()
+                        .take(initial_shape_right.as_array_view().len() - 1),
+                );
+                new_shape.push(2);
+                new_shape.push(initial_shape_left[initial_shape_left.as_array_view().len() - 1]);
+                let new_shape: ndarray::IxDyn = ndarray::IxDyn(&new_shape[..]);
+                assert_eq!(
+                    new_shape.as_array_view().len(),
+                    initial_shape_left.as_array_view().len() - 1
+                        + initial_shape_right.as_array_view().len()
+                        - 1
+                        + 1
+                        + 1
+                );
+                SingleMatrixMultiplyMeta {
+                    shape: Some(new_shape),
+                    usize_value: None,
+                }
+            }
+            Rows => {
+                assert_eq!(enode.children.len(), 1);
+                let initial_shape: ndarray::IxDyn = egraph[enode.children[0]]
+                    .metadata
+                    .shape
+                    .as_ref()
+                    .unwrap()
+                    .clone();
+                // Doesn't have to be true in the future.
+                assert_eq!(initial_shape.as_array_view().len(), 2);
+                // Our new, simpler system makes this way easier!
+                SingleMatrixMultiplyMeta {
+                    shape: Some(initial_shape),
+                    usize_value: None,
+                }
+            }
+            Cols => {
+                assert_eq!(enode.children.len(), 1);
+                let mut initial_shape: ndarray::IxDyn = egraph[enode.children[0]]
+                    .metadata
+                    .shape
+                    .as_ref()
+                    .unwrap()
+                    .clone();
+                // Doesn't have to be true in the future.
+                assert_eq!(initial_shape.as_array_view().len(), 2);
+
+                // The column dimension gets moved first. For a two-dimensional
+                // array, it's a transpose!
+                let cols_val: usize = initial_shape[1];
+                initial_shape[1] = initial_shape[0];
+                initial_shape[0] = cols_val;
+
+                SingleMatrixMultiplyMeta {
+                    shape: Some(initial_shape),
+                    usize_value: None,
+                }
+            }
+            MapDotProduct => {
+                assert_eq!(enode.children.len(), 1);
+                let shape: &ndarray::IxDyn =
+                    egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+
+                assert!(shape.as_array_view().len() >= 3);
+                assert_eq!(shape[shape.as_array_view().len() - 2], 2);
+
+                let new_shape: ndarray::IxDyn = ndarray::IxDyn(
+                    &shape
+                        .as_array_view()
+                        .iter()
+                        .take(shape.as_array_view().len() - 2)
+                        .copied()
+                        .collect::<Vec<usize>>()[..],
+                );
+
+                SingleMatrixMultiplyMeta {
+                    shape: Some(new_shape),
+                    usize_value: None,
+                }
+            }
+            BsgSystolicArray => panic!(),
+            Slice => {
+                let shape_to_be_sliced: &ndarray::IxDyn =
+                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                let slice_indices: std::vec::Vec<usize> = enode.children[1..]
+                    .iter()
+                    .map(|id| egraph[*id].metadata.usize_value.unwrap())
+                    .collect();
+
+                // For every dimension, there should be two slice indices:
+                // ( [beginning, end) )
+                // Note that this is a pretty restrictive syntax for now.
+                assert_eq!(0, slice_indices.len() % 2);
+                assert_eq!(
+                    shape_to_be_sliced.as_array_view().len(),
+                    slice_indices.len() / 2
+                );
+
+                let mut new_shape = shape_to_be_sliced.clone();
+
+                for dim_i in 0..shape_to_be_sliced.as_array_view().len() {
+                    let dim_val: usize = shape_to_be_sliced[dim_i];
+                    let slice_start: usize = slice_indices[dim_i * 2];
+                    let slice_end: usize = slice_indices[dim_i * 2 + 1];
+                    use std::convert::TryInto;
+                    assert!(slice_end <= dim_val.try_into().unwrap());
+                    assert!(slice_start <= slice_end);
+                    if slice_end - slice_start > 0 {
+                        // If the slice actually needs to produce values...
+                        assert!(slice_start < dim_val.try_into().unwrap());
+                    }
+
+                    new_shape[dim_i] = (slice_end - slice_start).try_into().unwrap();
+                }
+
+                SingleMatrixMultiplyMeta {
+                    shape: Some(new_shape),
+                    usize_value: None,
+                }
+            }
+            Concat => {
+                // Need at least two arrays and always need one axis
+                assert!(enode.children.len() >= 3);
+                let shapes: std::vec::Vec<&ndarray::IxDyn> = (0..(enode.children.len() - 1))
+                    .map(|i| egraph[enode.children[i]].metadata.shape.as_ref().unwrap())
+                    .collect();
+
+                let concat_axis: usize = egraph[enode.children[enode.children.len() - 1]]
+                    .metadata
+                    .usize_value
+                    .unwrap();
+
+                assert!((0..shapes.len())
+                    .all(|i| shapes[i].as_array_view().len() == shapes[0].as_array_view().len()));
+                // The two shapes must be equal, except for along the concat
+                // axis.
+                assert!(
+                    (0..shapes[0].as_array_view().len()).all(|i| i == concat_axis
+                        || ((0..shapes.len()).all(|j| shapes[j][i] == shapes[0][i])))
+                );
+
+                let mut new_shape = shapes[0].clone();
+                new_shape[concat_axis] += (1..shapes.len())
+                    .map(|i| shapes[i][concat_axis])
+                    .sum::<usize>();
+                println!("concat input shapes: {:?}", shapes);
+                println!("concat output shape: {:?}", new_shape);
+
+                SingleMatrixMultiplyMeta {
+                    shape: Some(new_shape),
+                    usize_value: None,
+                }
+            }
+            Usize(u) => SingleMatrixMultiplyMeta {
+                shape: None,
+                usize_value: Some(*u),
+            },
+            Symbol(name) => {
+                //println!("Symbol");
+                SingleMatrixMultiplyMeta {
+                    shape: Some(ndarray::IxDyn(
+                        &(match &name[..] {
+                            "in" => vec![1, 784],
+                            "w1" => vec![784, 512],
+                            "w2" => vec![512, 512],
+                            "w3" => vec![512, 10],
+                            // TODO(gus) have to figure out a way around this. Max
+                            // seems to think the tensors should just go into the
+                            // egraph. I was hoping to have some kind of environment
+                            // that we could wrap the egraph in (would have to be
+                            // accessible from here), but Max doesn't have that nor
+                            // does he plan to implement it.
+                            "single-matrix-multiply-input-a" => vec![64, 64],
+                            "single-matrix-multiply-input-b" => vec![64, 64],
+                            _ => panic!("No shape defined for {}", name),
+                        })[..],
+                    )),
+                    usize_value: None,
+                }
+            }
+        }
+    }
+}
+
 fn single_matrix_multiply() {
-    let program = "
-     (shaped-map dotprod
-      (cartesian-product
-       (rows single-matrix-multiply-input-a)
-       (cols single-matrix-multiply-input-b)
-      )
-     )
-     "
-    .parse()
-    .unwrap();
-
-    let a_val = pack_interpreter_input(load_npy("single_matrix_multiply_input_a.npy"));
-    let b_val = pack_interpreter_input(load_npy("single_matrix_multiply_input_b.npy"));
-    let out_true = load_npy("single_matrix_multiply_output.npy");
-    let mut env = Environment::new();
-    env.insert("single-matrix-multiply-input-a", a_val);
-    env.insert("single-matrix-multiply-input-b", b_val);
-    let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
-    egraph
-        .dot()
-        .to_svg("single-matrix-multiply-before-rewrites.svg")
-        .unwrap();
-    let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
-
-    let out = unpack_interpreter_output(out);
-
-    use approx::AbsDiffEq;
-    assert!(out_true.abs_diff_eq(&out, 1e-8));
-
     struct SplitConcatApplier {
         a: egg::Var,
     };
-    impl egg::Applier<MlpLanguage, Meta> for SplitConcatApplier {
+    impl egg::Applier<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta> for SplitConcatApplier {
         fn apply_one(
             &self,
-            egraph: &mut egg::EGraph<MlpLanguage, Meta>,
+            egraph: &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
             _id: egg::Id,
             subst: &egg::Subst,
         ) -> std::vec::Vec<egg::Id> {
             let a: egg::Id = subst[&self.a];
-            let shape = &egraph[a].metadata.shape.as_ref().unwrap();
+            let shape = egraph[a].metadata.shape.as_ref().unwrap().clone();
             println!("{:?}", shape);
 
-            let shape: std::vec::Vec<i64> =
-                shape.iter().map(|i| *i.as_ref().left().unwrap()).collect();
-            assert_eq!(shape.len(), 2);
+            assert_eq!(shape.as_array_view().len(), 2);
             assert_eq!(0, shape[0] % 16);
             assert_eq!(0, shape[1] % 16);
 
@@ -1185,16 +1419,20 @@ fn single_matrix_multiply() {
                     let x_slice_end = (16 * (i + 1)).try_into().unwrap();
                     let y_slice_start = (16 * j).try_into().unwrap();
                     let y_slice_end = (16 * (j + 1)).try_into().unwrap();
-                    let x_slice_start_id: egg::Id =
-                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(x_slice_start)));
-                    let x_slice_end_id: egg::Id =
-                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(x_slice_end)));
-                    let y_slice_start_id: egg::Id =
-                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(y_slice_start)));
-                    let y_slice_end_id: egg::Id =
-                        egraph.add(egg::ENode::leaf(MlpLanguage::Usize(y_slice_end)));
+                    let x_slice_start_id: egg::Id = egraph.add(egg::ENode::leaf(
+                        SingleMatrixMultiplyLanguage::Usize(x_slice_start),
+                    ));
+                    let x_slice_end_id: egg::Id = egraph.add(egg::ENode::leaf(
+                        SingleMatrixMultiplyLanguage::Usize(x_slice_end),
+                    ));
+                    let y_slice_start_id: egg::Id = egraph.add(egg::ENode::leaf(
+                        SingleMatrixMultiplyLanguage::Usize(y_slice_start),
+                    ));
+                    let y_slice_end_id: egg::Id = egraph.add(egg::ENode::leaf(
+                        SingleMatrixMultiplyLanguage::Usize(y_slice_end),
+                    ));
                     to_be_concatted_along_axis_1.push(egraph.add(egg::ENode::new(
-                        MlpLanguage::Slice,
+                        SingleMatrixMultiplyLanguage::Slice,
                         vec![
                             a,
                             x_slice_start_id,
@@ -1207,26 +1445,35 @@ fn single_matrix_multiply() {
                 // Args should be a list of the sliced arrays, plus the axis
                 // along which to stitch them back together.
                 let mut args: std::vec::Vec<egg::Id> = to_be_concatted_along_axis_1;
-                args.push(egraph.add(egg::ENode::leaf(MlpLanguage::Usize(1))));
+                args.push(egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(1))));
                 to_be_concatted_along_axis_0
-                    .push(egraph.add(egg::ENode::new(MlpLanguage::Concat, args)));
+                    .push(egraph.add(egg::ENode::new(SingleMatrixMultiplyLanguage::Concat, args)));
             }
             let mut args: std::vec::Vec<egg::Id> = to_be_concatted_along_axis_0;
-            args.push(egraph.add(egg::ENode::leaf(MlpLanguage::Usize(0))));
-            let concat_id: egg::Id = egraph.add(egg::ENode::new(MlpLanguage::Concat, args));
+            args.push(egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(0))));
+            let concat_id: egg::Id =
+                egraph.add(egg::ENode::new(SingleMatrixMultiplyLanguage::Concat, args));
 
             vec![concat_id]
         }
     }
     fn has_shape(
         var: &'static str,
-    ) -> impl Fn(&mut egg::EGraph<MlpLanguage, Meta>, egg::Id, &egg::Subst) -> bool {
+    ) -> impl Fn(
+        &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
+        egg::Id,
+        &egg::Subst,
+    ) -> bool {
         let var = var.parse().unwrap();
         move |egraph, _, subst| !egraph[subst[&var]].metadata.shape.is_none()
     }
     fn is_symbol(
         var: &'static str,
-    ) -> impl Fn(&mut egg::EGraph<MlpLanguage, Meta>, egg::Id, &egg::Subst) -> bool {
+    ) -> impl Fn(
+        &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
+        egg::Id,
+        &egg::Subst,
+    ) -> bool {
         let var = var.parse().unwrap();
         // TODO(gus) should this be `all` or `any` or something else entirely?
         move |egraph, _, subst| {
@@ -1234,7 +1481,7 @@ fn single_matrix_multiply() {
                 .nodes
                 .iter()
                 .map(|enode| match enode.op {
-                    MlpLanguage::Symbol(_) => true,
+                    SingleMatrixMultiplyLanguage::Symbol(_) => true,
                     _ => false,
                 })
                 .all(|x| x)
@@ -1265,11 +1512,12 @@ fn single_matrix_multiply() {
 
     let rws = vec![
         egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a")),
-        // TODO(gus) This doesn't currently make sense in the interpreter!!!
-        // What does a concat of rows actually mean??
-        // I guess we could implement it as a concat of two lists in the interpreter.
-        egg::rewrite!("bubble-concat-through-rows"; "(rows (concat ?a ?b ?c ?d ?axis))" => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) ?axis)"),
-        egg::rewrite!("bubble-concat-through-cols"; "(cols (concat ?a ?b ?c ?d ?axis))" => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) ?axis)"),
+        egg::rewrite!("bubble-concat-through-rows"; "(rows (concat ?a ?b ?c ?d ?axis))"
+                      => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) ?axis)"),
+        egg::rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b ?c ?d 0))"
+                      => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 1)"),
+        egg::rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b ?c ?d 1))"
+                      => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 0)"),
         // egg::rewrite!("bubble-concat-through-cartesian-product"; "(cartesian-product (concat ?a ?b ?c ?d ?axis) (concat ?e ?f ?g ?h ?axis))" =>
         // // TODO(gus) I think this one's where the magic happens :)
         // {BubbleConcatThroughCartesianProductApplier{
@@ -1286,7 +1534,23 @@ fn single_matrix_multiply() {
         // }}),
     ];
 
-    let (egraph, id) = egg::EGraph::<MlpLanguage, Meta>::from_expr(&program);
+    let program = "
+     (map-dot-product
+      (cartesian-product
+       (rows single-matrix-multiply-input-a)
+       (cols single-matrix-multiply-input-b)
+      )
+     )
+     "
+    .parse()
+    .unwrap();
+
+    let (egraph, id) =
+        egg::EGraph::<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>::from_expr(&program);
+    egraph
+        .dot()
+        .to_svg("single-matrix-multiply-before-rewrites.svg")
+        .unwrap();
     let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
     runner
         .egraph
