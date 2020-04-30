@@ -1488,24 +1488,54 @@ fn single_matrix_multiply() {
         }
     }
 
-    struct BubbleConcatThroughCartesianProductApplier {
-        a: egg::Var,
-        b: egg::Var,
-        c: egg::Var,
-        d: egg::Var,
-        e: egg::Var,
-        f: egg::Var,
-        g: egg::Var,
-        h: egg::Var,
-        axis: egg::Var,
-    };
-    impl egg::Applier<MlpLanguage, Meta> for BubbleConcatThroughCartesianProductApplier {
+
+    struct RewriteNonMatchingCartConcatApplier {
+        a1: egg::Var,
+        a2: egg::Var,
+        a3: egg::Var,
+        a4: egg::Var,
+        a_axis: usize,
+        b1: egg::Var,
+        b2: egg::Var,
+        b3: egg::Var,
+        b4: egg::Var,
+        b_axis: usize,
+    }
+    impl egg::Applier<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta> for RewriteNonMatchingCartConcatApplier {
         fn apply_one(
             &self,
-            egraph: &mut egg::EGraph<MlpLanguage, Meta>,
+            egraph: &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
             _id: egg::Id,
             subst: &egg::Subst,
         ) -> std::vec::Vec<egg::Id> {
+
+            // For now, just want to handle these cases.
+            assert!(self.a_axis == 0 || self.a_axis == 1);
+            assert!(self.b_axis == 0 || self.b_axis == 1);
+            assert_ne!(self.a_axis, self.b_axis);
+
+            // We will break up the as into smaller chunks and the bs into
+            // smaller chunks, so that they all match in size.
+            // The goal is to have the innermost concats be along axis 0, and
+            // the outermost concats to be along axis 1. Additionally, the goal
+            // is that the result should only involve cartesian products of
+            // concats, where the left and right concat use the same axis.
+            // Then, existing rewrites can be used to bubble the concats up
+            // through the cartesian products.
+
+            // Each a needs to be split into 4; each b needs to be split into 4.
+
+            // First we want to construct all of the concats along the 1 axis.
+            // These will become our innermost concats.
+            // One of these is already concatted along the 1 axis!
+
+            // TODO(gus) left off here, I think I should actually do something
+            // simpler here and just rewrite the two concats that are the
+            // children of this cartesian product.
+            // It needs some information from elsewhere in the graph, though,
+            // that's the tough thing.
+
+
             vec![]
         }
     }
@@ -1546,6 +1576,24 @@ fn single_matrix_multiply() {
                                    (cartesian-product ?a4 ?b4) 1)
                            0)"
         ),
+        egg::rewrite!(
+        "rewrite-nonmatching-cartesian-product-concat";
+        "(cartesian-product
+              (concat ?a1 ?a2 ?a3 ?a4 0)
+              (concat ?b1 ?b2 ?b3 ?b4 1)
+             )" =>
+        {RewriteNonMatchingCartConcatApplier{
+            a1:"?a1".parse().unwrap(),
+            a2:"?a2".parse().unwrap(),
+            a3:"?a3".parse().unwrap(),
+            a4:"?a4".parse().unwrap(),
+            a_axis:0,
+            b1:"?b1".parse().unwrap(),
+            b2:"?b2".parse().unwrap(),
+            b3:"?b3".parse().unwrap(),
+            b4:"?b4".parse().unwrap(),
+            b_axis:1,
+        }}),
         // egg::rewrite!("bubble-concat-through-cartesian-product"; "(cartesian-product (concat ?a ?b ?c ?d ?axis) (concat ?e ?f ?g ?h ?axis))" =>
         // // TODO(gus) I think this one's where the magic happens :)
         // {BubbleConcatThroughCartesianProductApplier{
