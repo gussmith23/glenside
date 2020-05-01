@@ -1531,6 +1531,25 @@ fn single_matrix_multiply() {
             // It needs some information from elsewhere in the graph, though,
             // that's the tough thing.
 
+            // So we're going to slice-and-concat all 4 tensors. We'll slice the
+            // as based on the bs size, and slice the bs based on the as size.
+            // TODO(gus) I could write an even simpler rewrite rule that slices
+            // more indiscriminately, everywhere. Right now I'm using some
+            // context clue (the overarching cartesian product) to only apply
+            // this where needed.
+
+            // All I actually want to do is to rewrite that second concat.
+            //  (cartesian-product
+            //   (concat ?a1 ?a2 0)
+            //   (concat ?b1 ?b2 1)
+            //  )
+            //  (cartesian-product
+            //   (concat ?a1 ?a2 0)
+            //   (concat (concat (slice ?b1) (slice ?b1)  0)
+            //  )
+            //
+
+
 
             vec![]
         }
