@@ -1079,8 +1079,8 @@ impl egg::Metadata<MlpLanguage> for Meta {
                         // that we could wrap the egraph in (would have to be
                         // accessible from here), but Max doesn't have that nor
                         // does he plan to implement it.
-                        "single-matrix-multiply-input-a" => vec![Left(64), Left(64)],
-                        "single-matrix-multiply-input-b" => vec![Left(64), Left(64)],
+                        "single-matrix-multiply-input-a" => vec![Left(32), Left(32)],
+                        "single-matrix-multiply-input-b" => vec![Left(32), Left(32)],
                         _ => panic!("No shape defined for {}", name),
                     }),
                     scalar_value: None,
@@ -1379,8 +1379,8 @@ impl egg::Metadata<SingleMatrixMultiplyLanguage> for SingleMatrixMultiplyMeta {
                             // that we could wrap the egraph in (would have to be
                             // accessible from here), but Max doesn't have that nor
                             // does he plan to implement it.
-                            "single-matrix-multiply-input-a" => vec![64, 64],
-                            "single-matrix-multiply-input-b" => vec![64, 64],
+                            "single-matrix-multiply-input-a" => vec![32, 32],
+                            "single-matrix-multiply-input-b" => vec![32, 32],
                             _ => panic!("No shape defined for {}", name),
                         })[..],
                     )),
@@ -1492,13 +1492,9 @@ fn single_matrix_multiply() {
     struct RewriteNonMatchingCartConcatApplier {
         a1: egg::Var,
         a2: egg::Var,
-        a3: egg::Var,
-        a4: egg::Var,
         a_axis: usize,
         b1: egg::Var,
         b2: egg::Var,
-        b3: egg::Var,
-        b4: egg::Var,
         b_axis: usize,
     }
     impl egg::Applier<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta> for RewriteNonMatchingCartConcatApplier {
@@ -1542,56 +1538,40 @@ fn single_matrix_multiply() {
 
     let rws = vec![
         egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a")),
-        egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b ?c ?d 0))"
-                      => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) 0)"),
-        egg::rewrite!("bubble-concat-through-rows-axis-1"; "(rows (concat ?a ?b ?c ?d 1))"
-                      => "(concat (rows ?a) (rows ?b) (rows ?c) (rows ?d) 1)"),
-        egg::rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b ?c ?d 0))"
-                      => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 1)"),
-        egg::rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b ?c ?d 1))"
-                      => "(concat (cols ?a) (cols ?b) (cols ?c) (cols ?d) 0)"),
+        egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
+                      => "(concat (rows ?a) (rows ?b) 0)"),
+        egg::rewrite!("bubble-concat-through-rows-axis-1"; "(rows (concat ?a ?b 1))"
+                      => "(concat (rows ?a) (rows ?b) 1)"),
+        egg::rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b 0))"
+                      => "(concat (cols ?a) (cols ?b) 1)"),
+        egg::rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b 1))"
+                      => "(concat (cols ?a) (cols ?b) 0)"),
         // TODO(gus) this isn't the only way this could be done.
         // Also there's gotta be a name for this in terms of algebraic rules
         // TODO(gus) would it make our pattern-matching life easier if (1) we
         // put the axes at the start of concat and (2) we used cons cells?
         egg::rewrite!("bubble-concat-through-cartesian-product-axes-0-0";
-                      "(cartesian-product (concat ?a1 ?a2 ?a3 ?a4 0) (concat ?b1 ?b2 ?b3 ?b4 0))"
+                      "(cartesian-product (concat ?a1 ?a2 0) (concat ?b1 ?b2 0))"
                       // TODO(gus) check this
                       => "(concat
                            (concat (cartesian-product ?a1 ?b1)
-                                   (cartesian-product ?a1 ?b2)
-                                   (cartesian-product ?a1 ?b3)
-                                   (cartesian-product ?a1 ?b4) 1)
+                                   (cartesian-product ?a1 ?b2) 1)
                            (concat (cartesian-product ?a2 ?b1)
-                                   (cartesian-product ?a2 ?b2)
-                                   (cartesian-product ?a2 ?b3)
-                                   (cartesian-product ?a2 ?b4) 1)
-                           (concat (cartesian-product ?a3 ?b1)
-                                   (cartesian-product ?a3 ?b2)
-                                   (cartesian-product ?a3 ?b3)
-                                   (cartesian-product ?a3 ?b4) 1)
-                           (concat (cartesian-product ?a4 ?b1)
-                                   (cartesian-product ?a4 ?b2)
-                                   (cartesian-product ?a4 ?b3)
-                                   (cartesian-product ?a4 ?b4) 1)
+                                   (cartesian-product ?a2 ?b2) 1)
                            0)"
         ),
         egg::rewrite!(
         "rewrite-nonmatching-cartesian-product-concat";
         "(cartesian-product
-              (concat ?a1 ?a2 ?a3 ?a4 0)
-              (concat ?b1 ?b2 ?b3 ?b4 1)
+              (concat ?a1 ?a2 0)
+              (concat ?b1 ?b2 1)
              )" =>
         {RewriteNonMatchingCartConcatApplier{
             a1:"?a1".parse().unwrap(),
             a2:"?a2".parse().unwrap(),
-            a3:"?a3".parse().unwrap(),
-            a4:"?a4".parse().unwrap(),
             a_axis:0,
             b1:"?b1".parse().unwrap(),
             b2:"?b2".parse().unwrap(),
-            b3:"?b3".parse().unwrap(),
-            b4:"?b4".parse().unwrap(),
             b_axis:1,
         }}),
         // egg::rewrite!("bubble-concat-through-cartesian-product"; "(cartesian-product (concat ?a ?b ?c ?d ?axis) (concat ?e ?f ?g ?h ?axis))" =>
