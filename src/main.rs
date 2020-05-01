@@ -1144,6 +1144,8 @@ egg::define_language! {
         // Slice into list/tensor/whatever we're calling them
         Slice = "slice",
         Concat = "concat",
+        // Integer-divide a power-of-2 usize value by 2.
+        UsizeHalve = "usize-halve",
         // TODO(gus) this will probably need to be signed at some point?
         Usize(usize),
         Symbol(String),
@@ -1360,6 +1362,16 @@ impl egg::Metadata<SingleMatrixMultiplyLanguage> for SingleMatrixMultiplyMeta {
                     usize_value: None,
                 }
             }
+            UsizeHalve => {
+                assert_eq!(enode.children.len(), 1);
+                let to_be_halved: usize = egraph[enode.children[0]].metadata.usize_value.unwrap();
+                assert_eq!(to_be_halved % 2, 0);
+
+                SingleMatrixMultiplyMeta {
+                    shape: None,
+                    usize_value: Some(to_be_halved/2),
+                }
+            }
             Usize(u) => SingleMatrixMultiplyMeta {
                 shape: None,
                 usize_value: Some(*u),
@@ -1487,6 +1499,20 @@ fn single_matrix_multiply() {
                 .all(|x| x)
         }
     }
+    fn dimension_greater_than(
+        var: &'static str,
+        axis: usize,
+        greater_than: usize,
+    ) -> impl Fn(
+        &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
+        egg::Id,
+        &egg::Subst,
+    ) -> bool {
+        let var = var.parse().unwrap();
+        move |egraph, _, subst| {
+            egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] > greater_than
+        }
+    }
 
 
     struct RewriteNonMatchingCartConcatApplier {
@@ -1556,6 +1582,8 @@ fn single_matrix_multiply() {
     }
 
     let rws = vec![
+        // TODO(gus) damn it, I still think that usize-halve won't even be enough.
+        egg::rewrite!("split-x"; "?a" => "(concat (usize-halve ?a)" if has_shape("?a")
         egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a")),
         egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
                       => "(concat (rows ?a) (rows ?b) 0)"),
