@@ -1144,8 +1144,6 @@ egg::define_language! {
         // Slice into list/tensor/whatever we're calling them
         Slice = "slice",
         Concat = "concat",
-        // Integer-divide a power-of-2 usize value by 2.
-        UsizeHalve = "usize-halve",
         // TODO(gus) this will probably need to be signed at some point?
         Usize(usize),
         Symbol(String),
@@ -1360,16 +1358,6 @@ impl egg::Metadata<SingleMatrixMultiplyLanguage> for SingleMatrixMultiplyMeta {
                 SingleMatrixMultiplyMeta {
                     shape: Some(new_shape),
                     usize_value: None,
-                }
-            }
-            UsizeHalve => {
-                assert_eq!(enode.children.len(), 1);
-                let to_be_halved: usize = egraph[enode.children[0]].metadata.usize_value.unwrap();
-                assert_eq!(to_be_halved % 2, 0);
-
-                SingleMatrixMultiplyMeta {
-                    shape: None,
-                    usize_value: Some(to_be_halved/2),
                 }
             }
             Usize(u) => SingleMatrixMultiplyMeta {
