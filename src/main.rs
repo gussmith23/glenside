@@ -1049,8 +1049,8 @@ impl egg::Metadata<MlpLanguage> for Meta {
                     .map(|i| shapes[i][concat_axis])
                     .sum::<i64>();
                 let new_shape: Shape = new_shape.iter().map(|i| Left(*i)).collect();
-                println!("concat input shapes: {:?}", shapes);
-                println!("concat output shape: {:?}", new_shape);
+                //println!("concat input shapes: {:?}", shapes);
+                //println!("concat output shape: {:?}", new_shape);
 
                 Meta {
                     shape: Some(new_shape),
@@ -1354,8 +1354,8 @@ impl egg::Metadata<SingleMatrixMultiplyLanguage> for SingleMatrixMultiplyMeta {
                 new_shape[concat_axis] += (1..shapes.len())
                     .map(|i| shapes[i][concat_axis])
                     .sum::<usize>();
-                println!("concat input shapes: {:?}", shapes);
-                println!("concat output shape: {:?}", new_shape);
+                //println!("concat input shapes: {:?}", shapes);
+                //println!("concat output shape: {:?}", new_shape);
 
                 SingleMatrixMultiplyMeta {
                     shape: Some(new_shape),
@@ -1416,7 +1416,7 @@ fn single_matrix_multiply() {
         ) -> std::vec::Vec<egg::Id> {
             let a: egg::Id = subst[&self.a];
             let shape = egraph[a].metadata.shape.as_ref().unwrap().clone();
-            println!("{:?}", shape);
+            //println!("{:?}", shape);
 
             assert_eq!(shape.as_array_view().len(), 2);
             assert_eq!(0, shape[0] % 16);
@@ -1513,7 +1513,17 @@ fn single_matrix_multiply() {
             egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] > greater_than
         }
     }
-
+    fn dimension_is_even(
+        var: &'static str,
+        axis: usize,
+    ) -> impl Fn(
+        &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
+        egg::Id,
+        &egg::Subst,
+    ) -> bool {
+        let var = var.parse().unwrap();
+        move |egraph, _, subst| egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] % 2 == 0
+    }
 
     struct RewriteNonMatchingCartConcatApplier {
         a1: egg::Var,
@@ -1523,14 +1533,15 @@ fn single_matrix_multiply() {
         b2: egg::Var,
         b_axis: usize,
     }
-    impl egg::Applier<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta> for RewriteNonMatchingCartConcatApplier {
+    impl egg::Applier<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>
+        for RewriteNonMatchingCartConcatApplier
+    {
         fn apply_one(
             &self,
             egraph: &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
             _id: egg::Id,
             subst: &egg::Subst,
         ) -> std::vec::Vec<egg::Id> {
-
             // For now, just want to handle these cases.
             assert!(self.a_axis == 0 || self.a_axis == 1);
             assert!(self.b_axis == 0 || self.b_axis == 1);
@@ -1575,15 +1586,108 @@ fn single_matrix_multiply() {
             //  )
             //
 
-
-
             vec![]
+        }
+    }
+
+    struct SplitApplier {
+        a: egg::Var,
+        axis: usize,
+    }
+    impl egg::Applier<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta> for SplitApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut egg::EGraph<SingleMatrixMultiplyLanguage, SingleMatrixMultiplyMeta>,
+            id: egg::Id,
+            _subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let shape: ndarray::IxDyn = egraph[id].metadata.shape.as_ref().unwrap().clone();
+            assert_eq!(shape[self.axis] % 2, 0);
+            let low_bound = 0;
+            let low_bound_id = egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(
+                low_bound,
+            )));
+            let high_bound = shape[self.axis];
+            let high_bound_id = egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(
+                high_bound,
+            )));
+            let middle_bound = high_bound / 2;
+            let middle_bound_id = egraph.add(egg::ENode::leaf(
+                SingleMatrixMultiplyLanguage::Usize(middle_bound),
+            ));
+
+            let mut slice_0_indices = std::vec::Vec::new();
+            for i in 0..shape.as_array_view().len() {
+                if i == self.axis {
+                    // If this is the axis we're splitting on, then access the
+                    // first half.
+                    slice_0_indices.push(low_bound_id);
+                    slice_0_indices.push(middle_bound_id);
+                } else {
+                    // Otherwise, access the whole axis.
+                    slice_0_indices
+                        .push(egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(0))));
+                    slice_0_indices.push(egraph.add(egg::ENode::leaf(
+                        SingleMatrixMultiplyLanguage::Usize(shape[i]),
+                    )));
+                }
+            }
+
+            let mut slice_1_indices = std::vec::Vec::new();
+            for i in 0..shape.as_array_view().len() {
+                if i == self.axis {
+                    // If this is the axis we're splitting on, then access the
+                    // second half.
+                    slice_1_indices.push(middle_bound_id);
+                    slice_1_indices.push(high_bound_id);
+                } else {
+                    // Otherwise, access the whole axis.
+                    slice_1_indices
+                        .push(egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(0))));
+                    slice_1_indices.push(egraph.add(egg::ENode::leaf(
+                        SingleMatrixMultiplyLanguage::Usize(shape[i]),
+                    )));
+                }
+            }
+
+            let mut slice_0_children = std::vec::Vec::new();
+            slice_0_children.push(id);
+            slice_0_children.append(&mut slice_0_indices);
+
+            let mut slice_1_children = std::vec::Vec::new();
+            slice_1_children.push(id);
+            slice_1_children.append(&mut slice_1_indices);
+
+            let slice_0_id = egraph.add(egg::ENode::new(
+                SingleMatrixMultiplyLanguage::Slice,
+                slice_0_children,
+            ));
+            let slice_1_id = egraph.add(egg::ENode::new(
+                SingleMatrixMultiplyLanguage::Slice,
+                slice_1_children,
+            ));
+            //println!("{:?}", egraph[slice_0_id]);
+            //println!("{:?}", egraph[slice_1_id]);
+
+            let axis_usize_id = egraph.add(egg::ENode::leaf(SingleMatrixMultiplyLanguage::Usize(
+                self.axis,
+            )));
+
+            // Add
+            // (concat )
+            let id: egg::Id = egraph.add(egg::ENode::new(
+                SingleMatrixMultiplyLanguage::Concat,
+                vec![slice_0_id, slice_1_id, axis_usize_id],
+            ));
+            vec![id]
         }
     }
 
     let rws = vec![
         // TODO(gus) damn it, I still think that usize-halve won't even be enough.
-        egg::rewrite!("split-x"; "?a" => "(concat (usize-halve ?a)" if has_shape("?a")
+        // TODO(gus) the if statements actually run backwards.
+        egg::rewrite!("split-x"; "?a" => {SplitApplier{axis: 0, a:"?a".parse().unwrap()}} if dimension_greater_than("?a", 0, 16) if dimension_is_even("?a", 0) if has_shape("?a")),
+        egg::rewrite!("split-y"; "?a" => {SplitApplier{axis: 1, a:"?a".parse().unwrap()}} if dimension_greater_than("?a", 1, 16) if dimension_is_even("?a", 1) if has_shape("?a")),
         egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a")),
         egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
                       => "(concat (rows ?a) (rows ?b) 0)"),
