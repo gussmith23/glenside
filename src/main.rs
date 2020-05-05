@@ -1674,8 +1674,8 @@ fn single_matrix_multiply() {
     let rws = vec![
         // TODO(gus) damn it, I still think that usize-halve won't even be enough.
         // TODO(gus) the if statements actually run backwards.
-        egg::rewrite!("split-x"; "?a" => {SplitApplier{axis: 0, a:"?a".parse().unwrap()}} if dimension_greater_than("?a", 0, 16) if dimension_is_even("?a", 0) if has_shape("?a")),
-        egg::rewrite!("split-y"; "?a" => {SplitApplier{axis: 1, a:"?a".parse().unwrap()}} if dimension_greater_than("?a", 1, 16) if dimension_is_even("?a", 1) if has_shape("?a")),
+        //egg::rewrite!("split-x"; "?a" => {SplitApplier{axis: 0, a:"?a".parse().unwrap()}} if dimension_greater_than("?a", 0, 16) if dimension_is_even("?a", 0) if has_shape("?a")),
+        //egg::rewrite!("split-y"; "?a" => {SplitApplier{axis: 1, a:"?a".parse().unwrap()}} if dimension_greater_than("?a", 1, 16) if dimension_is_even("?a", 1) if has_shape("?a")),
         egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a")),
         egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
                       => "(concat (rows ?a) (rows ?b) 0)"),
