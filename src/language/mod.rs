@@ -2,4 +2,6 @@
 mod language;
 pub use language::*;
 
+pub mod interpreter;
+
 pub mod rewrites;
