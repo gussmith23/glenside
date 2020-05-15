@@ -170,7 +170,6 @@ impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
 }
 
 struct SplitApplier {
-    a: egg::Var,
     axis: usize,
 }
 impl egg::Applier<Language, Meta> for SplitApplier {
@@ -249,7 +248,7 @@ pub fn bubble_concat_through_cols_axis_1() -> Rewrite<Language, Meta> {
 
 pub fn split(axis: usize, dimension_greater_than: usize) -> Rewrite<Language, Meta> {
     egg::rewrite!(format!("split-axis-{}", axis); "?a" =>
-                  {SplitApplier{axis: axis, a:"?a".parse().unwrap()}}
+                  {SplitApplier{axis: axis}}
                   if self::dimension_greater_than("?a", axis, dimension_greater_than)
                   if dimension_is_even("?a", axis)
                   if has_shape("?a"))
