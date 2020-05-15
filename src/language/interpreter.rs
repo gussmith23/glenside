@@ -444,30 +444,6 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             ))
         }
         Usize(u) => MemoizedInterpreterResult::InterpretedValue(Value::Usize(*u)),
-        ShapedAdd => {
-            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = enode
-                .children
-                .iter()
-                .map(
-                    |eclass| match interpret_eclass(egraph, &egraph[*eclass], env, memo_map) {
-                        MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                            Value::Tensor(t) => t,
-                            _ => panic!(),
-                        },
-                        // TODO(gus) this panic is me just being lazy.
-                        _ => panic!(),
-                    },
-                )
-                .collect();
-
-            assert!(tensors.len() > 0);
-
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(
-                tensors
-                    .iter()
-                    .fold(ndarray::Array::zeros(tensors[0].shape()), |acc, t| acc + t),
-            ))
-        }
         BsgSystolicArray => panic!(),
         Concat => {
             // TODO(gus) this is true for our minimal working example, not
