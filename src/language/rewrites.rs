@@ -86,7 +86,7 @@ pub fn is_symbol(
             .all(|x| x)
     }
 }
-fn dimension_greater_than(
+fn _dimension_greater_than(
     var: &'static str,
     axis: usize,
     greater_than: usize,
@@ -96,7 +96,7 @@ fn dimension_greater_than(
         egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] > greater_than
     }
 }
-fn dimension_is_even(
+fn _dimension_is_even(
     var: &'static str,
     axis: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
@@ -116,9 +116,9 @@ pub struct RewriteNonMatchingCartConcatApplier {
 impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
     fn apply_one(
         &self,
-        egraph: &mut egg::EGraph<Language, Meta>,
+        _egraph: &mut egg::EGraph<Language, Meta>,
         _id: egg::Id,
-        subst: &egg::Subst,
+        _subst: &egg::Subst,
     ) -> std::vec::Vec<egg::Id> {
         // For now, just want to handle these cases.
         assert!(self.a_axis == 0 || self.a_axis == 1);
@@ -169,7 +169,7 @@ impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
 }
 
 struct SplitApplier {
-    a: egg::Var,
+    _a: egg::Var,
     axis: usize,
 }
 impl egg::Applier<Language, Meta> for SplitApplier {
@@ -243,7 +243,6 @@ impl egg::Applier<Language, Meta> for SplitApplier {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_split_concat() {
