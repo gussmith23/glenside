@@ -1,4 +1,5 @@
 use super::{Language, Meta};
+use egg::Rewrite;
 use ndarray::Dimension;
 
 // TODO(gus) I think I should make this a conditional applier, and fold in
@@ -86,7 +87,7 @@ pub fn is_symbol(
             .all(|x| x)
     }
 }
-fn _dimension_greater_than(
+fn dimension_greater_than(
     var: &'static str,
     axis: usize,
     greater_than: usize,
@@ -96,7 +97,7 @@ fn _dimension_greater_than(
         egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] > greater_than
     }
 }
-fn _dimension_is_even(
+fn dimension_is_even(
     var: &'static str,
     axis: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
@@ -169,7 +170,7 @@ impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
 }
 
 struct SplitApplier {
-    _a: egg::Var,
+    a: egg::Var,
     axis: usize,
 }
 impl egg::Applier<Language, Meta> for SplitApplier {
@@ -239,6 +240,67 @@ impl egg::Applier<Language, Meta> for SplitApplier {
         ));
         vec![id]
     }
+}
+
+pub fn bubble_concat_through_cols_axis_1() -> Rewrite<Language, Meta> {
+    egg::rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b 1))"
+                  => "(concat (cols ?a) (cols ?b) 0)")
+}
+
+pub fn split(axis: usize, dimension_greater_than: usize) -> Rewrite<Language, Meta> {
+    egg::rewrite!(format!("split-axis-{}", axis); "?a" =>
+                  {SplitApplier{axis: axis, a:"?a".parse().unwrap()}}
+                  if self::dimension_greater_than("?a", axis, dimension_greater_than)
+                  if dimension_is_even("?a", axis)
+                  if has_shape("?a"))
+}
+
+pub fn split_concat() -> Rewrite<Language, Meta> {
+    egg::rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a"))
+}
+pub fn bubble_concat_through_rows_axis_0() -> Rewrite<Language, Meta> {
+    egg::rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
+                      => "(concat (rows ?a) (rows ?b) 0)")
+}
+pub fn bubble_concat_through_rows_axis_1() -> Rewrite<Language, Meta> {
+    egg::rewrite!("bubble-concat-through-rows-axis-1"; "(rows (concat ?a ?b 1))"
+                      => "(concat (rows ?a) (rows ?b) 1)")
+}
+pub fn bubble_concat_through_cols_axis_0() -> Rewrite<Language, Meta> {
+    egg::rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b 0))"
+                      => "(concat (cols ?a) (cols ?b) 1)")
+}
+pub fn bubble_concat_through_cartesian_product_axis_0_0() -> Rewrite<Language, Meta> {
+    // TODO(gus) this isn't the only way this could be done.
+    // Also there's gotta be a name for this in terms of algebraic rules
+    // TODO(gus) would it make our pattern-matching life easier if (1) we
+    // put the axes at the start of concat and (2) we used cons cells?
+    egg::rewrite!("bubble-concat-through-cartesian-product-axes-0-0";
+                  "(cartesian-product (concat ?a1 ?a2 0) (concat ?b1 ?b2 0))"
+                  // TODO(gus) check this
+                  => "(concat
+                           (concat (cartesian-product ?a1 ?b1)
+                                   (cartesian-product ?a1 ?b2) 1)
+                           (concat (cartesian-product ?a2 ?b1)
+                                   (cartesian-product ?a2 ?b2) 1)
+                           0)"
+    )
+}
+pub fn rewrite_nonmatching_cartesian_product_concat() -> Rewrite<Language, Meta> {
+    egg::rewrite!(
+    "rewrite-nonmatching-cartesian-product-concat";
+    "(cartesian-product
+              (concat ?a1 ?a2 0)
+              (concat ?b1 ?b2 1)
+             )" =>
+    {RewriteNonMatchingCartConcatApplier{
+        a1:"?a1".parse().unwrap(),
+        a2:"?a2".parse().unwrap(),
+        a_axis:0,
+        b1:"?b1".parse().unwrap(),
+        b2:"?b2".parse().unwrap(),
+        b_axis:1,
+    }})
 }
 
 #[cfg(test)]
