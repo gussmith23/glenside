@@ -12,7 +12,6 @@ out_val = in_val
 out_val = np.matmul(out_val, w1_val)
 out_val = np.matmul(out_val, w2_val)
 out_val = np.matmul(out_val, w3_val)
-out_val = np.squeeze(out_val)
 print(out_val)
 
 out_true = np.load('out.npy')
