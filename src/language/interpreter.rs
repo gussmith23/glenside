@@ -668,7 +668,6 @@ mod tests {
          "
         .parse()
         .unwrap();
-        println!(env!("CARGO_MANIFEST_DIR"));
         let a_val = pack_interpreter_input(load_npy(
             format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_input_a.npy").as_str(),
         ));
@@ -726,7 +725,6 @@ mod tests {
         let out_true =
             load_npy(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/out.npy").as_str());
         let mut env = Environment::new();
-        println!(env!("CARGO_MANIFEST_DIR"));
         env.insert("in", in_val);
         env.insert("w1", w1_val);
         env.insert("w2", w2_val);
