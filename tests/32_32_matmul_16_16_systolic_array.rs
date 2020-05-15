@@ -3,6 +3,7 @@ fn test_32_32_matmul_16_16_systolic_array() {
     use glenside::language::rewrites::*;
     use glenside::language::*;
 
+    // TODO(gus) Move these rewrites to rewrites.rs
     let rws = vec![
         // TODO(gus) damn it, I still think that usize-halve won't even be enough.
         // TODO(gus) the if statements actually run backwards.
