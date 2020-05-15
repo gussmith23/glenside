@@ -7,9 +7,10 @@ type Environment<'a> = HashMap<&'a str, Value>;
 
 type DataType = f64;
 
+// TODO(gus) not sure this should actually be pub; I'm being lazy
 /// Values are `ndarray::ArrayD` tensors or `usize`s.
 #[derive(Clone, PartialEq, Debug)]
-enum Value {
+pub enum Value {
     Tensor(ndarray::ArrayD<DataType>),
     Usize(usize),
 }
@@ -37,8 +38,9 @@ impl std::ops::Add for Value {
     }
 }
 
+// TODO(gus) not sure this should actually be pub; I'm being lazy
 #[derive(Clone, Debug)]
-enum MemoizedInterpreterResult {
+pub enum MemoizedInterpreterResult {
     InterpretedValue(Value),
     StillInterpreting,
     // When an eclass cannot be interpreted, because all of its enodes
@@ -240,11 +242,23 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                         .axis_iter(ndarray::Axis(0))
                         .map(map_dot_product)
                         .collect::<Vec<ndarray::ArrayD<T>>>();
-                    let to_be_stacked = to_be_stacked
-                        .iter()
-                        .map(|t| t.view())
-                        .collect::<Vec<ndarray::ArrayViewD<T>>>();
-                    ndarray::stack(ndarray::Axis(0), &to_be_stacked[..]).unwrap()
+                    // Not sure if this should ever be the case.
+                    assert!(to_be_stacked.len() > 0);
+                    if to_be_stacked[0].shape().len() == 0 {
+                        use std::iter::FromIterator;
+                        ndarray::ArrayBase::from_iter(to_be_stacked.iter().cloned().map(|t| {
+                            t.into_dimensionality::<ndarray::Ix0>()
+                                .unwrap()
+                                .into_scalar()
+                        }))
+                        .into_dyn()
+                    } else {
+                        let mut to_be_stacked = to_be_stacked
+                            .iter()
+                            .map(|t| t.view())
+                            .collect::<Vec<ndarray::ArrayViewD<T>>>();
+                        ndarray::stack(ndarray::Axis(0), &to_be_stacked[..]).unwrap()
+                    }
                 } else {
                     assert_eq!(t.shape()[0], 2);
 
@@ -322,7 +336,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             // There should be two args, both of which should be lists.
             assert_eq!(enode.children.len(), 2);
-            let left: ndarray::ArrayD<DataType> =
+            let mut left: ndarray::ArrayD<DataType> =
                 match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
@@ -335,7 +349,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                         _ => panic!(),
                     },
                 };
-            let right: ndarray::ArrayD<DataType> =
+            let mut right: ndarray::ArrayD<DataType> =
                 match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
@@ -349,15 +363,34 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                     },
                 };
 
-            assert_eq!(left.shape().last(), right.shape().last());
+            assert!(left.shape().len() > 0);
+            assert!(right.shape().len() > 0);
+            assert_eq!(left.shape().last().unwrap(), right.shape().last().unwrap());
 
-            if left.shape().len() != 2 || right.shape().len() != 2 {
-                todo!("Cartesian product not implemented for anything but 2x2 inputs");
+            if left.shape().len() > 2 || right.shape().len() > 2 {
+                todo!("Cartesian product not implemented for more than 2 dimensions");
             }
 
-            let new_shape = vec![left.shape()[0], right.shape()[0], 2, left.shape()[1]];
+            let new_shape = left
+                .shape()
+                .iter()
+                .take(left.shape().len() - 1)
+                .chain(right.shape().iter().take(right.shape().len() - 1))
+                .chain(&[2, *left.shape().last().unwrap()])
+                .cloned()
+                .collect::<Vec<ndarray::Ix>>();
+
+            //let new_shape = vec![left.shape()[0], right.shape()[0], 2, left.shape()[1]];
 
             // TODO(gus) this whole chain of things is definitely not performant
+            if left.shape().len() == 1 {
+                left = left.insert_axis(ndarray::Axis(0));
+            }
+
+            if right.shape().len() == 1 {
+                right = right.insert_axis(ndarray::Axis(0));
+            }
+
             let left = left.axis_iter(ndarray::Axis(0));
             let right = right.axis_iter(ndarray::Axis(0));
             use itertools::iproduct;
@@ -562,5 +595,101 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             MemoizedInterpreterResult::InterpretedValue(Value::Tensor(new_tensor))
         }
+    }
+}
+pub fn pack_interpreter_input(array: ndarray::ArrayD<DataType>) -> Value {
+    Value::Tensor(array)
+}
+pub fn unpack_interpreter_output(output: MemoizedInterpreterResult) -> ndarray::ArrayD<DataType> {
+    match output {
+        MemoizedInterpreterResult::InterpretedValue(v) => match v {
+            Value::Tensor(t) => t,
+            _ => panic!(),
+        },
+        _ => panic!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn load_npy(path: &str) -> ndarray::ArrayD<DataType> {
+        ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn test_slice() {
+        let slice_test_program_1 = "(slice a 0 1 0 1)".parse().unwrap();
+        let slice_test_program_2 = "(slice a 1 2 0 2)".parse().unwrap();
+        let input = pack_interpreter_input(
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
+        );
+        let mut env = Environment::new();
+        env.insert("a", input);
+        let (egraph, id) = egg::EGraph::<Language, ()>::from_expr(&slice_test_program_1);
+        let out = unpack_interpreter_output(interpret_eclass(
+            &egraph,
+            &egraph[id],
+            &env,
+            &mut MemoizationMap::new(),
+        ));
+        assert_eq!(
+            out,
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 1], vec![1.]).unwrap()
+        );
+        let (egraph, id) = egg::EGraph::<Language, ()>::from_expr(&slice_test_program_2);
+        let out = unpack_interpreter_output(interpret_eclass(
+            &egraph,
+            &egraph[id],
+            &env,
+            &mut MemoizationMap::new(),
+        ));
+        assert_eq!(
+            out,
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 2], vec![3., 4.]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_mlp() {
+        let program = "
+     (map-dot-product
+      (cartesian-product
+       (rows
+        (map-dot-product
+         (cartesian-product
+          (rows
+           (map-dot-product (cartesian-product (rows in)
+                                           (cols w1))))
+          (cols w2)
+         )
+        )
+       )
+       (cols w3)
+      )
+     )
+     "
+        .parse()
+        .unwrap();
+        let in_val = pack_interpreter_input(load_npy("data/in.npy"));
+        let w1_val = pack_interpreter_input(load_npy("data/w1.npy"));
+        let w2_val = pack_interpreter_input(load_npy("data/w2.npy"));
+        let w3_val = pack_interpreter_input(load_npy("data/w3.npy"));
+        let out_true = load_npy("data/out.npy");
+        let mut env = Environment::new();
+        env.insert("in", in_val);
+        env.insert("w1", w1_val);
+        env.insert("w2", w2_val);
+        env.insert("w3", w3_val);
+        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
+        let out = unpack_interpreter_output(out);
+
+        use approx::AbsDiffEq;
+        println!("{:?}", out);
+        println!("{:?}", out_true);
+        assert!(out_true.abs_diff_eq(&out, 1e-8));
     }
 }
