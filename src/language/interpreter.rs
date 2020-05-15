@@ -1,55 +1,17 @@
+use super::*;
+use log::{debug, info};
+use ndarray::s;
+use std::collections::hash_map::HashMap;
+
 type Environment<'a> = HashMap<&'a str, Value>;
 
-// The type system of our program. We support tensors (which support values,
-// as 0-dim tensors) and lists. We could imagine adding other datatypes in
-// the future (e.g. trees).
-// TODO(gus) how to represent user-defined ADTs?
-// StreamValue are the actual value types that can appear in streams.
-#[derive(Clone, PartialEq, Debug)]
-enum ListValue {
-    Scalar(DataType),
-    // TODO(gus) Doing this may open up a huge can of worms. I'm not quite
-    // sure how to design the language though, and this is the easiest way
-    // to get what I want: I want to be able to have Streams of Values.
-    //Value(Value),
-    //CartesianProductElement(ndarray::ArrayD<DataType>, ndarray::ArrayD<DataType>),
-    Value(Value),
-}
+type DataType = f64;
+
+/// Values are `ndarray::ArrayD` tensors or `usize`s.
 #[derive(Clone, PartialEq, Debug)]
 enum Value {
-    List(std::vec::Vec<ListValue>),
-    // Box needed for indirection, otherwise we have recursive structure.
-    Tuple2(Box<ListValue>, Box<ListValue>),
-    ShapedList(ndarray::ArrayD<ListValue>),
-    Function(fn(ListValue) -> ListValue),
-    // TODO(gus) is this a problem? If we have this, we might as well remove
-    // ListValue entirely, right?
-    //Scalar(DataType),
-    // Ok, maybe that later, but we actually need integers:
+    Tensor(ndarray::ArrayD<DataType>),
     Usize(usize),
-}
-
-impl std::default::Default for ListValue {
-    fn default() -> Self {
-        ListValue::Scalar(DataType::default())
-    }
-}
-
-impl std::ops::Add for ListValue {
-    type Output = ListValue;
-
-    fn add(self: ListValue, other: ListValue) -> ListValue {
-        match self {
-            ListValue::Scalar(s) => match other {
-                ListValue::Scalar(s2) => ListValue::Scalar(s + s2),
-                _ => panic!(),
-            },
-            ListValue::Value(v) => match other {
-                ListValue::Value(v2) => ListValue::Value(v + v2),
-                _ => panic!(),
-            },
-        }
-    }
 }
 
 // impl num_traits::identities::Zero for ListValue {
@@ -63,29 +25,14 @@ impl std::ops::Add for Value {
 
     fn add(self: Value, other: Value) -> Value {
         match self {
-            Value::List(v) => match other {
-                Value::List(v2) => Value::List({
-                    assert_eq!(v.len(), v2.len());
-                    v.iter()
-                        .zip(v2.iter())
-                        .map(|(a, b)| a.clone() + b.clone())
-                        .collect()
-                }),
+            Value::Tensor(t1) => match other {
+                Value::Tensor(t2) => Value::Tensor(t1 + t2),
                 _ => panic!(),
             },
-            Value::ShapedList(t) => match other {
-                Value::ShapedList(t2) => Value::ShapedList(t + t2),
+            Value::Usize(u1) => match other {
+                Value::Usize(u2) => Value::Usize(u1 + u2),
                 _ => panic!(),
             },
-            Value::Tuple2(a, b) => match other {
-                Value::Tuple2(a2, b2) => Value::Tuple2(Box::new(*a + *a2), Box::new(*b + *b2)),
-                _ => panic!(),
-            },
-            Value::Usize(u) => match other {
-                Value::Usize(u2) => Value::Usize(u + u2),
-                _ => panic!(),
-            },
-            Value::Function(_) => panic!(),
         }
     }
 }
@@ -101,9 +48,9 @@ enum MemoizedInterpreterResult {
 
 type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
 
-fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
-    egraph: &egg::EGraph<MlpLanguage, M>,
-    eclass: &egg::EClass<MlpLanguage, M>,
+fn interpret_eclass<M: egg::Metadata<Language>>(
+    egraph: &egg::EGraph<Language, M>,
+    eclass: &egg::EClass<Language, M>,
     env: &Environment,
     // TODO(gus) shoot, i think i'm mixing up where to put the "mut". Should
     // probably not be on both.
@@ -129,7 +76,7 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
     let mut results: std::vec::Vec<MemoizedInterpreterResult> = eclass
         .nodes
         .iter()
-        .map(|enode: &egg::ENode<MlpLanguage>| interpret_enode(egraph, enode, env, &mut memo_map))
+        .map(|enode: &egg::ENode<Language>| interpret_enode(egraph, enode, env, &mut memo_map))
         .collect();
     let pre_filtered_length = results.len();
 
@@ -209,9 +156,7 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
         let results: std::vec::Vec<MemoizedInterpreterResult> = eclass
             .nodes
             .iter()
-            .map(|enode: &egg::ENode<MlpLanguage>| {
-                interpret_enode(egraph, enode, env, &mut memo_map)
-            })
+            .map(|enode: &egg::ENode<Language>| interpret_enode(egraph, enode, env, &mut memo_map))
             .collect();
 
         assert!(results.iter().all(|result| match result {
@@ -243,75 +188,83 @@ fn interpret_eclass<M: egg::Metadata<MlpLanguage>>(
 // TODO I'm wondering if the metadata can just act as an interpreter? It
 // kind of serves that purpose already.
 
-fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
-    egraph: &egg::EGraph<MlpLanguage, M>,
-    enode: &egg::ENode<MlpLanguage>,
+fn interpret_enode<M: egg::Metadata<Language>>(
+    egraph: &egg::EGraph<Language, M>,
+    enode: &egg::ENode<Language>,
     env: &Environment,
     memo_map: &mut MemoizationMap,
 ) -> MemoizedInterpreterResult {
+    use language::Language::*;
     debug!("interpreting enode: {:?}", enode);
-    use MlpLanguage::*;
     match &enode.op {
         Symbol(name) => {
             debug!("interpreting symbol");
             MemoizedInterpreterResult::InterpretedValue(env[&name[..]].clone())
         }
-        Dotprod => {
-            // Evaluating Dotprod produces different results based on
-            // whether it gets arguments. Actually, this is true of all
-            // functions. If it doesn't get any arguments, then it should
-            // evaluate to a callable function.
-            match enode.children.len() {
-                0 => {
-                    // Expects a StreamValue::Pair as input.
-                    fn dotprod(pair: ListValue) -> ListValue {
-                        // Unpack the tensors to dot-product.
-                        let (left, right): (
-                            ndarray::ArrayD<ListValue>,
-                            ndarray::ArrayD<ListValue>,
-                        ) = match pair {
-                            ListValue::Value(v) => match v {
-                                Value::Tuple2(left, right) => match (*left, *right) {
-                                    (ListValue::Value(left), ListValue::Value(right)) => {
-                                        match (left, right) {
-                                            (Value::ShapedList(left), Value::ShapedList(right)) => {
-                                                (left, right)
-                                            }
-                                            _ => panic!(),
-                                        }
-                                    }
-                                    _ => panic!(),
-                                },
-                                _ => panic!(),
-                            },
-                            _ => panic!(),
-                        };
+        MapDotProduct => {
+            assert_eq!(enode.children.len(), 1);
 
-                        assert_eq!(left.ndim(), 1);
-                        assert_eq!(right.ndim(), 1);
-
-                        use std::iter::FromIterator;
-                        fn unpack_and_flatten(
-                            t: ndarray::ArrayD<ListValue>,
-                        ) -> ndarray::Array1<DataType> {
-                            ndarray::Array::from_iter(
-                                t.iter()
-                                    .map(|el| match el {
-                                        ListValue::Scalar(s) => s,
-                                        _ => panic!(),
-                                    })
-                                    .cloned(),
-                            )
-                        };
-                        let left = unpack_and_flatten(left);
-                        let right = unpack_and_flatten(right);
-
-                        ListValue::Scalar(left.dot(&right))
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(Value::Function(dotprod))
+            // Get the argument as a tensor.
+            let arg: MemoizedInterpreterResult =
+                interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
+            let arg: Value = match arg {
+                // Return early if we've found a recursive cycle
+                MemoizedInterpreterResult::StillInterpreting => {
+                    return MemoizedInterpreterResult::StillInterpreting
                 }
+                MemoizedInterpreterResult::CanNotInterpret => {
+                    return MemoizedInterpreterResult::CanNotInterpret
+                }
+                MemoizedInterpreterResult::InterpretedValue(v) => v,
+            };
+            let arg: ndarray::ArrayD<DataType> = match arg {
+                Value::Tensor(t) => t,
                 _ => panic!(),
+            };
+
+            // Check that it has the correct shape.
+            // Basically, we're looking for a shape:
+            // [d1, ... , dn, 2, v]
+            // where v is the length of the vectors to be dot-prodded together.
+            // The resulting shape will be
+            // [d1, ... , dn]
+            let initial_shape = arg.shape();
+            assert_eq!(initial_shape[arg.shape().len() - 2], 2);
+
+            fn map_dot_product<T: ndarray::LinalgScalar + Copy>(
+                t: ndarray::ArrayViewD<T>,
+            ) -> ndarray::ArrayD<T> {
+                if t.shape().len() > 2 {
+                    // TODO(gus) Definitely not performant
+                    let to_be_stacked = t
+                        .axis_iter(ndarray::Axis(0))
+                        .map(map_dot_product)
+                        .collect::<Vec<ndarray::ArrayD<T>>>();
+                    let to_be_stacked = to_be_stacked
+                        .iter()
+                        .map(|t| t.view())
+                        .collect::<Vec<ndarray::ArrayViewD<T>>>();
+                    ndarray::stack(ndarray::Axis(0), &to_be_stacked[..]).unwrap()
+                } else {
+                    assert_eq!(t.shape()[0], 2);
+
+                    let v1: ndarray::Array1<T> = t
+                        .index_axis(ndarray::Axis(0), 0)
+                        .to_owned()
+                        .into_dimensionality::<ndarray::Ix1>()
+                        .unwrap();
+                    let v2: ndarray::Array1<T> = t
+                        .index_axis(ndarray::Axis(0), 1)
+                        .to_owned()
+                        .into_dimensionality::<ndarray::Ix1>()
+                        .unwrap();
+                    // TODO(gus) left off here, no idea how to fix the current
+                    // compiler error
+                    ndarray::arr0(v1.dot(&v2)).into_dyn()
+                }
             }
+
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(map_dot_product(arg.view())))
         }
         Rows => {
             // There should be one arg: a single tensor.
@@ -330,42 +283,38 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 }
                 MemoizedInterpreterResult::InterpretedValue(v) => v,
             };
-            let arg_as_tensor: ndarray::ArrayD<ListValue> = match arg_as_tensor {
-                Value::ShapedList(t) => t,
+            let arg_as_tensor: ndarray::ArrayD<DataType> = match arg_as_tensor {
+                Value::Tensor(t) => t,
                 _ => panic!(),
             };
 
-            MemoizedInterpreterResult::InterpretedValue(Value::List(
-                arg_as_tensor
-                    .axis_iter(ndarray::Axis(0))
-                    .map(|view| ListValue::Value(Value::ShapedList(view.to_owned())))
-                    .collect::<std::vec::Vec<ListValue>>(),
-            ))
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(arg_as_tensor))
         }
         Cols => {
             // There should be one arg: a single tensor.
             assert_eq!(enode.children.len(), 1);
-            // Expect that the result of interpreting it is a tensor.
-            let arg_as_tensor: ndarray::ArrayD<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
-                    MemoizedInterpreterResult::StillInterpreting => {
-                        return MemoizedInterpreterResult::StillInterpreting
-                    }
-                    MemoizedInterpreterResult::CanNotInterpret => {
-                        return MemoizedInterpreterResult::CanNotInterpret
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::ShapedList(t) => t,
-                        _ => panic!(),
-                    },
-                };
 
-            MemoizedInterpreterResult::InterpretedValue(Value::List(
-                arg_as_tensor
-                    .axis_iter(ndarray::Axis(1))
-                    .map(|view| ListValue::Value(Value::ShapedList(view.to_owned())))
-                    .collect::<std::vec::Vec<ListValue>>(),
-            ))
+            // Expect that the result of interpreting it is a tensor.
+            // TODO(gus) clean up this syntax.
+            let arg_as_tensor = interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
+            let arg_as_tensor = match arg_as_tensor {
+                // Return early if we've found a recursive cycle
+                MemoizedInterpreterResult::StillInterpreting => {
+                    return MemoizedInterpreterResult::StillInterpreting
+                }
+                MemoizedInterpreterResult::CanNotInterpret => {
+                    return MemoizedInterpreterResult::CanNotInterpret
+                }
+                MemoizedInterpreterResult::InterpretedValue(v) => v,
+            };
+            let arg_as_tensor: ndarray::ArrayD<DataType> = match arg_as_tensor {
+                Value::Tensor(t) => t,
+                _ => panic!(),
+            };
+
+            let transpose = arg_as_tensor.t().to_owned();
+
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(transpose))
         }
         CartesianProduct => {
             // Semantics of cartesian product:
@@ -373,7 +322,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
 
             // There should be two args, both of which should be lists.
             assert_eq!(enode.children.len(), 2);
-            let left: std::vec::Vec<ListValue> =
+            let left: ndarray::ArrayD<DataType> =
                 match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
@@ -382,11 +331,11 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                         return MemoizedInterpreterResult::CanNotInterpret
                     }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::List(l) => l,
+                        Value::Tensor(t) => t,
                         _ => panic!(),
                     },
                 };
-            let right: std::vec::Vec<ListValue> =
+            let right: ndarray::ArrayD<DataType> =
                 match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
                     MemoizedInterpreterResult::StillInterpreting => {
                         return MemoizedInterpreterResult::StillInterpreting
@@ -395,84 +344,45 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                         return MemoizedInterpreterResult::CanNotInterpret
                     }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::List(l) => l,
+                        Value::Tensor(t) => t,
                         _ => panic!(),
                     },
                 };
 
-            // TODO(gus) figuring out exactly what should be the output of
-            // CartesianProduct. It's a headache. I see three options:
-            // 1. A 1-d List of pairs (Lists) of Tensors.
-            // 2. A 2-d List of pairs (Lists) of Tensors.
-            // 3. A Tensor whose elements are pairs (Lists) of Tensors.
-            // I have a lot of notes on my thinking. Going to go with some
-            // variant of 3.
-            // Scratch that. That would require adding another tensor type
-            // to our list of types. Don't want to do that for some reason.
-            // Going with option 1 now.
-            // For what it's worth, I'm back on doing 3.
+            assert_eq!(left.shape().last(), right.shape().last());
 
-            let new_shape = vec![left.len(), right.len()];
+            if left.shape().len() != 2 || right.shape().len() != 2 {
+                todo!("Cartesian product not implemented for anything but 2x2 inputs");
+            }
 
+            let new_shape = vec![left.shape()[0], right.shape()[0], 2, left.shape()[1]];
+
+            // TODO(gus) this whole chain of things is definitely not performant
+            let left = left.axis_iter(ndarray::Axis(0));
+            let right = right.axis_iter(ndarray::Axis(0));
             use itertools::iproduct;
-            let product_vector: std::vec::Vec<ListValue> = iproduct!(left, right)
-                .map(|tuple| {
-                    ListValue::Value(Value::Tuple2(
-                        Box::<_>::new(tuple.0),
-                        Box::<_>::new(tuple.1),
-                    ))
-                })
-                .collect();
+            let to_be_reshaped = iproduct!(left, right);
+            let to_be_reshaped = to_be_reshaped.map(|tuple| {
+                ndarray::stack(ndarray::Axis(0), &[tuple.0.view(), tuple.1.view()]).unwrap()
+            });
+            let vec = to_be_reshaped.collect::<Vec<ndarray::ArrayD<DataType>>>();
+            let vec = vec
+                .iter()
+                .map(|t| t.view())
+                .collect::<Vec<ndarray::ArrayViewD<DataType>>>();
 
-            let reshaped_into_tensor: ndarray::ArrayD<ListValue> =
-                ndarray::ArrayD::<ListValue>::from_shape_vec(new_shape, product_vector).unwrap();
+            let to_be_reshaped: ndarray::ArrayD<DataType> =
+                ndarray::stack(ndarray::Axis(0), &vec[..]).unwrap();
 
-            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(reshaped_into_tensor))
-        }
-        ShapedMap => {
-            assert_eq!(enode.children.len(), 2);
-
-            // The first child of map is a function, passed as an argument.
-            // For example, a dot-product node with no children. In the
-            // future we may support other things that will evaluate to
-            // functions.
-            // The node should evaluate to a function value in our
-            // interpreter.
-            let function: fn(ListValue) -> ListValue =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
-                    MemoizedInterpreterResult::StillInterpreting => {
-                        return MemoizedInterpreterResult::StillInterpreting
-                    }
-                    MemoizedInterpreterResult::CanNotInterpret => {
-                        return MemoizedInterpreterResult::CanNotInterpret
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::Function(f) => f,
-                        _ => panic!(),
-                    },
-                };
-
-            let input_shaped_list: ndarray::ArrayD<ListValue> =
-                match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
-                    MemoizedInterpreterResult::StillInterpreting => {
-                        return MemoizedInterpreterResult::StillInterpreting
-                    }
-                    MemoizedInterpreterResult::CanNotInterpret => {
-                        return MemoizedInterpreterResult::CanNotInterpret
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::ShapedList(t) => t,
-                        _ => panic!(),
-                    },
-                };
-
-            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(
-                ndarray::ArrayD::<ListValue>::from_shape_vec(
-                    input_shaped_list.shape(),
-                    input_shaped_list.iter().cloned().map(function).collect(),
+            // TODO(gus) probably unnecessary cloning happening here.
+            let reshaped_into_tensor: ndarray::ArrayD<DataType> =
+                ndarray::ArrayD::<DataType>::from_shape_vec(
+                    new_shape,
+                    to_be_reshaped.iter().cloned().collect::<Vec<DataType>>(),
                 )
-                .unwrap(),
-            ))
+                .unwrap();
+
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(reshaped_into_tensor))
         }
         Slice => {
             // TODO(gus) this is true for our minimal working example, not
@@ -488,7 +398,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                         return MemoizedInterpreterResult::CanNotInterpret
                     }
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::ShapedList(t) => t,
+                        Value::Tensor(t) => t,
                         _ => panic!(),
                     },
                 };
@@ -524,7 +434,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
             // A  consistent problem I was having with this library
             // was with converting to dynamic-dimension tensors.
             // Found out I can use into_dyn().
-            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(
                 tensor
                     .slice_move(s![
                         row_slice_start..row_slice_end,
@@ -541,7 +451,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 .map(
                     |eclass| match interpret_eclass(egraph, &egraph[*eclass], env, memo_map) {
                         MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                            Value::ShapedList(t) => t,
+                            Value::Tensor(t) => t,
                             _ => panic!(),
                         },
                         // TODO(gus) this panic is me just being lazy.
@@ -552,10 +462,11 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
 
             assert!(tensors.len() > 0);
 
-            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(tensors.iter().fold(
-                ndarray::Array::from_elem(tensors[0].shape(), ListValue::Scalar(DataType::zero())),
-                |acc, t| acc + t,
-            )))
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(
+                tensors
+                    .iter()
+                    .fold(ndarray::Array::zeros(tensors[0].shape()), |acc, t| acc + t),
+            ))
         }
         BsgSystolicArray => panic!(),
         Concat => {
@@ -588,7 +499,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
                 .drain(..)
                 .map(|result| match result {
                     MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::ShapedList(t) => t,
+                        Value::Tensor(t) => t,
                         _ => panic!(),
                     },
                     _ => panic!(),
@@ -615,6 +526,8 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
 
             // Have to stack manually, because ndarray::stack doesn't actually
             // support tensors holding values that don't implement Copy! :(
+            // TODO(gus) given that i changed to a simpler value system, I can
+            // actually go back to stacking with their code.
 
             let shapes: std::vec::Vec<&[usize]> = tensors.iter().map(|t| t.shape()).collect();
             // All have equal number of dimensions
@@ -671,44 +584,7 @@ fn interpret_enode<M: egg::Metadata<MlpLanguage>>(
 
             assert_eq!(current_start_index, new_shape[concat_axis]);
 
-            MemoizedInterpreterResult::InterpretedValue(Value::ShapedList(new_tensor))
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(new_tensor))
         }
     }
 }
-
-// TODO(gus) is this possible? what is this called?
-// FWIW, this isn't possible as-is, as rust complains of a cycle.
-//type Shape = Vec<Either<i64, Shape>>;
-// Only one level deep, will add more as needed. Need to figure out how to
-// achieve this in general.
-type Shape = Vec<Either<i64, Vec<Either<i64, Vec<i64>>>>>;
-
-/// Given a function in MLPLanguage (i.e. dotprod) and an input shape,
-/// what's the output shape?
-fn infer_shape(
-    node: &MlpLanguage,
-    inner_shape: &Vec<Either<i64, Vec<i64>>>,
-) -> Either<i64, Vec<Either<i64, Vec<i64>>>> {
-    use MlpLanguage::*;
-    match node {
-        Dotprod => {
-            // TODO(gus) a BIG assumption that's making our lives easier
-            // right now and probably hurting us in the long run is that
-            // dotprod doesn't take two arguments, but it takes one argument
-            // which is a pair of vectors in a "tuple".
-            //println!("dotprod input shape: {:?}", inner_shape);
-            // Check for tuple of size 2
-            assert_eq!(inner_shape.len(), 2);
-            assert_eq!(*inner_shape[0].as_ref().left().unwrap(), 2);
-            let right: &Vec<_> = inner_shape[1].as_ref().right().unwrap();
-            assert_eq!(right.len(), 1);
-            Left(1)
-        }
-        _ => {
-            //println!("Unrecognized node type: {:?}", node);
-            panic!()
-        }
-    }
-}
-
-type DataType = f64;
