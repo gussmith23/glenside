@@ -244,6 +244,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                     let to_be_stacked = t
                         .axis_iter(ndarray::Axis(0))
                         .map(map_dot_product)
+                        .map(|t| t.insert_axis(ndarray::Axis(0)))
                         .collect::<Vec<ndarray::ArrayD<T>>>();
                     // Not sure if this should ever be the case.
                     assert!(to_be_stacked.len() > 0);
@@ -653,6 +654,39 @@ mod tests {
             out,
             ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 2], vec![3., 4.]).unwrap()
         );
+    }
+
+    #[test]
+    fn test_single_matrix_multiply() {
+        let program = "
+         (map-dot-product
+          (cartesian-product
+           (rows single-matrix-multiply-input-a)
+           (cols single-matrix-multiply-input-b)
+          )
+         )
+         "
+        .parse()
+        .unwrap();
+        let a_val = pack_interpreter_input(load_npy(
+            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_input_a.npy").as_str(),
+        ));
+        let b_val = pack_interpreter_input(load_npy(
+            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_input_b.npy").as_str(),
+        ));
+        let out_true =
+            load_npy(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_output.npy").as_str());
+        let mut env = Environment::new();
+        env.insert("single-matrix-multiply-input-a", a_val);
+        env.insert("single-matrix-multiply-input-b", b_val);
+        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
+        let out = unpack_interpreter_output(out);
+
+        use approx::AbsDiffEq;
+        println!("{:?}", out);
+        println!("{:?}", out_true);
+        assert!(out_true.abs_diff_eq(&out, 1e-8));
     }
 
     #[test]
