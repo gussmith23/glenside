@@ -244,13 +244,13 @@ impl egg::Applier<Language, Meta> for SplitApplier {
 #[cfg(test)]
 mod tests {
 
-    #[test]
-    fn test_split_concat() {
-        todo!();
-    }
+    // #[test]
+    // fn test_split_concat() {
+    //     todo!();
+    // }
 
-    #[test]
-    fn test_split() {
-        todo!();
-    }
+    // #[test]
+    // fn test_split() {
+    //     todo!();
+    // }
 }
