@@ -24,14 +24,10 @@ fn test_32_32_matmul_16_16_systolic_array() {
     .unwrap();
 
     let (egraph, _) = egg::EGraph::<Language, Meta>::from_expr(&program);
-    egraph
-        .dot()
-        .to_svg("single-matrix-multiply-before-rewrites.svg")
-        .unwrap();
     let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
-    runner
-        .egraph
-        .dot()
-        .to_svg("single-matrix-multiply-after-rewrites.svg")
-        .unwrap();
+    println!(
+        "Stopped after {} iterations, reason: {:?}",
+        runner.iterations.len(),
+        runner.stop_reason
+    );
 }
