@@ -669,13 +669,29 @@ mod tests {
         .parse()
         .unwrap();
         let a_val = pack_interpreter_input(load_npy(
-            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_input_a.npy").as_str(),
+            format!(
+                "{}/{}",
+                env!("CARGO_MANIFEST_DIR"),
+                "data/single_matrix_multiply_input_a.npy"
+            )
+            .as_str(),
         ));
         let b_val = pack_interpreter_input(load_npy(
-            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_input_b.npy").as_str(),
+            format!(
+                "{}/{}",
+                env!("CARGO_MANIFEST_DIR"),
+                "data/single_matrix_multiply_input_b.npy"
+            )
+            .as_str(),
         ));
-        let out_true =
-            load_npy(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/single_matrix_multiply_output.npy").as_str());
+        let out_true = load_npy(
+            format!(
+                "{}/{}",
+                env!("CARGO_MANIFEST_DIR"),
+                "data/single_matrix_multiply_output.npy"
+            )
+            .as_str(),
+        );
         let mut env = Environment::new();
         env.insert("single-matrix-multiply-input-a", a_val);
         env.insert("single-matrix-multiply-input-b", b_val);
