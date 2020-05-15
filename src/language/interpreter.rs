@@ -676,11 +676,20 @@ mod tests {
      "
         .parse()
         .unwrap();
-        let in_val = pack_interpreter_input(load_npy("data/in.npy"));
-        let w1_val = pack_interpreter_input(load_npy("data/w1.npy"));
-        let w2_val = pack_interpreter_input(load_npy("data/w2.npy"));
-        let w3_val = pack_interpreter_input(load_npy("data/w3.npy"));
-        let out_true = load_npy("data/out.npy");
+        let in_val = pack_interpreter_input(load_npy(
+            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/in.npy").as_str(),
+        ));
+        let w1_val = pack_interpreter_input(load_npy(
+            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/w1.npy").as_str(),
+        ));
+        let w2_val = pack_interpreter_input(load_npy(
+            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/w2.npy").as_str(),
+        ));
+        let w3_val = pack_interpreter_input(load_npy(
+            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/w3.npy").as_str(),
+        ));
+        let out_true =
+            load_npy(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/out.npy").as_str());
         let mut env = Environment::new();
         env.insert("in", in_val);
         env.insert("w1", w1_val);
