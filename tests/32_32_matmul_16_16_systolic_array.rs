@@ -34,13 +34,4 @@ fn test_32_32_matmul_16_16_systolic_array() {
         .dot()
         .to_svg("single-matrix-multiply-after-rewrites.svg")
         .unwrap();
-
-    // let out = interpret_eclass(
-    //     &runner.egraph,
-    //     &runner.egraph[id],
-    //     &env,
-    //     &mut MemoizationMap::new(),
-    // );
-    // let out = unpack_interpreter_output(out);
-    // assert!(out_true.abs_diff_eq(&out, 1e-8));
 }
