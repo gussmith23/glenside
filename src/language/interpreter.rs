@@ -3,7 +3,8 @@ use log::{debug, info};
 use ndarray::s;
 use std::collections::hash_map::HashMap;
 
-type Environment<'a> = HashMap<&'a str, Value>;
+// TODO(gus) hide this interface later
+pub type Environment<'a> = HashMap<&'a str, Value>;
 
 type DataType = f64;
 
@@ -48,9 +49,11 @@ pub enum MemoizedInterpreterResult {
     CanNotInterpret,
 }
 
-type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
+// TODO(gus) hide this interface later
+pub type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
 
-fn interpret_eclass<M: egg::Metadata<Language>>(
+// TODO(gus) design better interface later
+pub fn interpret_eclass<M: egg::Metadata<Language>>(
     egraph: &egg::EGraph<Language, M>,
     eclass: &egg::EClass<Language, M>,
     env: &Environment,
@@ -253,7 +256,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                         }))
                         .into_dyn()
                     } else {
-                        let mut to_be_stacked = to_be_stacked
+                        let to_be_stacked = to_be_stacked
                             .iter()
                             .map(|t| t.view())
                             .collect::<Vec<ndarray::ArrayViewD<T>>>();

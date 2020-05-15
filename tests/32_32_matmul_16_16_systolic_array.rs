@@ -1,5 +1,3 @@
-use egg::rewrite;
-
 #[test]
 fn test_32_32_matmul_16_16_systolic_array() {
     use glenside::language::rewrites::*;
@@ -74,7 +72,7 @@ fn test_32_32_matmul_16_16_systolic_array() {
     .parse()
     .unwrap();
 
-    let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+    let (egraph, _) = egg::EGraph::<Language, Meta>::from_expr(&program);
     egraph
         .dot()
         .to_svg("single-matrix-multiply-before-rewrites.svg")
