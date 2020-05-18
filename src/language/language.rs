@@ -64,7 +64,7 @@ impl egg::Metadata<Language> for Meta {
                 assert!(initial_shape_left.as_array_view().len() >= 1);
                 assert!(initial_shape_left.as_array_view().len() <= 2);
                 let initial_shape_right: &ndarray::IxDyn =
-                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+                    &egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
                 assert!(initial_shape_left.as_array_view().len() >= 1);
                 assert!(initial_shape_left.as_array_view().len() <= 2);
                 assert_eq!(
