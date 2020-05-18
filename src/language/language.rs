@@ -259,6 +259,8 @@ impl egg::Metadata<Language> for Meta {
                             // allow for this.
                             "single-matrix-multiply-input-a" => vec![32, 32],
                             "single-matrix-multiply-input-b" => vec![32, 32],
+                            "v-32" => vec![32],
+                            "t-32-32" => vec![32, 32],
                             _ => panic!("No shape defined for {}", name),
                         })[..],
                     )),
@@ -285,5 +287,34 @@ mod tests {
          "
         .parse::<egg::RecExpr<Language>>()
         .unwrap();
+    }
+
+    #[test]
+    fn test_cartesian_product_shape() {
+        let program = "(cartesian-product
+          v-32
+          (cols t-32-32)
+         )
+         "
+        .parse()
+        .unwrap();
+        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        assert_eq!(
+            egraph[id].metadata.shape.as_ref().unwrap(),
+            &ndarray::IxDyn(&[32, 2, 32])
+        );
+
+        let program = "(cartesian-product
+          (rows t-32-32)
+          v-32
+         )
+         "
+            .parse()
+            .unwrap();
+        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        assert_eq!(
+            egraph[id].metadata.shape.as_ref().unwrap(),
+            &ndarray::IxDyn(&[32, 2, 32])
+        );
     }
 }
