@@ -55,15 +55,18 @@ impl egg::Metadata<Language> for Meta {
                 // So I think our only requirement is that the last dimension
                 // is the same size. And then the resulting size is
                 // [a1, ... an, b1, ..., bn, 2, c].
-                // Right now i'm just implementing it for input arrays with 2
-                // dimensions, though.
+                // Originally I implemented it for input arrays with 2
+                // dimensions. Going to try to allow for 1 dimension in both
+                // tensors. Can generalize further later.
                 assert_eq!(enode.children.len(), 2);
                 let initial_shape_left: &ndarray::IxDyn =
                     &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                assert_eq!(initial_shape_left.as_array_view().len(), 2);
+                assert!(initial_shape_left.as_array_view().len() >= 1);
+                assert!(initial_shape_left.as_array_view().len() <= 2);
                 let initial_shape_right: &ndarray::IxDyn =
                     &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                assert_eq!(initial_shape_right.as_array_view().len(), 2);
+                assert!(initial_shape_left.as_array_view().len() >= 1);
+                assert!(initial_shape_left.as_array_view().len() <= 2);
                 assert_eq!(
                     initial_shape_left[initial_shape_left.as_array_view().len() - 1],
                     initial_shape_right[initial_shape_right.as_array_view().len() - 1],
