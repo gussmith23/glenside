@@ -309,8 +309,8 @@ mod tests {
           v-32
          )
          "
-            .parse()
-            .unwrap();
+        .parse()
+        .unwrap();
         let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
         assert_eq!(
             egraph[id].metadata.shape.as_ref().unwrap(),
