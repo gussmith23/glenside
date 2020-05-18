@@ -244,12 +244,16 @@ impl egg::Metadata<Language> for Meta {
                             "w1" => vec![784, 512],
                             "w2" => vec![512, 512],
                             "w3" => vec![512, 10],
-                            // TODO(gus) have to figure out a way around this. Max
-                            // seems to think the tensors should just go into the
-                            // egraph. I was hoping to have some kind of environment
-                            // that we could wrap the egraph in (would have to be
-                            // accessible from here), but Max doesn't have that nor
-                            // does he plan to implement it.
+                            // TODO(gus) have to figure out a way around this.
+                            // Max seems to think the tensors should just go
+                            // into the egraph. I was hoping to have some kind
+                            // of environment that we could wrap the egraph in
+                            // (would have to be accessible from here), but Max
+                            // doesn't have that nor does he plan to implement
+                            // it.
+                            //
+                            // Update, Max is implementing something that will
+                            // allow for this.
                             "single-matrix-multiply-input-a" => vec![32, 32],
                             "single-matrix-multiply-input-b" => vec![32, 32],
                             _ => panic!("No shape defined for {}", name),
