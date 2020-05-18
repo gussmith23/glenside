@@ -69,7 +69,7 @@ impl egg::Metadata<Language> for Meta {
                     initial_shape_right[initial_shape_right.as_array_view().len() - 1],
                 );
 
-                // New shape is [a1, ..., an, b1, ..., bn, c].
+                // New shape is [a1, ..., an, b1, ..., bn, 2, c].
                 let mut new_shape: Vec<usize> = initial_shape_left
                     .as_array_view()
                     .iter()
