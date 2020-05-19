@@ -285,6 +285,82 @@ pub fn bubble_concat_through_cols_axis_0() -> Rewrite<Language, Meta> {
     egg::rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b 0))"
                       => "(concat (cols ?a) (cols ?b) 1)")
 }
+
+/// Whether an axis is the last axis of a given tensor
+fn last_axis(
+    var: &'static str,
+    axis: &'static str,
+) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+    let var = var.parse().unwrap();
+    let axis_id = axis.parse().unwrap();
+    move |egraph, _, subst| {
+        egraph[subst[&var]]
+            .metadata
+            .shape
+            .as_ref()
+            .unwrap()
+            .as_array_view()
+            .len()
+            - 1
+            == egraph[subst[&axis_id]].metadata.usize_value.unwrap()
+    }
+}
+fn not_last_axis(
+    var: &'static str,
+    axis: &'static str,
+) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+    move |egraph, id, subst| !(last_axis(var, axis)(egraph, id, subst))
+}
+fn same_number_of_dimensions(
+    a: &'static str,
+    b: &'static str,
+) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+    let a = a.parse().unwrap();
+    let b = b.parse().unwrap();
+    move |egraph, _, subst| {
+        egraph[subst[&a]]
+            .metadata
+            .shape
+            .as_ref()
+            .unwrap()
+            .as_array_view()
+            .len()
+            == egraph[subst[&b]]
+                .metadata
+                .shape
+                .as_ref()
+                .unwrap()
+                .as_array_view()
+                .len()
+    }
+}
+
+// TODO(gus) naming
+pub fn bubble_concat_through_cartesian_product_not_last_axis_left() -> Rewrite<Language, Meta> {
+    egg::rewrite!("bubble-concat-through-cartesian-product-not-last-axis-left";
+                  "(cartesian-product (concat ?t1 ?t2 ?axis) ?right)" =>
+                  "(concat
+                    (cartesian-product ?t1 ?right)
+                    (cartesian-product ?t2 ?right)
+                    ?axis)"
+                  if not_last_axis("?t1", "?axis")
+                  // This should always be true, for now. Just making extra sure
+                  if same_number_of_dimensions("?t1", "?t2"))
+}
+
+// TODO(gus) naming
+pub fn bubble_concat_through_cartesian_product_not_last_axis_right() -> Rewrite<Language, Meta> {
+    egg::rewrite!("bubble-concat-through-cartesian-product-not-last-axis-right";
+                  "(cartesian-product ?left (concat ?t1 ?t2 ?axis))" =>
+                  "(concat
+                    (cartesian-product ?left ?t1)
+                    (cartesian-product ?left ?t2)
+                    ?axis)"
+                  if not_last_axis("?t1", "?axis")
+                  // This should always be true, for now. Just making extra sure
+                  if same_number_of_dimensions("?t1", "?t2"))
+}
+
 pub fn bubble_concat_through_cartesian_product_axis_0_0() -> Rewrite<Language, Meta> {
     // TODO(gus) this isn't the only way this could be done.
     // Also there's gotta be a name for this in terms of algebraic rules
