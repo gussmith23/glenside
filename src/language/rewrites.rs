@@ -87,6 +87,15 @@ pub fn is_symbol(
             .all(|x| x)
     }
 }
+fn has_axis(
+    var: &'static str,
+    axis: usize,
+) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+    let var = var.parse().unwrap();
+    move |egraph, _, subst| {
+        axis < egraph[subst[&var]].metadata.shape.as_ref().unwrap().as_array_view().len()
+    }
+}
 fn dimension_greater_than(
     var: &'static str,
     axis: usize,
@@ -251,6 +260,7 @@ pub fn split(axis: usize, dimension_greater_than: usize) -> Rewrite<Language, Me
                   {SplitApplier{axis: axis}}
                   if self::dimension_greater_than("?a", axis, dimension_greater_than)
                   if dimension_is_even("?a", axis)
+                  if has_axis("?a", axis)
                   if has_shape("?a"))
 }
 
