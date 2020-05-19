@@ -93,7 +93,13 @@ fn has_axis(
 ) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| {
-        axis < egraph[subst[&var]].metadata.shape.as_ref().unwrap().as_array_view().len()
+        axis < egraph[subst[&var]]
+            .metadata
+            .shape
+            .as_ref()
+            .unwrap()
+            .as_array_view()
+            .len()
     }
 }
 fn dimension_greater_than(
