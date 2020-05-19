@@ -702,7 +702,7 @@ mod tests {
         use approx::AbsDiffEq;
         println!("{:?}", out);
         println!("{:?}", out_true);
-        assert!(out_true.abs_diff_eq(&out, 1e-8));
+        assert!(out_true.abs_diff_eq(&out, 1e-10));
     }
 
     #[test]
