@@ -598,7 +598,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             assert_eq!(current_start_index, new_shape[concat_axis]);
 
             MemoizedInterpreterResult::InterpretedValue(Value::Tensor(new_tensor))
-        },
+        }
         ElementwiseAdd => {
             // TODO(gus) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
@@ -607,7 +607,8 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             println!("Interpreting: {:?}", enode);
             // TODO(gus) it seems like there's a loop.
             // concat a has concat b as a child. concat b has concat a as a child.
-            let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode.children
+            let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode
+                .children
                 .iter()
                 .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
                 .collect();
@@ -801,7 +802,8 @@ mod tests {
             ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
         );
         let b = pack_interpreter_input(
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![6.5, 2.2, -3., 4.]).unwrap(),
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![6.5, 2.2, -3., 4.])
+                .unwrap(),
         );
         let mut env = Environment::new();
         env.insert("a", a);
@@ -815,7 +817,8 @@ mod tests {
         ));
         assert_eq!(
             out,
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![7.5, 4.2, 0., 8.]).unwrap()
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![7.5, 4.2, 0., 8.])
+                .unwrap()
         );
     }
 }
