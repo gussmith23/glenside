@@ -507,18 +507,20 @@ pub fn rewrite_nonmatching_cartesian_product_concat() -> Rewrite<Language, Meta>
 }
 
 pub fn bubble_concat_through_map_dot_product_not_last_axis() -> Rewrite<Language, Meta> {
-        egg::rewrite!(
-            "bubble-concat-through-map-dot-product-not-last-axis";
-            "(map-dot-product
-              (concat ?left ?right ?axis)
-             )" =>
-            "(concat
-              (map-dot-product ?left)
-              (map-dot-product ?right)
-             ?axis)"
-             if not_last_axis("?left", "?axis")
-             // This should always be true, for now. Just making extra sure
-             if same_number_of_dimensions("?left", "?right"))
+    egg::rewrite!(
+
+        "bubble-concat-through-map-dot-product-not-last-axis";
+        "(map-dot-product
+          (concat ?left ?right ?axis)
+         )" =>
+        "(concat
+          (map-dot-product ?left)
+          (map-dot-product ?right)
+         ?axis)"
+            if not_last_axis("?left", "?axis")
+            // This should always be true, for now. Just making extra sure
+            if same_number_of_dimensions("?left", "?right")
+    )
 }
 
 #[cfg(test)]
