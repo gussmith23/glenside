@@ -1,5 +1,5 @@
 use super::{Language, Meta};
-use egg::Rewrite;
+use egg::{Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
 // TODO(gus) I think I should make this a conditional applier, and fold in
@@ -348,17 +348,129 @@ pub fn bubble_concat_through_cartesian_product_not_last_axis_left() -> Rewrite<L
                   if same_number_of_dimensions("?t1", "?t2"))
 }
 
+struct BubbleConcatThroughCartesianProductNotLastAxisRightApplier {
+    left: Var,
+    axis: Var,
+}
+impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductNotLastAxisRightApplier {
+    fn apply_one(
+        &self,
+        egraph: &mut EGraph<Language, Meta>,
+        matched_id: Id,
+        subst: &Subst,
+    ) -> Vec<Id> {
+        // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
+        // = [a1, ..., an, b1, ..., bm, 2, c]
+        // So the axis gets shifted over by the a1, ..., an added in.
+        let left_shape = egraph[subst[&self.left]].metadata.shape.as_ref().unwrap();
+        let left_shape_length: usize = left_shape.as_array_view().len();
+        let old_axis: usize = egraph[subst[&self.axis]].metadata.usize_value.unwrap();
+        let new_axis = old_axis + left_shape_length - 1;
+
+        let applier: Pattern<Language> = format!(
+            "(concat
+                    (cartesian-product ?left ?t1)
+                    (cartesian-product ?left ?t2)
+                    {})",
+            new_axis
+        )
+        .parse()
+        .unwrap();
+
+        applier.apply_one(egraph, matched_id, subst)
+    }
+}
+
 // TODO(gus) naming
 pub fn bubble_concat_through_cartesian_product_not_last_axis_right() -> Rewrite<Language, Meta> {
     egg::rewrite!("bubble-concat-through-cartesian-product-not-last-axis-right";
-                  "(cartesian-product ?left (concat ?t1 ?t2 ?axis))" =>
-                  "(concat
-                    (cartesian-product ?left ?t1)
-                    (cartesian-product ?left ?t2)
-                    ?axis)"
-                  if not_last_axis("?t1", "?axis")
-                  // This should always be true, for now. Just making extra sure
-                  if same_number_of_dimensions("?t1", "?t2"))
+    "(cartesian-product ?left (concat ?t1 ?t2 ?axis))" =>
+    {
+        ConditionalApplier {
+            applier: ConditionalApplier {
+                applier:
+                BubbleConcatThroughCartesianProductNotLastAxisRightApplier {
+                    left: "?left".parse().unwrap(),
+                    axis: "?axis".parse().unwrap(),
+                },
+                condition: not_last_axis("?t1", "?axis")
+            },
+            condition: same_number_of_dimensions("?t1", "?t2")
+        }
+    })
+}
+
+struct BubbleConcatThroughCartesianProductLastAxisApplier {
+    // Note that we're assuming a1's shape is the same as a2; same with b1 and
+    // b2.
+    a1: Var,
+    b1: Var,
+}
+impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductLastAxisApplier {
+    fn apply_one(
+        &self,
+        egraph: &mut EGraph<Language, Meta>,
+        matched_id: Id,
+        subst: &Subst,
+    ) -> Vec<Id> {
+        // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
+        // = [a1, ..., an, b1, ..., bm, 2, c]
+        // axis1 and axis2 both point to their c dimension.
+        let a_shape = egraph[subst[&self.a1]].metadata.shape.as_ref().unwrap();
+        let a_shape_length: usize = a_shape.as_array_view().len();
+        let b_shape = egraph[subst[&self.b1]].metadata.shape.as_ref().unwrap();
+        let b_shape_length: usize = b_shape.as_array_view().len();
+        let new_axis = a_shape_length - 1 // skip [a1, ..., an]
+            + b_shape_length - 1          // skip [b1, ..., bm]
+            + 1; // skip [2]
+
+        // TODO
+        let applier: Pattern<Language> = format!(
+            "(concat
+              (concat
+               (cartesian-product ?a1 ?b1)
+               (cartesian-product ?a1 ?b2)
+               {0})
+              (concat
+               (cartesian-product ?a2 ?b1)
+               (cartesian-product ?a2 ?b2)
+               {0})
+             {0})",
+            new_axis
+        )
+        .parse()
+        .unwrap();
+
+        applier.apply_one(egraph, matched_id, subst)
+    }
+}
+
+// TODO(gus) naming
+pub fn bubble_concat_through_cartesian_product_last_axis() -> Rewrite<Language, Meta> {
+    // TODO(gus) I think we need more checks here, to make sure that the sizes
+    // actually line up correctly.
+    egg::rewrite!("bubble-concat-through-cartesian-product-last-axis";
+    "(cartesian-product (concat ?a1 ?a2 ?axis1) (concat ?b1 ?b2 ?axis2))" =>
+
+    {
+        ConditionalApplier {
+            condition: same_number_of_dimensions("?a1", "?a2"),
+            applier: ConditionalApplier {
+                condition: last_axis("?a1", "?axis1"),
+                applier:                       ConditionalApplier {
+                    condition: same_number_of_dimensions("?b1", "?b2"),
+                    applier: ConditionalApplier {
+                        condition: last_axis("?b1", "?axis2"),
+                        applier: BubbleConcatThroughCartesianProductLastAxisApplier {
+                            a1: "?a1".parse().unwrap(),
+                            b1: "?b1".parse().unwrap(),
+                        }
+                    }
+                }
+
+            }
+        }
+    })
 }
 
 pub fn bubble_concat_through_cartesian_product_axis_0_0() -> Rewrite<Language, Meta> {
