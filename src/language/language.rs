@@ -19,6 +19,7 @@ egg::define_language! {
         Slice = "slice",
         Concat = "concat",
         // TODO(gus) this will probably need to be signed at some point?
+        ElementwiseAdd = "elementwise-add",
         Usize(usize),
         Symbol(String),
     }
@@ -231,6 +232,18 @@ impl egg::Metadata<Language> for Meta {
 
                 Meta {
                     shape: Some(new_shape),
+                    usize_value: None,
+                }
+            }
+            ElementwiseAdd => {
+                assert!(enode.children.len() == 2);
+                assert_eq!(
+                    egraph[enode.children[0]].metadata.shape.as_ref().unwrap(),
+                    egraph[enode.children[1]].metadata.shape.as_ref().unwrap()
+                );
+
+                Meta {
+                    shape: egraph[enode.children[0]].metadata.shape.clone(),
                     usize_value: None,
                 }
             }

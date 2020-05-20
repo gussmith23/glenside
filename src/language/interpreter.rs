@@ -598,6 +598,45 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             assert_eq!(current_start_index, new_shape[concat_axis]);
 
             MemoizedInterpreterResult::InterpretedValue(Value::Tensor(new_tensor))
+        },
+        ElementwiseAdd => {
+            // TODO(gus) this is true for our minimal working example, not
+            // expected to be true in the future, definitely not.
+            assert!(enode.children.len() == 2);
+
+            println!("Interpreting: {:?}", enode);
+            // TODO(gus) it seems like there's a loop.
+            // concat a has concat b as a child. concat b has concat a as a child.
+            let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode.children
+                .iter()
+                .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
+                .collect();
+            // TODO(gus) the order of this and the next if block matters!
+            if tensors.iter().any(|t| match t {
+                MemoizedInterpreterResult::CanNotInterpret => true,
+                _ => false,
+            }) {
+                return MemoizedInterpreterResult::CanNotInterpret;
+            }
+            if tensors.iter().any(|t| match t {
+                MemoizedInterpreterResult::StillInterpreting => true,
+                _ => false,
+            }) {
+                return MemoizedInterpreterResult::StillInterpreting;
+            }
+            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = tensors
+                .drain(..)
+                .map(|result| match result {
+                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
+                        Value::Tensor(t) => t,
+                        _ => panic!(),
+                    },
+                    _ => panic!(),
+                })
+                .collect();
+
+            assert_eq!(tensors[0].shape(), tensors[1].shape());
+            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(&tensors[0] + &tensors[1]))
         }
     }
 }
@@ -753,5 +792,30 @@ mod tests {
         println!("{:?}", out);
         println!("{:?}", out_true);
         assert!(out_true.abs_diff_eq(&out, 1e-8));
+    }
+
+    #[test]
+    fn elementwise_add() {
+        let elementwise_add_test_program = "(elementwise-add a b)".parse().unwrap();
+        let a = pack_interpreter_input(
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
+        );
+        let b = pack_interpreter_input(
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![6.5, 2.2, -3., 4.]).unwrap(),
+        );
+        let mut env = Environment::new();
+        env.insert("a", a);
+        env.insert("b", b);
+        let (egraph, id) = egg::EGraph::<Language, ()>::from_expr(&elementwise_add_test_program);
+        let out = unpack_interpreter_output(interpret_eclass(
+            &egraph,
+            &egraph[id],
+            &env,
+            &mut MemoizationMap::new(),
+        ));
+        assert_eq!(
+            out,
+            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![7.5, 4.2, 0., 8.]).unwrap()
+        );
     }
 }
