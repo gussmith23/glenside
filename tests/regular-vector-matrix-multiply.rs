@@ -36,5 +36,4 @@ fn regular_vector_matrix_multiply() {
     );
 
     println!("{:?}", runner.egraph[id]);
-    panic!()
 }
