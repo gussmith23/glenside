@@ -523,6 +523,23 @@ pub fn bubble_concat_through_map_dot_product_not_last_axis() -> Rewrite<Language
     )
 }
 
+pub fn bubble_concat_through_map_dot_product_last_axis() -> Rewrite<Language, Meta> {
+    rewrite!(
+
+        "bubble-concat-through-map-dot-product-last-axis";
+        "(map-dot-product
+          (concat ?left ?right ?axis)
+         )" =>
+            "(elementwise-add
+              (map-dot-product ?left)
+              (map-dot-product ?right)
+             ?axis)"
+            if last_axis("?left", "?axis")
+            // This should always be true, for now. Just making extra sure
+            if same_number_of_dimensions("?left", "?right")
+    )
+}
+
 #[cfg(test)]
 mod tests {
 
