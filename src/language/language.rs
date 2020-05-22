@@ -14,7 +14,7 @@ egg::define_language! {
         // Whose elements are the dot product of the two b-length vectors at
         // each position in the original array.
         MapDotProduct = "map-dot-product",
-        BsgSystolicArray = "bsg_systolic_array_weight_stationary",
+        BsgSystolicArray = "bsg-systolic-array-weight-stationary",
         // Slice into list/tensor/whatever we're calling them
         Slice = "slice",
         Concat = "concat",
