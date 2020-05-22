@@ -162,7 +162,33 @@ impl egg::Metadata<Language> for Meta {
                     usize_value: None,
                 }
             }
-            BsgSystolicArray => panic!(),
+            BsgSystolicArray => {
+                assert_eq!(enode.children.len(), 4);
+
+                let left_shape = egraph[enode.children[2]].metadata.shape.as_ref().unwrap();
+                let right_shape = egraph[enode.children[3]].metadata.shape.as_ref().unwrap();
+                let left_shape_len: usize = left_shape.as_array_view().len();
+                let right_shape_len: usize = right_shape.as_array_view().len();
+                println!("left: {:?}", left_shape);
+                println!("right: {:?}", right_shape);
+
+                // Assumptions I'm making right now.
+                assert!(left_shape_len == 1 || left_shape_len == 2);
+                assert_eq!(right_shape_len, 2);
+
+                let new_shape: Vec<ndarray::Ix> = left_shape
+                    .as_array_view()
+                    .iter()
+                    .cloned()
+                    .take(left_shape.as_array_view().len() - 1)
+                    .chain(right_shape.as_array_view().iter().cloned().skip(1))
+                    .collect();
+
+                Meta {
+                    shape: Some(ndarray::IxDyn(&new_shape)),
+                    usize_value: None,
+                }
+            }
             Slice => {
                 let shape_to_be_sliced: &ndarray::IxDyn =
                     &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
