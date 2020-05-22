@@ -270,6 +270,61 @@ pub fn split(axis: usize, dimension_greater_than: usize) -> Rewrite<Language, Me
                   if has_shape("?a"))
 }
 
+pub fn collapse_nested_slices() -> Rewrite<Language, Meta> {
+    struct CollapseNestedSlicesApplier {
+        a: Var,
+        b: Var,
+        c: Var,
+        d: Var,
+        e: Var,
+        f: Var,
+        g: Var,
+        h: Var,
+    }
+    impl Applier<Language, Meta> for CollapseNestedSlicesApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, Meta>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let a: usize = egraph[subst[&self.a]].metadata.usize_value.unwrap();
+            let b: usize = egraph[subst[&self.b]].metadata.usize_value.unwrap();
+            let c: usize = egraph[subst[&self.c]].metadata.usize_value.unwrap();
+            let d: usize = egraph[subst[&self.d]].metadata.usize_value.unwrap();
+            let e: usize = egraph[subst[&self.e]].metadata.usize_value.unwrap();
+            let f: usize = egraph[subst[&self.f]].metadata.usize_value.unwrap();
+            let g: usize = egraph[subst[&self.g]].metadata.usize_value.unwrap();
+            let h: usize = egraph[subst[&self.h]].metadata.usize_value.unwrap();
+
+            let new_a: usize = a + e;
+            assert!(b - a <= f - e);
+            let new_b: usize = new_a + (b - a);
+
+            let new_c: usize = c + g;
+            assert!(d - c <= h - g);
+            let new_d: usize = new_c + (d - c);
+
+            format!("(slice ?t {} {} {} {})", new_a, new_b, new_c, new_d)
+                .parse::<Pattern<Language>>()
+                .unwrap()
+                .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("collapse-nested-slices";
+    "(slice (slice ?t ?e ?f ?g ?h) ?a ?b ?c ?d)" =>
+    { CollapseNestedSlicesApplier {
+        a: "?a".parse().unwrap(),
+        b: "?b".parse().unwrap(),
+        c: "?c".parse().unwrap(),
+        d: "?d".parse().unwrap(),
+        e: "?e".parse().unwrap(),
+        f: "?f".parse().unwrap(),
+        g: "?g".parse().unwrap(),
+        h: "?h".parse().unwrap(),
+    }})
+}
+
 pub fn split_concat() -> Rewrite<Language, Meta> {
     rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a"))
 }
@@ -583,13 +638,57 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, Meta> {
 #[cfg(test)]
 mod tests {
 
-    // #[test]
-    // fn test_split_concat() {
-    //     todo!();
-    // }
+    use super::*;
+    use egg::{Pattern, Searcher};
 
-    // #[test]
-    // fn test_split() {
-    //     todo!();
-    // }
+    #[test]
+    fn split() {
+        let program = "t-32-32".parse().unwrap();
+
+        let rws = vec![
+            super::split(0, 16),
+            super::split(1, 16),
+            super::collapse_nested_slices(),
+        ];
+
+        let (egraph, _id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
+
+        runner.egraph.dot().to_svg("tmp.svg").unwrap();
+        assert_eq!(
+            "(slice t-32-32 0 16 0 16)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+
+        assert_eq!(
+            "(slice t-32-32 0 16 16 32)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+
+        assert_eq!(
+            "(slice t-32-32 16 32 0 16)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+
+        assert_eq!(
+            "(slice t-32-32 16 32 16 32)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+    }
 }
