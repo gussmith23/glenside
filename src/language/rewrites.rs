@@ -426,15 +426,19 @@ impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductLastAxisAppl
 
         // TODO
         let applier: Pattern<Language> = format!(
+            // "(concat
+            //   (concat
+            //    (cartesian-product ?a1 ?b1)
+            //    (cartesian-product ?a1 ?b2)
+            //    {0})
+            //   (concat
+            //    (cartesian-product ?a2 ?b1)
+            //    (cartesian-product ?a2 ?b2)
+            //    {0})
+            //  {0})",
             "(concat
-              (concat
-               (cartesian-product ?a1 ?b1)
-               (cartesian-product ?a1 ?b2)
-               {0})
-              (concat
-               (cartesian-product ?a2 ?b1)
-               (cartesian-product ?a2 ?b2)
-               {0})
+              (cartesian-product ?a1 ?b1)
+              (cartesian-product ?a2 ?b2)
              {0})",
             new_axis
         )
