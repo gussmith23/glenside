@@ -16,6 +16,7 @@ fn regular_vector_matrix_multiply() {
     let rws = vec![
         rewrites::split(0, 16),
         rewrites::split(1, 16),
+        rewrites::collapse_nested_slices(),
         rewrites::bubble_concat_through_rows_axis_0(),
         rewrites::bubble_concat_through_rows_axis_1(),
         rewrites::bubble_concat_through_cols_axis_0(),
