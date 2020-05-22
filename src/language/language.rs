@@ -169,8 +169,6 @@ impl egg::Metadata<Language> for Meta {
                 let right_shape = egraph[enode.children[3]].metadata.shape.as_ref().unwrap();
                 let left_shape_len: usize = left_shape.as_array_view().len();
                 let right_shape_len: usize = right_shape.as_array_view().len();
-                println!("left: {:?}", left_shape);
-                println!("right: {:?}", right_shape);
 
                 // Assumptions I'm making right now.
                 assert!(left_shape_len == 1 || left_shape_len == 2);
