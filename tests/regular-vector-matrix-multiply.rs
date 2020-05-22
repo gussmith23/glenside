@@ -24,6 +24,7 @@ fn regular_vector_matrix_multiply() {
         rewrites::bubble_concat_through_cartesian_product_not_last_axis_right(),
         rewrites::bubble_concat_through_cartesian_product_last_axis(),
         rewrites::bubble_concat_through_map_dot_product_not_last_axis(),
+        rewrites::systolic_array_vector_matrix(),
     ];
 
     let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
