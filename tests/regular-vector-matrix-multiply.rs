@@ -35,5 +35,4 @@ fn regular_vector_matrix_multiply() {
         runner.stop_reason
     );
 
-    println!("{:?}", runner.egraph[id]);
 }
