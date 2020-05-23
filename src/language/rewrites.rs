@@ -592,7 +592,7 @@ pub fn bubble_concat_through_map_dot_product_last_axis() -> Rewrite<Language, Me
             "(elementwise-add
               (map-dot-product ?left)
               (map-dot-product ?right)
-             ?axis)"
+             )"
             if last_axis("?left", "?axis")
             // This should always be true, for now. Just making extra sure
             if same_number_of_dimensions("?left", "?right")
