@@ -1,3 +1,4 @@
+use egg::{Pattern, Searcher};
 use glenside::language::*;
 
 #[test]
@@ -37,4 +38,127 @@ fn regular_vector_matrix_multiply() {
         runner.stop_reason
     );
 
+    assert_eq!(
+        "v-32"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        "t-32-32"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        "(slice t-32-32 0 16 0 16)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        "(concat (slice t-32-32 0 16 0 16) (slice t-32-32 0 16 16 32) 1)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        "(concat (slice t-32-32 16 32 0 16) (slice t-32-32 16 32 16 32) 1)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        "(concat
+          (concat (slice t-32-32 0 16 0 16) (slice t-32-32 0 16 16 32) 1)
+          (concat (slice t-32-32 16 32 0 16) (slice t-32-32 16 32 16 32) 1)
+          0)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search(&runner.egraph)
+        .len(),
+        1
+    );
+
+    assert_eq!(
+        "(cartesian-product
+          (slice v-32 0 16) (cols (slice t-32-32 0 16 16 32)))"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
+        1
+    );
+
+    assert!(
+        "(map-dot-product (concat ?a ?b 2))"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len()
+            > 0
+    );
+
+    assert!(
+        "(elementwise-add ?a ?b)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len()
+            > 0
+    );
+
+    // Search for the expected program. Everything before this was just my
+    // incremental debugging. It could all be removed, but I figured I'll keep
+    // it---more checks don't hurt!
+    "(concat
+      (elementwise-add
+       (map-dot-product
+        (cartesian-product
+         (slice v-32 0 16)
+         (cols (slice t-32-32 0 16 0 16))
+        )
+       )
+       (map-dot-product
+        (cartesian-product
+         (slice v-32 16 32)
+         (cols (slice t-32-32 16 32 0 16))
+        )
+       )
+
+      )
+      (elementwise-add
+       (map-dot-product
+        (cartesian-product
+         (slice v-32 0 16)
+         (cols (slice t-32-32 0 16 16 32))
+        )
+       )
+       (map-dot-product
+        (cartesian-product
+         (slice v-32 16 32)
+         (cols (slice t-32-32 16 32 16 32))
+        )
+       )
+      )
+      0)"
+    .parse::<Pattern<_>>()
+    .unwrap()
+    .search_eclass(&runner.egraph, id)
+    .expect("Did not find expected program");
 }
