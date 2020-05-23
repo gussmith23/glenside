@@ -79,10 +79,9 @@ fn regular_vector_matrix_multiply() {
         runner.stop_reason
     );
 
-    // Search for one of the expected "tensorizable" programs. By
-    // "tensorizable", I mean that this program has clear locations where
-    // hardware can be used (specifically, each map-dot-product can be replaced
-    // by 16x16 systolic arrays).
+    // Find the expected tiled program!
+    // This program is equivalent to our original program, but all
+    // vector--matrix multiplications are tiled to 1x16 X 16x16.
     "(concat
       (elementwise-add
        (map-dot-product
@@ -119,7 +118,9 @@ fn regular_vector_matrix_multiply() {
     .search_eclass(&runner.egraph, id)
     .expect("Did not find expected program");
 
-    // Check that the program got tensorized.
+    // And show that the program got tensorized!
+    // Note how the vec--mat multiplies were replaced with 16x16 systolic
+    // arrays!
     "(concat
       (elementwise-add
        (bsg-systolic-array 16 16
@@ -148,9 +149,9 @@ fn regular_vector_matrix_multiply() {
     .expect("Did not find expected program");
 
     // But that's not all!
-    // The egraph will find a ton of hardware combinations.
+    // The egraph will find a ton of different hardware combinations!
 
-    // Check that the program got tensorized.
+    // For example: using both a 32x16 and a 16x16 systolic array:
     "(concat
       (bsg-systolic-array 32 16
        v-32
@@ -171,4 +172,43 @@ fn regular_vector_matrix_multiply() {
     .unwrap()
     .search_eclass(&runner.egraph, id)
     .expect("Did not find expected program");
+
+    // Or a 32x16 systolic array (with no need to accumulate!)
+    "(concat
+      (bsg-systolic-array 32 16
+       v-32
+       (slice t-32-32 0 32 0 16)
+      )
+      (bsg-systolic-array 32 16
+       v-32
+       (slice t-32-32 0 32 16 32)
+      )
+      0)"
+    .parse::<Pattern<_>>()
+    .unwrap()
+    .search_eclass(&runner.egraph, id)
+    .expect("Did not find expected program");
+
+    // Or a 16x32 systolic array (with no need for concatenation!)
+    "(elementwise-add
+      (bsg-systolic-array 16 32
+       (slice v-32 0 16)
+       (slice t-32-32 0 16 0 32)
+      )
+      (bsg-systolic-array 16 32
+       (slice v-32 16 32)
+       (slice t-32-32 16 32 0 32)
+      )
+     )"
+    .parse::<Pattern<_>>()
+    .unwrap()
+    .search_eclass(&runner.egraph, id)
+    .expect("Did not find expected program");
+
+    // And of course...a monolithic 32x32 systolic array!
+    "(bsg-systolic-array 32 32 v-32 t-32-32)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .expect("Did not find expected program");
 }
