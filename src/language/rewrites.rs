@@ -618,12 +618,10 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, Meta> {
             let rows: usize = b_shape.as_array_view()[0];
             let cols: usize = b_shape.as_array_view()[1];
 
-            let pattern: Pattern<Language> = format!(
-                "(bsg-systolic-array-weight-stationary {} {} ?a ?b)",
-                rows, cols
-            )
-            .parse()
-            .unwrap();
+            let pattern: Pattern<Language> =
+                format!("(bsg-systolic-array {} {} ?a ?b)", rows, cols)
+                    .parse()
+                    .unwrap();
 
             pattern.apply_one(egraph, eclass, subst)
         }
