@@ -652,7 +652,6 @@ mod tests {
         let (egraph, _id) = egg::EGraph::<Language, Meta>::from_expr(&program);
         let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
 
-        runner.egraph.dot().to_svg("tmp.svg").unwrap();
         assert_eq!(
             "(slice t-32-32 0 16 0 16)"
                 .parse::<Pattern<_>>()
