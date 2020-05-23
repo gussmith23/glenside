@@ -161,4 +161,32 @@ fn regular_vector_matrix_multiply() {
     .unwrap()
     .search_eclass(&runner.egraph, id)
     .expect("Did not find expected program");
+
+    // Check that the program got tensorized.
+    "(concat
+      (elementwise-add
+       (bsg-systolic-array 16 16
+        (slice v-32 0 16)
+        (slice t-32-32 0 16 0 16)
+       )
+       (bsg-systolic-array 16 16
+        (slice v-32 16 32)
+        (slice t-32-32 16 32 0 16)
+       )
+      )
+      (elementwise-add
+       (bsg-systolic-array 16 16
+        (slice v-32 0 16)
+        (slice t-32-32 0 16 16 32)
+       )
+       (bsg-systolic-array 16 16
+        (slice v-32 16 32)
+        (slice t-32-32 16 32 16 32)
+       )
+      )
+      0)"
+    .parse::<Pattern<_>>()
+    .unwrap()
+    .search_eclass(&runner.egraph, id)
+    .expect("Did not find expected program");
 }
