@@ -25,8 +25,8 @@ fn regular_vector_matrix_multiply() {
         // in half and concatenate them back together, along both axes (0 and
         // 1). Currently, we don't break down axes that are less than 16 in
         // length, but we can adjust that later.
-        rewrites::split(0, 16),
-        rewrites::split(1, 16),
+        rewrites::split(0, 16, true),
+        rewrites::split(1, 16, true),
         // This rewrite collapses multiple slice operators (introduced by the
         // above rewrites) into one.
         rewrites::collapse_nested_slices(),

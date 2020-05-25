@@ -71,20 +71,29 @@ pub fn has_shape(
     let var = var.parse().unwrap();
     move |egraph, _, subst| !egraph[subst[&var]].metadata.shape.is_none()
 }
+/// short_circuit lets us return early if we don't actually care about the
+/// result of this check. This is the easiest way I could find to do this using
+/// egg's conditional appliers.
+/// TODO(gus) make this cleaner
 pub fn is_symbol(
+    short_circuit: bool,
     var: &'static str,
 ) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     // TODO(gus) should this be `all` or `any` or something else entirely?
     move |egraph, _, subst| {
-        egraph[subst[&var]]
-            .nodes
-            .iter()
-            .map(|enode| match enode.op {
-                Language::Symbol(_) => true,
-                _ => false,
-            })
-            .all(|x| x)
+        if short_circuit {
+            true
+        } else {
+            egraph[subst[&var]]
+                .nodes
+                .iter()
+                .map(|enode| match enode.op {
+                    Language::Symbol(_) => true,
+                    _ => false,
+                })
+                .all(|x| x)
+        }
     }
 }
 fn has_axis(
@@ -261,13 +270,18 @@ pub fn bubble_concat_through_cols_axis_1() -> Rewrite<Language, Meta> {
                   => "(concat (cols ?a) (cols ?b) 0)")
 }
 
-pub fn split(axis: usize, dimension_greater_than: usize) -> Rewrite<Language, Meta> {
+pub fn split(
+    axis: usize,
+    dimension_greater_than: usize,
+    split_all_nodes: bool,
+) -> Rewrite<Language, Meta> {
     rewrite!(format!("split-axis-{}", axis); "?a" =>
                   {SplitApplier{axis: axis}}
                   if self::dimension_greater_than("?a", axis, dimension_greater_than)
                   if dimension_is_even("?a", axis)
                   if has_axis("?a", axis)
-                  if has_shape("?a"))
+                  if has_shape("?a")
+                  if is_symbol(split_all_nodes, "?a"))
 }
 
 pub fn collapse_nested_slices() -> Rewrite<Language, Meta> {
@@ -326,7 +340,7 @@ pub fn collapse_nested_slices() -> Rewrite<Language, Meta> {
 }
 
 pub fn split_concat() -> Rewrite<Language, Meta> {
-    rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol("?a"))
+    rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol(false, "?a"))
 }
 pub fn bubble_concat_through_rows_axis_0() -> Rewrite<Language, Meta> {
     rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
@@ -644,8 +658,8 @@ mod tests {
         let program = "t-32-32".parse().unwrap();
 
         let rws = vec![
-            super::split(0, 16),
-            super::split(1, 16),
+            super::split(0, 16, true),
+            super::split(1, 16, true),
             super::collapse_nested_slices(),
         ];
 
