@@ -1,5 +1,7 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use ndarray::{Dimension, IxDyn};
+use std::str::FromStr;
+use std::fmt::Display;
 
 define_language! {
    pub enum Language {
@@ -50,7 +52,38 @@ define_language! {
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
 
         Usize(usize),
+
+        // pad-type: zero-padding
+        // (No other options right now)
+        PadType(PadType),
         Symbol(String),
+    }
+}
+
+/// Specifies how to pick the values we pad with.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum PadType {
+    /// Pad with zeroes.
+    ZeroPadding,
+}
+impl FromStr for PadType {
+    type Err = ();
+    fn from_str(input: &str) -> Result<PadType, Self::Err> {
+        match input {
+            "zero-padding" => Ok(PadType::ZeroPadding),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for PadType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PadType::ZeroPadding => "zero-padding",
+            }
+        )
     }
 }
 
@@ -266,6 +299,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                     )),
                     usize_value: None,
                 }
+            }
+            PadType(_) => Meta {
+                todo!("Need to figure out how to represent pad type in metadata...I think I want to move to new egg version first...");
             }
         }
     }
