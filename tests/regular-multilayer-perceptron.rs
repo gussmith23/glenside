@@ -1,8 +1,10 @@
-use egg::{Pattern, Searcher};
+use egg::{EGraph, Pattern, Runner, Searcher};
 use glenside::language::*;
 
 #[test]
 fn regular_multilayer_perceptron() {
+    test_logger::ensure_env_logger_initialized();
+
     let program = "
      (map-dot-product
       (cartesian-product
@@ -11,13 +13,13 @@ fn regular_multilayer_perceptron() {
          (map-dot-product
           (cartesian-product
            v-32
-           (cols t-32-64)
+           (move-axis t-32-64 1 0)
           )
          )
-         (cols t-64-128)
+         (move-axis t-64-128 1 0)
         )
        )
-       (cols t-128-16)
+       (move-axis t-128-16 1 0)
       )
      )
      "
@@ -42,11 +44,11 @@ fn regular_multilayer_perceptron() {
         // identify places where we can map in hardware.
         // For example, if we see:
         // (map-dot-product
-        //  (cartesian-product (concat ...) (concat ...))
+        //  (cartesian-product (concatenate ...) (concatenate ...))
         // )
         // ...we don't have a hardware atom that does this. But if we can
         // rewrite it to:
-        // (concat
+        // (concatenate
         //  (map-dot-product
         //   (cartesian-product <a 1x16 vector> <a 16x16 tensor>)
         //  )
@@ -55,16 +57,13 @@ fn regular_multilayer_perceptron() {
         //  )
         // )
         // ...then we can map in systolic arrays for the (map-dot-product...)
-        // expressions, and the top-level concat will be handled by the compiler.
-        rewrites::bubble_concat_through_rows_axis_0(),
-        rewrites::bubble_concat_through_rows_axis_1(),
-        rewrites::bubble_concat_through_cols_axis_0(),
-        rewrites::bubble_concat_through_cols_axis_1(),
-        rewrites::bubble_concat_through_cartesian_product_not_last_axis_left(),
-        rewrites::bubble_concat_through_cartesian_product_not_last_axis_right(),
-        rewrites::bubble_concat_through_cartesian_product_last_axis(),
-        rewrites::bubble_concat_through_map_dot_product_not_last_axis(),
-        rewrites::bubble_concat_through_map_dot_product_last_axis(),
+        // expressions, and the top-level concatenate will be handled by the compiler.
+        rewrites::bubble_concatenate_through_move_axis(),
+        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_left(),
+        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_right(),
+        rewrites::bubble_concatenate_through_cartesian_product_last_axis(),
+        rewrites::bubble_concatenate_through_map_dot_product_not_last_axis(),
+        rewrites::bubble_concatenate_through_map_dot_product_last_axis(),
         // Finally, this rewrite tensorizes!
         // It identifies patterns that we have hardware atoms for. Right now, it
         // finds:
@@ -77,8 +76,11 @@ fn regular_multilayer_perceptron() {
     ];
 
     // Run the rewrites over the egraph.
-    let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
-    let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
+    let mut egraph = EGraph::new(MyAnalysis);
+    let id = egraph.add_expr(&program);
+    let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        .with_egraph(egraph)
+        .run(&rws);
     println!(
         "Stopped after {} iterations, reason: {:?}",
         runner.iterations.len(),

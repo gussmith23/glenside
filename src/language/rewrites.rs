@@ -1,75 +1,14 @@
-use super::{Language, Meta};
+use super::{Language, MyAnalysis};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
 // TODO(gus) I think I should make this a conditional applier, and fold in
 // checks to make sure it has a shape and that it's an input
-pub struct SplitConcatApplier {
-    pub a: egg::Var,
-}
-impl egg::Applier<Language, Meta> for SplitConcatApplier {
-    fn apply_one(
-        &self,
-        egraph: &mut egg::EGraph<Language, Meta>,
-        _id: egg::Id,
-        subst: &egg::Subst,
-    ) -> std::vec::Vec<egg::Id> {
-        let a: egg::Id = subst[&self.a];
-        let shape = egraph[a].metadata.shape.as_ref().unwrap().clone();
-        //println!("{:?}", shape);
-
-        assert_eq!(shape.as_array_view().len(), 2);
-        assert_eq!(0, shape[0] % 16);
-        assert_eq!(0, shape[1] % 16);
-
-        let mut to_be_concatted_along_axis_0 = std::vec::Vec::default();
-        for i in 0..shape[0] / 16 {
-            let mut to_be_concatted_along_axis_1 = std::vec::Vec::default();
-            for j in 0..shape[1] / 16 {
-                use std::convert::TryInto;
-                let x_slice_start = (16 * i).try_into().unwrap();
-                let x_slice_end = (16 * (i + 1)).try_into().unwrap();
-                let y_slice_start = (16 * j).try_into().unwrap();
-                let y_slice_end = (16 * (j + 1)).try_into().unwrap();
-                let x_slice_start_id: egg::Id =
-                    egraph.add(egg::ENode::leaf(Language::Usize(x_slice_start)));
-                let x_slice_end_id: egg::Id =
-                    egraph.add(egg::ENode::leaf(Language::Usize(x_slice_end)));
-                let y_slice_start_id: egg::Id =
-                    egraph.add(egg::ENode::leaf(Language::Usize(y_slice_start)));
-                let y_slice_end_id: egg::Id =
-                    egraph.add(egg::ENode::leaf(Language::Usize(y_slice_end)));
-                to_be_concatted_along_axis_1.push(egraph.add(egg::ENode::new(
-                    Language::Slice,
-                    vec![
-                        a,
-                        x_slice_start_id,
-                        x_slice_end_id,
-                        y_slice_start_id,
-                        y_slice_end_id,
-                    ],
-                )));
-            }
-            // Args should be a list of the sliced arrays, plus the axis
-            // along which to stitch them back together.
-            let mut args: std::vec::Vec<egg::Id> = to_be_concatted_along_axis_1;
-            args.push(egraph.add(egg::ENode::leaf(Language::Usize(1))));
-            to_be_concatted_along_axis_0.push(egraph.add(egg::ENode::new(Language::Concat, args)));
-        }
-        let mut args: std::vec::Vec<egg::Id> = to_be_concatted_along_axis_0;
-        args.push(egraph.add(egg::ENode::leaf(Language::Usize(0))));
-        let concat_id: egg::Id = egraph.add(egg::ENode::new(Language::Concat, args));
-
-        vec![concat_id]
-    }
-}
-// TODO(gus) I think I should make this a conditional applier, and fold in
-// checks to make sure it has a shape and that it's an input
 pub fn has_shape(
     var: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| !egraph[subst[&var]].metadata.shape.is_none()
+    move |egraph, _, subst| !egraph[subst[&var]].data.shape.is_none()
 }
 /// short_circuit lets us return early if we don't actually care about the
 /// result of this check. This is the easiest way I could find to do this using
@@ -78,7 +17,7 @@ pub fn has_shape(
 pub fn is_symbol(
     short_circuit: bool,
     var: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     // TODO(gus) should this be `all` or `any` or something else entirely?
     move |egraph, _, subst| {
@@ -88,7 +27,7 @@ pub fn is_symbol(
             egraph[subst[&var]]
                 .nodes
                 .iter()
-                .map(|enode| match enode.op {
+                .map(|enode| match enode {
                     Language::Symbol(_) => true,
                     _ => false,
                 })
@@ -99,11 +38,11 @@ pub fn is_symbol(
 fn has_axis(
     var: &'static str,
     axis: usize,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| {
         axis < egraph[subst[&var]]
-            .metadata
+            .data
             .shape
             .as_ref()
             .unwrap()
@@ -115,22 +54,20 @@ fn dimension_greater_than(
     var: &'static str,
     axis: usize,
     greater_than: usize,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| {
-        egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] > greater_than
-    }
+    move |egraph, _, subst| egraph[subst[&var]].data.shape.as_ref().unwrap()[axis] > greater_than
 }
 fn dimension_is_even(
     var: &'static str,
     axis: usize,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| egraph[subst[&var]].metadata.shape.as_ref().unwrap()[axis] % 2 == 0
+    move |egraph, _, subst| egraph[subst[&var]].data.shape.as_ref().unwrap()[axis] % 2 == 0
 }
 
 // TODO(gus) not sure all this should be public.
-pub struct RewriteNonMatchingCartConcatApplier {
+pub struct RewriteNonMatchingCartConcatenateApplier {
     pub a1: egg::Var,
     pub a2: egg::Var,
     pub a_axis: usize,
@@ -138,10 +75,10 @@ pub struct RewriteNonMatchingCartConcatApplier {
     pub b2: egg::Var,
     pub b_axis: usize,
 }
-impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
+impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApplier {
     fn apply_one(
         &self,
-        _egraph: &mut egg::EGraph<Language, Meta>,
+        _egraph: &mut egg::EGraph<Language, MyAnalysis>,
         _id: egg::Id,
         _subst: &egg::Subst,
     ) -> std::vec::Vec<egg::Id> {
@@ -152,40 +89,40 @@ impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
 
         // We will break up the as into smaller chunks and the bs into
         // smaller chunks, so that they all match in size.
-        // The goal is to have the innermost concats be along axis 0, and
-        // the outermost concats to be along axis 1. Additionally, the goal
+        // The goal is to have the innermost concatenates be along axis 0, and
+        // the outermost concatenates to be along axis 1. Additionally, the goal
         // is that the result should only involve cartesian products of
-        // concats, where the left and right concat use the same axis.
-        // Then, existing rewrites can be used to bubble the concats up
+        // concatenates, where the left and right concatenate use the same axis.
+        // Then, existing rewrites can be used to bubble the concatenates up
         // through the cartesian products.
 
         // Each a needs to be split into 4; each b needs to be split into 4.
 
-        // First we want to construct all of the concats along the 1 axis.
-        // These will become our innermost concats.
-        // One of these is already concatted along the 1 axis!
+        // First we want to construct all of the concatenates along the 1 axis.
+        // These will become our innermost concatenates.
+        // One of these is already concatenateted along the 1 axis!
 
         // TODO(gus) left off here, I think I should actually do something
-        // simpler here and just rewrite the two concats that are the
+        // simpler here and just rewrite the two concatenates that are the
         // children of this cartesian product.
         // It needs some information from elsewhere in the graph, though,
         // that's the tough thing.
 
-        // So we're going to slice-and-concat all 4 tensors. We'll slice the
+        // So we're going to slice-and-concatenate all 4 tensors. We'll slice the
         // as based on the bs size, and slice the bs based on the as size.
         // TODO(gus) I could write an even simpler rewrite rule that slices
         // more indiscriminately, everywhere. Right now I'm using some
         // context clue (the overarching cartesian product) to only apply
         // this where needed.
 
-        // All I actually want to do is to rewrite that second concat.
+        // All I actually want to do is to rewrite that second concatenate.
         //  (cartesian-product
-        //   (concat ?a1 ?a2 0)
-        //   (concat ?b1 ?b2 1)
+        //   (concatenate ?a1 ?a2 0)
+        //   (concatenate ?b1 ?b2 1)
         //  )
         //  (cartesian-product
-        //   (concat ?a1 ?a2 0)
-        //   (concat (concat (slice ?b1) (slice ?b1)  0)
+        //   (concatenate ?a1 ?a2 0)
+        //   (concatenate (concatenate (slice ?b1) (slice ?b1)  0)
         //  )
         //
 
@@ -196,85 +133,48 @@ impl egg::Applier<Language, Meta> for RewriteNonMatchingCartConcatApplier {
 struct SplitApplier {
     axis: usize,
 }
-impl egg::Applier<Language, Meta> for SplitApplier {
+impl egg::Applier<Language, MyAnalysis> for SplitApplier {
     fn apply_one(
         &self,
-        egraph: &mut egg::EGraph<Language, Meta>,
+        egraph: &mut egg::EGraph<Language, MyAnalysis>,
         id: egg::Id,
         _subst: &egg::Subst,
     ) -> std::vec::Vec<egg::Id> {
-        let shape: ndarray::IxDyn = egraph[id].metadata.shape.as_ref().unwrap().clone();
+        let shape: ndarray::IxDyn = MyAnalysis::get_shape(id, egraph).clone();
         assert_eq!(shape[self.axis] % 2, 0);
         let low_bound = 0;
-        let low_bound_id = egraph.add(egg::ENode::leaf(Language::Usize(low_bound)));
+        let low_bound_id = egraph.add(Language::Usize(low_bound));
         let high_bound = shape[self.axis];
-        let high_bound_id = egraph.add(egg::ENode::leaf(Language::Usize(high_bound)));
+        let high_bound_id = egraph.add(Language::Usize(high_bound));
         let middle_bound = high_bound / 2;
-        let middle_bound_id = egraph.add(egg::ENode::leaf(Language::Usize(middle_bound)));
+        let middle_bound_id = egraph.add(Language::Usize(middle_bound));
 
-        let mut slice_0_indices = std::vec::Vec::new();
-        for i in 0..shape.as_array_view().len() {
-            if i == self.axis {
-                // If this is the axis we're splitting on, then access the
-                // first half.
-                slice_0_indices.push(low_bound_id);
-                slice_0_indices.push(middle_bound_id);
-            } else {
-                // Otherwise, access the whole axis.
-                slice_0_indices.push(egraph.add(egg::ENode::leaf(Language::Usize(0))));
-                slice_0_indices.push(egraph.add(egg::ENode::leaf(Language::Usize(shape[i]))));
-            }
-        }
+        let axis_id = egraph.add(Language::Usize(self.axis));
 
-        let mut slice_1_indices = std::vec::Vec::new();
-        for i in 0..shape.as_array_view().len() {
-            if i == self.axis {
-                // If this is the axis we're splitting on, then access the
-                // second half.
-                slice_1_indices.push(middle_bound_id);
-                slice_1_indices.push(high_bound_id);
-            } else {
-                // Otherwise, access the whole axis.
-                slice_1_indices.push(egraph.add(egg::ENode::leaf(Language::Usize(0))));
-                slice_1_indices.push(egraph.add(egg::ENode::leaf(Language::Usize(shape[i]))));
-            }
-        }
+        let slice_0_id = egraph.add(Language::Slice([
+            id,
+            axis_id,
+            low_bound_id,
+            middle_bound_id,
+        ]));
+        let slice_1_id = egraph.add(Language::Slice([
+            id,
+            axis_id,
+            middle_bound_id,
+            high_bound_id,
+        ]));
 
-        let mut slice_0_children = std::vec::Vec::new();
-        slice_0_children.push(id);
-        slice_0_children.append(&mut slice_0_indices);
+        let id: egg::Id = egraph.add(Language::Concatenate([slice_0_id, slice_1_id, axis_id]));
 
-        let mut slice_1_children = std::vec::Vec::new();
-        slice_1_children.push(id);
-        slice_1_children.append(&mut slice_1_indices);
-
-        let slice_0_id = egraph.add(egg::ENode::new(Language::Slice, slice_0_children));
-        let slice_1_id = egraph.add(egg::ENode::new(Language::Slice, slice_1_children));
-        //println!("{:?}", egraph[slice_0_id]);
-        //println!("{:?}", egraph[slice_1_id]);
-
-        let axis_usize_id = egraph.add(egg::ENode::leaf(Language::Usize(self.axis)));
-
-        // Add
-        // (concat )
-        let id: egg::Id = egraph.add(egg::ENode::new(
-            Language::Concat,
-            vec![slice_0_id, slice_1_id, axis_usize_id],
-        ));
         vec![id]
     }
-}
-
-pub fn bubble_concat_through_cols_axis_1() -> Rewrite<Language, Meta> {
-    rewrite!("bubble-concat-through-cols-axis-1"; "(cols (concat ?a ?b 1))"
-                  => "(concat (cols ?a) (cols ?b) 0)")
 }
 
 pub fn split(
     axis: usize,
     dimension_greater_than: usize,
     split_all_nodes: bool,
-) -> Rewrite<Language, Meta> {
+) -> Rewrite<Language, MyAnalysis> {
     rewrite!(format!("split-axis-{}", axis); "?a" =>
                   {SplitApplier{axis: axis}}
                   if self::dimension_greater_than("?a", axis, dimension_greater_than)
@@ -284,118 +184,149 @@ pub fn split(
                   if is_symbol(split_all_nodes, "?a"))
 }
 
-pub fn collapse_nested_slices() -> Rewrite<Language, Meta> {
+pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
     struct CollapseNestedSlicesApplier {
-        a: Var,
-        b: Var,
-        c: Var,
-        d: Var,
-        e: Var,
-        f: Var,
-        g: Var,
-        h: Var,
+        low0: Var,
+        high0: Var,
+        low1: Var,
+        high1: Var,
     }
-    impl Applier<Language, Meta> for CollapseNestedSlicesApplier {
+    impl Applier<Language, MyAnalysis> for CollapseNestedSlicesApplier {
         fn apply_one(
             &self,
-            egraph: &mut EGraph<Language, Meta>,
+            egraph: &mut EGraph<Language, MyAnalysis>,
             eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
-            let a: usize = egraph[subst[&self.a]].metadata.usize_value.unwrap();
-            let b: usize = egraph[subst[&self.b]].metadata.usize_value.unwrap();
-            let c: usize = egraph[subst[&self.c]].metadata.usize_value.unwrap();
-            let d: usize = egraph[subst[&self.d]].metadata.usize_value.unwrap();
-            let e: usize = egraph[subst[&self.e]].metadata.usize_value.unwrap();
-            let f: usize = egraph[subst[&self.f]].metadata.usize_value.unwrap();
-            let g: usize = egraph[subst[&self.g]].metadata.usize_value.unwrap();
-            let h: usize = egraph[subst[&self.h]].metadata.usize_value.unwrap();
+            let low0: usize = MyAnalysis::get_usize(subst[&self.low0], egraph);
+            let high0: usize = MyAnalysis::get_usize(subst[&self.high0], egraph);
+            let low1: usize = MyAnalysis::get_usize(subst[&self.low1], egraph);
+            let high1: usize = MyAnalysis::get_usize(subst[&self.high1], egraph);
 
-            let new_a: usize = a + e;
-            assert!(b - a <= f - e);
-            let new_b: usize = new_a + (b - a);
+            let new_low: usize = low0 + low1;
+            assert!(high1 - low1 <= high0 - low0);
+            let new_high: usize = new_low + (high1 - low1);
 
-            let new_c: usize = c + g;
-            assert!(d - c <= h - g);
-            let new_d: usize = new_c + (d - c);
-
-            format!("(slice ?t {} {} {} {})", new_a, new_b, new_c, new_d)
+            format!("(slice ?t ?axis {} {})", new_low, new_high)
                 .parse::<Pattern<Language>>()
                 .unwrap()
                 .apply_one(egraph, eclass, subst)
         }
     }
     rewrite!("collapse-nested-slices";
-    "(slice (slice ?t ?e ?f ?g ?h) ?a ?b ?c ?d)" =>
+    "(slice (slice ?t ?axis ?low0 ?high0) ?axis ?low1 ?high1)" =>
     { CollapseNestedSlicesApplier {
-        a: "?a".parse().unwrap(),
-        b: "?b".parse().unwrap(),
-        c: "?c".parse().unwrap(),
-        d: "?d".parse().unwrap(),
-        e: "?e".parse().unwrap(),
-        f: "?f".parse().unwrap(),
-        g: "?g".parse().unwrap(),
-        h: "?h".parse().unwrap(),
+        low0: "?low0".parse().unwrap(),
+        low1: "?low1".parse().unwrap(),
+        high0: "?high0".parse().unwrap(),
+        high1: "?high1".parse().unwrap(),
     }})
 }
 
-pub fn split_concat() -> Rewrite<Language, Meta> {
-    rewrite!("split-concat"; "?a" => {SplitConcatApplier{a:"?a".parse().unwrap()}} if has_shape("?a") if is_symbol(false, "?a"))
-}
-pub fn bubble_concat_through_rows_axis_0() -> Rewrite<Language, Meta> {
-    rewrite!("bubble-concat-through-rows-axis-0"; "(rows (concat ?a ?b 0))"
-                      => "(concat (rows ?a) (rows ?b) 0)")
-}
-pub fn bubble_concat_through_rows_axis_1() -> Rewrite<Language, Meta> {
-    rewrite!("bubble-concat-through-rows-axis-1"; "(rows (concat ?a ?b 1))"
-                      => "(concat (rows ?a) (rows ?b) 1)")
-}
-pub fn bubble_concat_through_cols_axis_0() -> Rewrite<Language, Meta> {
-    rewrite!("bubble-concat-through-cols-axis-0"; "(cols (concat ?a ?b 0))"
-                      => "(concat (cols ?a) (cols ?b) 1)")
+pub fn bubble_concatenate_through_move_axis() -> Rewrite<Language, MyAnalysis> {
+    struct MoveAxisApplier {
+        concatenate_axis: Var,
+        src_axis: Var,
+        dst_axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for MoveAxisApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let original_concatenate_axis: usize =
+                MyAnalysis::get_usize(subst[&self.concatenate_axis], egraph);
+            let src_axis: usize = MyAnalysis::get_usize(subst[&self.src_axis], egraph);
+            let dst_axis: usize = MyAnalysis::get_usize(subst[&self.dst_axis], egraph);
+
+            // If the move now happens /before/ the concatenate, we have to
+            // figure out what the new axis for the concatenate is.
+            // TODO(gus) Would be nice to have a more principled system of
+            // keeping track of axes. This is where Remy's relational algebra
+            // stuff could be really useful!
+            let new_concatenate_axis: usize = if (original_concatenate_axis < src_axis
+                && original_concatenate_axis < dst_axis)
+                || (original_concatenate_axis > src_axis && original_concatenate_axis > dst_axis)
+            {
+                // Axis is unaffected if it's not between src and dst.
+                original_concatenate_axis
+            } else if original_concatenate_axis == src_axis {
+                dst_axis
+            } else if original_concatenate_axis < src_axis && original_concatenate_axis >= dst_axis
+            {
+                original_concatenate_axis + 1
+            } else if original_concatenate_axis > src_axis && original_concatenate_axis <= dst_axis
+            {
+                original_concatenate_axis - 1
+            } else {
+                unreachable!()
+            };
+
+            format!(
+                "(concatenate
+                      (move-axis ?a ?src-axis ?dst-axis)
+                      (move-axis ?b ?src-axis ?dst-axis) {})",
+                new_concatenate_axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("bubble-concatenate-through-move-axis";
+        "(move-axis (concatenate ?a ?b ?concatenate-axis) ?src-axis ?dst-axis)" =>
+    {
+        MoveAxisApplier {
+            concatenate_axis: "?concatenate-axis".parse().unwrap(),
+            src_axis:"?src-axis".parse().unwrap(),
+            dst_axis:"?dst-axis".parse().unwrap()
+        }
+    })
 }
 
 /// Whether an axis is the last axis of a given tensor
 fn last_axis(
     var: &'static str,
     axis: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     let axis_id = axis.parse().unwrap();
     move |egraph, _, subst| {
         egraph[subst[&var]]
-            .metadata
+            .data
             .shape
             .as_ref()
             .unwrap()
             .as_array_view()
             .len()
             - 1
-            == egraph[subst[&axis_id]].metadata.usize_value.unwrap()
+            == egraph[subst[&axis_id]].data.usize_value.unwrap()
     }
 }
 fn not_last_axis(
     var: &'static str,
     axis: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     move |egraph, id, subst| !(last_axis(var, axis)(egraph, id, subst))
 }
 fn same_number_of_dimensions(
     a: &'static str,
     b: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, Meta>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let a = a.parse().unwrap();
     let b = b.parse().unwrap();
     move |egraph, _, subst| {
         egraph[subst[&a]]
-            .metadata
+            .data
             .shape
             .as_ref()
             .unwrap()
             .as_array_view()
             .len()
             == egraph[subst[&b]]
-                .metadata
+                .data
                 .shape
                 .as_ref()
                 .unwrap()
@@ -405,10 +336,11 @@ fn same_number_of_dimensions(
 }
 
 // TODO(gus) naming
-pub fn bubble_concat_through_cartesian_product_not_last_axis_left() -> Rewrite<Language, Meta> {
-    rewrite!("bubble-concat-through-cartesian-product-not-last-axis-left";
-                  "(cartesian-product (concat ?t1 ?t2 ?axis) ?right)" =>
-                  "(concat
+pub fn bubble_concatenate_through_cartesian_product_not_last_axis_left(
+) -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-concatenate-through-cartesian-product-not-last-axis-left";
+                  "(cartesian-product (concatenate ?t1 ?t2 ?axis) ?right)" =>
+                  "(concatenate
                     (cartesian-product ?t1 ?right)
                     (cartesian-product ?t2 ?right)
                     ?axis)"
@@ -417,27 +349,29 @@ pub fn bubble_concat_through_cartesian_product_not_last_axis_left() -> Rewrite<L
                   if same_number_of_dimensions("?t1", "?t2"))
 }
 
-struct BubbleConcatThroughCartesianProductNotLastAxisRightApplier {
+struct BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier {
     left: Var,
     axis: Var,
 }
-impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductNotLastAxisRightApplier {
+impl Applier<Language, MyAnalysis>
+    for BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier
+{
     fn apply_one(
         &self,
-        egraph: &mut EGraph<Language, Meta>,
+        egraph: &mut EGraph<Language, MyAnalysis>,
         matched_id: Id,
         subst: &Subst,
     ) -> Vec<Id> {
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // So the axis gets shifted over by the a1, ..., an added in.
-        let left_shape = egraph[subst[&self.left]].metadata.shape.as_ref().unwrap();
+        let left_shape = MyAnalysis::get_shape(subst[&self.left], egraph);
         let left_shape_length: usize = left_shape.as_array_view().len();
-        let old_axis: usize = egraph[subst[&self.axis]].metadata.usize_value.unwrap();
+        let old_axis: usize = MyAnalysis::get_usize(subst[&self.axis], egraph);
         let new_axis = old_axis + left_shape_length - 1;
 
         let applier: Pattern<Language> = format!(
-            "(concat
+            "(concatenate
                     (cartesian-product ?left ?t1)
                     (cartesian-product ?left ?t2)
                     {})",
@@ -451,14 +385,15 @@ impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductNotLastAxisR
 }
 
 // TODO(gus) naming
-pub fn bubble_concat_through_cartesian_product_not_last_axis_right() -> Rewrite<Language, Meta> {
-    rewrite!("bubble-concat-through-cartesian-product-not-last-axis-right";
-    "(cartesian-product ?left (concat ?t1 ?t2 ?axis))" =>
+pub fn bubble_concatenate_through_cartesian_product_not_last_axis_right(
+) -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-concatenate-through-cartesian-product-not-last-axis-right";
+    "(cartesian-product ?left (concatenate ?t1 ?t2 ?axis))" =>
     {
         ConditionalApplier {
             applier: ConditionalApplier {
                 applier:
-                BubbleConcatThroughCartesianProductNotLastAxisRightApplier {
+                BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier {
                     left: "?left".parse().unwrap(),
                     axis: "?axis".parse().unwrap(),
                 },
@@ -469,25 +404,25 @@ pub fn bubble_concat_through_cartesian_product_not_last_axis_right() -> Rewrite<
     })
 }
 
-struct BubbleConcatThroughCartesianProductLastAxisApplier {
+struct BubbleConcatenateThroughCartesianProductLastAxisApplier {
     // Note that we're assuming a1's shape is the same as a2; same with b1 and
     // b2.
     a1: Var,
     b1: Var,
 }
-impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductLastAxisApplier {
+impl Applier<Language, MyAnalysis> for BubbleConcatenateThroughCartesianProductLastAxisApplier {
     fn apply_one(
         &self,
-        egraph: &mut EGraph<Language, Meta>,
+        egraph: &mut EGraph<Language, MyAnalysis>,
         matched_id: Id,
         subst: &Subst,
     ) -> Vec<Id> {
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // axis1 and axis2 both point to their c dimension.
-        let a_shape = egraph[subst[&self.a1]].metadata.shape.as_ref().unwrap();
+        let a_shape = MyAnalysis::get_shape(subst[&self.a1], egraph);
         let a_shape_length: usize = a_shape.as_array_view().len();
-        let b_shape = egraph[subst[&self.b1]].metadata.shape.as_ref().unwrap();
+        let b_shape = MyAnalysis::get_shape(subst[&self.b1], egraph);
         let b_shape_length: usize = b_shape.as_array_view().len();
         let new_axis = a_shape_length - 1 // skip [a1, ..., an]
             + b_shape_length - 1          // skip [b1, ..., bm]
@@ -495,17 +430,17 @@ impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductLastAxisAppl
 
         // TODO
         let applier: Pattern<Language> = format!(
-            // "(concat
-            //   (concat
+            // "(concatenate
+            //   (concatenate
             //    (cartesian-product ?a1 ?b1)
             //    (cartesian-product ?a1 ?b2)
             //    {0})
-            //   (concat
+            //   (concatenate
             //    (cartesian-product ?a2 ?b1)
             //    (cartesian-product ?a2 ?b2)
             //    {0})
             //  {0})",
-            "(concat
+            "(concatenate
               (cartesian-product ?a1 ?b1)
               (cartesian-product ?a2 ?b2)
              {0})",
@@ -519,11 +454,11 @@ impl Applier<Language, Meta> for BubbleConcatThroughCartesianProductLastAxisAppl
 }
 
 // TODO(gus) naming
-pub fn bubble_concat_through_cartesian_product_last_axis() -> Rewrite<Language, Meta> {
+pub fn bubble_concatenate_through_cartesian_product_last_axis() -> Rewrite<Language, MyAnalysis> {
     // TODO(gus) I think we need more checks here, to make sure that the sizes
     // actually line up correctly.
-    rewrite!("bubble-concat-through-cartesian-product-last-axis";
-    "(cartesian-product (concat ?a1 ?a2 ?axis1) (concat ?b1 ?b2 ?axis2))" =>
+    rewrite!("bubble-concatenate-through-cartesian-product-last-axis";
+    "(cartesian-product (concatenate ?a1 ?a2 ?axis1) (concatenate ?b1 ?b2 ?axis2))" =>
 
     {
         ConditionalApplier {
@@ -534,7 +469,7 @@ pub fn bubble_concat_through_cartesian_product_last_axis() -> Rewrite<Language, 
                     condition: same_number_of_dimensions("?b1", "?b2"),
                     applier: ConditionalApplier {
                         condition: last_axis("?b1", "?axis2"),
-                        applier: BubbleConcatThroughCartesianProductLastAxisApplier {
+                        applier: BubbleConcatenateThroughCartesianProductLastAxisApplier {
                             a1: "?a1".parse().unwrap(),
                             b1: "?b1".parse().unwrap(),
                         }
@@ -546,30 +481,30 @@ pub fn bubble_concat_through_cartesian_product_last_axis() -> Rewrite<Language, 
     })
 }
 
-pub fn bubble_concat_through_cartesian_product_axis_0_0() -> Rewrite<Language, Meta> {
+pub fn bubble_concatenate_through_cartesian_product_axis_0_0() -> Rewrite<Language, MyAnalysis> {
     // TODO(gus) this isn't the only way this could be done.
     // Also there's gotta be a name for this in terms of algebraic rules
     // TODO(gus) would it make our pattern-matching life easier if (1) we
-    // put the axes at the start of concat and (2) we used cons cells?
-    rewrite!("bubble-concat-through-cartesian-product-axes-0-0";
-                  "(cartesian-product (concat ?a1 ?a2 0) (concat ?b1 ?b2 0))"
+    // put the axes at the start of concatenate and (2) we used cons cells?
+    rewrite!("bubble-concatenate-through-cartesian-product-axes-0-0";
+                  "(cartesian-product (concatenate ?a1 ?a2 0) (concatenate ?b1 ?b2 0))"
                   // TODO(gus) check this
-                  => "(concat
-                           (concat (cartesian-product ?a1 ?b1)
+                  => "(concatenate
+                           (concatenate (cartesian-product ?a1 ?b1)
                                    (cartesian-product ?a1 ?b2) 1)
-                           (concat (cartesian-product ?a2 ?b1)
+                           (concatenate (cartesian-product ?a2 ?b1)
                                    (cartesian-product ?a2 ?b2) 1)
                            0)"
     )
 }
-pub fn rewrite_nonmatching_cartesian_product_concat() -> Rewrite<Language, Meta> {
+pub fn rewrite_nonmatching_cartesian_product_concatenate() -> Rewrite<Language, MyAnalysis> {
     rewrite!(
-    "rewrite-nonmatching-cartesian-product-concat";
+    "rewrite-nonmatching-cartesian-product-concatenate";
     "(cartesian-product
-              (concat ?a1 ?a2 0)
-              (concat ?b1 ?b2 1)
+              (concatenate ?a1 ?a2 0)
+              (concatenate ?b1 ?b2 1)
              )" =>
-    {RewriteNonMatchingCartConcatApplier{
+    {RewriteNonMatchingCartConcatenateApplier{
         a1:"?a1".parse().unwrap(),
         a2:"?a2".parse().unwrap(),
         a_axis:0,
@@ -579,14 +514,14 @@ pub fn rewrite_nonmatching_cartesian_product_concat() -> Rewrite<Language, Meta>
     }})
 }
 
-pub fn bubble_concat_through_map_dot_product_not_last_axis() -> Rewrite<Language, Meta> {
+pub fn bubble_concatenate_through_map_dot_product_not_last_axis() -> Rewrite<Language, MyAnalysis> {
     rewrite!(
 
-        "bubble-concat-through-map-dot-product-not-last-axis";
+        "bubble-concatenate-through-map-dot-product-not-last-axis";
         "(map-dot-product
-          (concat ?left ?right ?axis)
+          (concatenate ?left ?right ?axis)
          )" =>
-        "(concat
+        "(concatenate
           (map-dot-product ?left)
           (map-dot-product ?right)
          ?axis)"
@@ -596,12 +531,12 @@ pub fn bubble_concat_through_map_dot_product_not_last_axis() -> Rewrite<Language
     )
 }
 
-pub fn bubble_concat_through_map_dot_product_last_axis() -> Rewrite<Language, Meta> {
+pub fn bubble_concatenate_through_map_dot_product_last_axis() -> Rewrite<Language, MyAnalysis> {
     rewrite!(
 
-        "bubble-concat-through-map-dot-product-last-axis";
+        "bubble-concatenate-through-map-dot-product-last-axis";
         "(map-dot-product
-          (concat ?left ?right ?axis)
+          (concatenate ?left ?right ?axis)
          )" =>
             "(elementwise-add
               (map-dot-product ?left)
@@ -613,20 +548,20 @@ pub fn bubble_concat_through_map_dot_product_last_axis() -> Rewrite<Language, Me
     )
 }
 
-pub fn systolic_array_vector_matrix() -> Rewrite<Language, Meta> {
+pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
     struct SystolicArrayApplier {
         a: Var,
         b: Var,
     }
-    impl Applier<Language, Meta> for SystolicArrayApplier {
+    impl Applier<Language, MyAnalysis> for SystolicArrayApplier {
         fn apply_one(
             &self,
-            egraph: &mut EGraph<Language, Meta>,
+            egraph: &mut EGraph<Language, MyAnalysis>,
             eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
-            let a_shape = egraph[subst[&self.a]].metadata.shape.as_ref().unwrap();
-            let b_shape = egraph[subst[&self.b]].metadata.shape.as_ref().unwrap();
+            let a_shape = MyAnalysis::get_shape(subst[&self.a], egraph);
+            let b_shape = MyAnalysis::get_shape(subst[&self.b], egraph);
             assert_eq!(a_shape.as_array_view().len(), 1);
             assert_eq!(b_shape.as_array_view().len(), 2);
             let rows: usize = b_shape.as_array_view()[0];
@@ -643,7 +578,7 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, Meta> {
 
     rewrite!("systolic-array";
              // TODO(gus) should check that ?a is a vector.
-             "(map-dot-product (cartesian-product ?a (cols ?b)))" =>
+             "(map-dot-product (cartesian-product ?a (move-axis ?b 1 0)))" =>
              {SystolicArrayApplier{a: "?a".parse().unwrap(), b: "?b".parse().unwrap(),}})
 }
 
@@ -651,7 +586,7 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, Meta> {
 mod tests {
 
     use super::*;
-    use egg::{Pattern, Searcher};
+    use egg::{Pattern, Runner, Searcher};
 
     #[test]
     fn split() {
@@ -663,11 +598,14 @@ mod tests {
             super::collapse_nested_slices(),
         ];
 
-        let (egraph, _id) = egg::EGraph::<Language, Meta>::from_expr(&program);
-        let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
 
         assert_eq!(
-            "(slice t-32-32 0 16 0 16)"
+            "(slice (slice t-32-32 1 0 16) 0 0 16)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -676,7 +614,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(slice t-32-32 0 16 16 32)"
+            "(slice (slice t-32-32 1 16 32) 0 0 16)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -685,7 +623,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(slice t-32-32 16 32 0 16)"
+            "(slice (slice t-32-32 1 0 16) 0 16 32)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -694,7 +632,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(slice t-32-32 16 32 16 32)"
+            "(slice (slice t-32-32 1 16 32) 0 16 32)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)

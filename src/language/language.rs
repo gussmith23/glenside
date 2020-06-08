@@ -1,71 +1,107 @@
-use egg::define_language;
-use ndarray::Dimension;
+use egg::{define_language, merge_if_different, EGraph, Id};
+use ndarray::{Dimension, IxDyn};
 
-egg::define_language! {
-    pub enum Language {
-        Rows = "rows",
-        Cols = "cols",
-        CartesianProduct = "cartesian-product",
-        // Map dot product:
+define_language! {
+   pub enum Language {
+        // (move-axis <tensor> <axis (usize)> <dest (usize)>)
+        // Moves axis <axis> so that it is now axis <dest>.
+        // Replaces the "rows" and "cols" operators.
+        "move-axis" = MoveAxis([Id; 3]),
+
+        // (cartesian-product <t0> <t1>)
+        // Expects tensors of shape
+        // [a1, ..., an, c]
+        // [b1, ..., bm, c]
+        // Outputs a tensor of shape
+        // [a1, ..., an, b1, ..., bm, 2, c]
+        // which represents the cartesian product of the c-length vectors stored
+        // in the two tensors.
+        "cartesian-product" = CartesianProduct([Id; 2]),
+
+        // (map-dot-product <tensor>)
         // for a tensor with shape
-        // [a1, ..., an, 2, b],
+        // [a1, ..., an, 2, c],
         // the result is a new tensor with shape
         // [a1, ..., an]
-        // Whose elements are the dot product of the two b-length vectors at
+        // Whose elements are the dot product of the two c-length vectors at
         // each position in the original array.
-        MapDotProduct = "map-dot-product",
-        BsgSystolicArray = "bsg-systolic-array",
-        // Slice into list/tensor/whatever we're calling them
-        Slice = "slice",
-        Concat = "concat",
+        "map-dot-product" = MapDotProduct(Id),
+
+        // (slice <tensor> <axis (usize)> <low (usize)> <high (usize)>)
+        // Slices into <tensor> at axis <axis>, slicing the half-open range
+        // [<low>, <high>).
+        "slice" = Slice([Id; 4]),
+
+        // (concatenate <t0> <t1> <axis (usize)>)
+        // Concatenate tensors <t0> and <t1> along <axis>.
+        "concatenate" = Concatenate([Id; 3]),
+
+
+        // (elementwise-add <t0> <t1>)
         // TODO(gus) this will probably need to be signed at some point?
-        ElementwiseAdd = "elementwise-add",
+        // TODO(gus) ^^ what did I mean by this?
+        "elementwise-add" = ElementwiseAdd([Id; 2]),
+
+        // (bsg-systolic-array <rows (usize)> <cols (usize)> <t0> <t1>)
+        // Represents a systolic array of size rows X cols, fed with tensors t0
+        // and t1.
+        // TODO(gus) do we need to specify rows and cols? You can infer these
+        // from the size of the input, but it's also useful for searching.
+        "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
+
         Usize(usize),
         Symbol(String),
     }
 }
 
+// TODO(gus) Pick a better analysis name.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Meta {
-    pub(super) shape: Option<ndarray::IxDyn>,
-    pub(super) usize_value: Option<usize>,
+pub struct MyAnalysisData {
+    pub(crate) shape: Option<IxDyn>,
+    pub(crate) usize_value: Option<usize>,
 }
-impl egg::Metadata<Language> for Meta {
-    type Error = ();
+pub struct MyAnalysis;
+impl MyAnalysis {
+    pub(crate) fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
+        egraph[id].data.usize_value.unwrap()
+    }
+    pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
+        egraph[id].data.shape.as_ref().unwrap()
+    }
+}
+impl egg::Analysis<Language> for MyAnalysis {
+    type Data = MyAnalysisData;
 
-    fn merge(&self, other: &Self) -> Self {
-        assert_eq!(self, other);
-        self.clone()
+    fn merge(&self, to: &mut Self::Data, from: Self::Data) -> bool {
+        assert_eq!(*to, from);
+        merge_if_different(to, from)
     }
 
-    fn make(egraph: &egg::EGraph<Language, Self>, enode: &egg::ENode<Language>) -> Self {
-        // We only know the value in the case of a Num.
+    fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
-        match &enode.op {
-            CartesianProduct => {
-                // This cartesian product works a little differently from
-                // before, given the new, simplified shape system.
-                // It wants to pair up the very last dimension of the two
-                // input arrays. I.e. it views the two input arrays as
-                // having shapes
-                // [a1, a2, ..., an, c]
-                // [b1, b2, ..., bn, c]
-                // And sees them essentially as two tensors of vectors:
-                // input 1 is a [a1, ..., an] sized tensor of c-length vectors
-                // similar for input 2.
-                // So I think our only requirement is that the last dimension
-                // is the same size. And then the resulting size is
-                // [a1, ... an, b1, ..., bn, 2, c].
-                // Originally I implemented it for input arrays with 2
-                // dimensions. Going to try to allow for 1 dimension in both
-                // tensors. Can generalize further later.
-                assert_eq!(enode.children.len(), 2);
-                let initial_shape_left: &ndarray::IxDyn =
-                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+        match enode {
+            &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
+                let mut new_shape = Self::get_shape(tensor_id, egraph).clone();
+                let src_axis = Self::get_usize(src_axis_id, egraph);
+                let dest_axis = Self::get_usize(dest_axis_id, egraph);
+
+                assert!(src_axis < new_shape.as_array_view().len());
+                assert!(dest_axis < new_shape.as_array_view().len());
+
+                let tmp = new_shape[dest_axis];
+                new_shape[dest_axis] = new_shape[src_axis];
+                new_shape[src_axis] = tmp;
+
+                Self::Data {
+                    shape: Some(new_shape),
+                    usize_value: None,
+                }
+            }
+            &CartesianProduct([t0_id, t1_id]) => {
+                let initial_shape_left: &IxDyn = Self::get_shape(t0_id, egraph);
                 assert!(initial_shape_left.as_array_view().len() >= 1);
                 assert!(initial_shape_left.as_array_view().len() <= 2);
-                let initial_shape_right: &ndarray::IxDyn =
-                    &egraph[enode.children[1]].metadata.shape.as_ref().unwrap();
+                let initial_shape_right: &IxDyn = Self::get_shape(t1_id, egraph);
                 assert!(initial_shape_left.as_array_view().len() >= 1);
                 assert!(initial_shape_left.as_array_view().len() <= 2);
                 assert_eq!(
@@ -97,53 +133,13 @@ impl egg::Metadata<Language> for Meta {
                         + 1
                         + 1
                 );
-                Meta {
+                Self::Data {
                     shape: Some(new_shape),
                     usize_value: None,
                 }
             }
-            Rows => {
-                assert_eq!(enode.children.len(), 1);
-                let initial_shape: ndarray::IxDyn = egraph[enode.children[0]]
-                    .metadata
-                    .shape
-                    .as_ref()
-                    .unwrap()
-                    .clone();
-                // Doesn't have to be true in the future.
-                assert_eq!(initial_shape.as_array_view().len(), 2);
-                // Our new, simpler system makes this way easier!
-                Meta {
-                    shape: Some(initial_shape),
-                    usize_value: None,
-                }
-            }
-            Cols => {
-                assert_eq!(enode.children.len(), 1);
-                let mut initial_shape: ndarray::IxDyn = egraph[enode.children[0]]
-                    .metadata
-                    .shape
-                    .as_ref()
-                    .unwrap()
-                    .clone();
-                // Doesn't have to be true in the future.
-                assert_eq!(initial_shape.as_array_view().len(), 2);
-
-                // The column dimension gets moved first. For a two-dimensional
-                // array, it's a transpose!
-                let cols_val: usize = initial_shape[1];
-                initial_shape[1] = initial_shape[0];
-                initial_shape[0] = cols_val;
-
-                Meta {
-                    shape: Some(initial_shape),
-                    usize_value: None,
-                }
-            }
-            MapDotProduct => {
-                assert_eq!(enode.children.len(), 1);
-                let shape: &ndarray::IxDyn =
-                    egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
+            &MapDotProduct(tensor_id) => {
+                let shape: &IxDyn = Self::get_shape(tensor_id, egraph);
 
                 assert!(shape.as_array_view().len() >= 3);
                 assert_eq!(shape[shape.as_array_view().len() - 2], 2);
@@ -157,18 +153,19 @@ impl egg::Metadata<Language> for Meta {
                         .collect::<Vec<usize>>()[..],
                 );
 
-                Meta {
+                Self::Data {
                     shape: Some(new_shape),
                     usize_value: None,
                 }
             }
-            BsgSystolicArray => {
-                assert_eq!(enode.children.len(), 4);
-
-                let left_shape = egraph[enode.children[2]].metadata.shape.as_ref().unwrap();
-                let right_shape = egraph[enode.children[3]].metadata.shape.as_ref().unwrap();
+            &BsgSystolicArray([_rows_id, _cols_id, t0_id, t1_id]) => {
+                let left_shape = Self::get_shape(t0_id, egraph);
+                let right_shape = Self::get_shape(t1_id, egraph);
                 let left_shape_len: usize = left_shape.as_array_view().len();
                 let right_shape_len: usize = right_shape.as_array_view().len();
+
+                // TODO(gus) check that the rows/cols params sizes are correct
+                // given the input tensor shapes.
 
                 // Assumptions I'm making right now.
                 assert!(left_shape_len == 1 || left_shape_len == 2);
@@ -182,102 +179,63 @@ impl egg::Metadata<Language> for Meta {
                     .chain(right_shape.as_array_view().iter().cloned().skip(1))
                     .collect();
 
-                Meta {
+                Self::Data {
                     shape: Some(ndarray::IxDyn(&new_shape)),
                     usize_value: None,
                 }
             }
-            Slice => {
-                let shape_to_be_sliced: &ndarray::IxDyn =
-                    &egraph[enode.children[0]].metadata.shape.as_ref().unwrap();
-                let slice_indices: std::vec::Vec<usize> = enode.children[1..]
-                    .iter()
-                    .map(|id| egraph[*id].metadata.usize_value.unwrap())
-                    .collect();
+            &Slice([tensor_id, axis_id, low_id, high_id]) => {
+                let mut new_shape: IxDyn = Self::get_shape(tensor_id, egraph).clone();
 
-                // For every dimension, there should be two slice indices:
-                // ( [beginning, end) )
-                // Note that this is a pretty restrictive syntax for now.
-                assert_eq!(0, slice_indices.len() % 2);
-                assert_eq!(
-                    shape_to_be_sliced.as_array_view().len(),
-                    slice_indices.len() / 2
-                );
+                let axis: usize = Self::get_usize(axis_id, egraph);
+                let low: usize = Self::get_usize(low_id, egraph);
+                let high: usize = Self::get_usize(high_id, egraph);
 
-                let mut new_shape = shape_to_be_sliced.clone();
+                assert!(new_shape.as_array_view().len() > axis);
+                assert!(low < new_shape[axis]);
+                assert!(high <= new_shape[axis]);
 
-                for dim_i in 0..shape_to_be_sliced.as_array_view().len() {
-                    let dim_val: usize = shape_to_be_sliced[dim_i];
-                    let slice_start: usize = slice_indices[dim_i * 2];
-                    let slice_end: usize = slice_indices[dim_i * 2 + 1];
-                    use std::convert::TryInto;
-                    assert!(slice_end <= dim_val.try_into().unwrap());
-                    assert!(slice_start <= slice_end);
-                    if slice_end - slice_start > 0 {
-                        // If the slice actually needs to produce values...
-                        assert!(slice_start < dim_val.try_into().unwrap());
-                    }
+                new_shape[axis] = high - low;
 
-                    new_shape[dim_i] = (slice_end - slice_start).try_into().unwrap();
-                }
-
-                Meta {
+                Self::Data {
                     shape: Some(new_shape),
                     usize_value: None,
                 }
             }
-            Concat => {
-                // Need at least two arrays and always need one axis
-                assert!(enode.children.len() >= 3);
-                let shapes: std::vec::Vec<&ndarray::IxDyn> = (0..(enode.children.len() - 1))
-                    .map(|i| egraph[enode.children[i]].metadata.shape.as_ref().unwrap())
-                    .collect();
-
-                let concat_axis: usize = egraph[enode.children[enode.children.len() - 1]]
-                    .metadata
-                    .usize_value
-                    .unwrap();
-
-                assert!((0..shapes.len())
-                    .all(|i| shapes[i].as_array_view().len() == shapes[0].as_array_view().len()));
-                // The two shapes must be equal, except for along the concat
-                // axis.
-                assert!(
-                    (0..shapes[0].as_array_view().len()).all(|i| i == concat_axis
-                        || ((0..shapes.len()).all(|j| shapes[j][i] == shapes[0][i])))
+            &Concatenate([t0_id, t1_id, axis_id]) => {
+                let axis = Self::get_usize(axis_id, egraph);
+                let mut new_shape = Self::get_shape(t0_id, egraph).clone();
+                let t1_shape = Self::get_shape(t1_id, egraph).clone();
+                assert_eq!(
+                    new_shape.as_array_view().len(),
+                    t1_shape.as_array_view().len()
                 );
+                assert!(axis < t1_shape.as_array_view().len());
+                new_shape[axis] += t1_shape[axis];
 
-                let mut new_shape = shapes[0].clone();
-                new_shape[concat_axis] += (1..shapes.len())
-                    .map(|i| shapes[i][concat_axis])
-                    .sum::<usize>();
-                //println!("concat input shapes: {:?}", shapes);
-                //println!("concat output shape: {:?}", new_shape);
-
-                Meta {
+                Self::Data {
                     shape: Some(new_shape),
                     usize_value: None,
                 }
             }
-            ElementwiseAdd => {
-                assert!(enode.children.len() == 2);
+            &ElementwiseAdd([t0_id, t1_id]) => {
                 assert_eq!(
-                    egraph[enode.children[0]].metadata.shape.as_ref().unwrap(),
-                    egraph[enode.children[1]].metadata.shape.as_ref().unwrap()
+                    Self::get_shape(t0_id, egraph),
+                    Self::get_shape(t1_id, egraph)
                 );
 
-                Meta {
-                    shape: egraph[enode.children[0]].metadata.shape.clone(),
+                Self::Data {
+                    shape: Some(Self::get_shape(t0_id, egraph).clone()),
                     usize_value: None,
                 }
             }
-            Usize(u) => Meta {
+            Usize(u) => Self::Data {
                 shape: None,
                 usize_value: Some(*u),
             },
             Symbol(name) => {
                 //println!("Symbol");
-                Meta {
+                Self::Data {
                     shape: Some(ndarray::IxDyn(
                         &(match &name[..] {
                             "in" => vec![1, 784],
@@ -320,8 +278,8 @@ mod tests {
         "
          (map-dot-product
           (cartesian-product
-           (rows single-matrix-multiply-input-a)
-           (cols single-matrix-multiply-input-b)
+           single-matrix-multiply-input-a
+           (move-axis single-matrix-multiply-input-b 1 0)
           )
          )
          "
@@ -333,28 +291,24 @@ mod tests {
     fn test_cartesian_product_shape() {
         let program = "(cartesian-product
           v-32
-          (cols t-32-32)
+          (move-axis t-32-32 1 0)
          )
          "
         .parse()
         .unwrap();
-        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
-        assert_eq!(
-            egraph[id].metadata.shape.as_ref().unwrap(),
-            &ndarray::IxDyn(&[32, 2, 32])
-        );
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[32, 2, 32]));
 
         let program = "(cartesian-product
-          (rows t-32-32)
+          (move-axis t-32-32 1 0)
           v-32
          )
          "
         .parse()
         .unwrap();
-        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
-        assert_eq!(
-            egraph[id].metadata.shape.as_ref().unwrap(),
-            &ndarray::IxDyn(&[32, 2, 32])
-        );
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[32, 2, 32]));
     }
 }

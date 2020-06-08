@@ -1,4 +1,4 @@
-use egg::{Pattern, Searcher};
+use egg::{EGraph, Pattern, Runner, Searcher};
 use glenside::language::*;
 
 #[test]
@@ -11,7 +11,7 @@ fn regular_vector_matrix_multiply() {
      (map-dot-product
       (cartesian-product
        v-32
-       (cols t-32-32)
+       (move-axis t-32-32 1 0)
       )
      )
      "
@@ -36,11 +36,11 @@ fn regular_vector_matrix_multiply() {
         // identify places where we can map in hardware.
         // For example, if we see:
         // (map-dot-product
-        //  (cartesian-product (concat ...) (concat ...))
+        //  (cartesian-product (concatenate ...) (concatenate ...))
         // )
         // ...we don't have a hardware atom that does this. But if we can
         // rewrite it to:
-        // (concat
+        // (concatenate
         //  (map-dot-product
         //   (cartesian-product <a 1x16 vector> <a 16x16 tensor>)
         //  )
@@ -49,16 +49,13 @@ fn regular_vector_matrix_multiply() {
         //  )
         // )
         // ...then we can map in systolic arrays for the (map-dot-product...)
-        // expressions, and the top-level concat will be handled by the compiler.
-        rewrites::bubble_concat_through_rows_axis_0(),
-        rewrites::bubble_concat_through_rows_axis_1(),
-        rewrites::bubble_concat_through_cols_axis_0(),
-        rewrites::bubble_concat_through_cols_axis_1(),
-        rewrites::bubble_concat_through_cartesian_product_not_last_axis_left(),
-        rewrites::bubble_concat_through_cartesian_product_not_last_axis_right(),
-        rewrites::bubble_concat_through_cartesian_product_last_axis(),
-        rewrites::bubble_concat_through_map_dot_product_not_last_axis(),
-        rewrites::bubble_concat_through_map_dot_product_last_axis(),
+        // expressions, and the top-level concatenate will be handled by the compiler.
+        rewrites::bubble_concatenate_through_move_axis(),
+        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_left(),
+        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_right(),
+        rewrites::bubble_concatenate_through_cartesian_product_last_axis(),
+        rewrites::bubble_concatenate_through_map_dot_product_not_last_axis(),
+        rewrites::bubble_concatenate_through_map_dot_product_last_axis(),
         // Finally, this rewrite tensorizes!
         // It identifies patterns that we have hardware atoms for. Right now, it
         // finds:
@@ -71,8 +68,11 @@ fn regular_vector_matrix_multiply() {
     ];
 
     // Run the rewrites over the egraph.
-    let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
-    let runner = egg::Runner::new().with_egraph(egraph).run(&rws);
+    let mut egraph = EGraph::new(MyAnalysis);
+    let id = egraph.add_expr(&program);
+    let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        .with_egraph(egraph)
+        .run(&rws);
     println!(
         "Stopped after {} iterations, reason: {:?}",
         runner.iterations.len(),
@@ -82,33 +82,32 @@ fn regular_vector_matrix_multiply() {
     // Find the expected tiled program!
     // This program is equivalent to our original program, but all
     // vector--matrix multiplications are tiled to 1x16 X 16x16.
-    "(concat
+    "(concatenate
       (elementwise-add
        (map-dot-product
         (cartesian-product
-         (slice v-32 0 16)
-         (cols (slice t-32-32 0 16 0 16))
+         (slice v-32 0 0 16)
+         (move-axis (slice (slice t-32-32 1 0 16) 0 0 16) 1 0)
         )
        )
        (map-dot-product
         (cartesian-product
-         (slice v-32 16 32)
-         (cols (slice t-32-32 16 32 0 16))
+         (slice v-32 0 16 32)
+         (move-axis (slice (slice t-32-32 1 0 16) 0 16 32) 1 0)
         )
        )
-
       )
       (elementwise-add
        (map-dot-product
         (cartesian-product
-         (slice v-32 0 16)
-         (cols (slice t-32-32 0 16 16 32))
+         (slice v-32 0 0 16)
+         (move-axis (slice (slice t-32-32 1 16 32) 0 0 16) 1 0)
         )
        )
        (map-dot-product
         (cartesian-product
-         (slice v-32 16 32)
-         (cols (slice t-32-32 16 32 16 32))
+         (slice v-32 0 16 32)
+         (move-axis (slice (slice t-32-32 1 16 32) 0 16 32) 1 0)
         )
        )
       )
@@ -121,25 +120,25 @@ fn regular_vector_matrix_multiply() {
     // And show that the program got tensorized!
     // Note how the vec--mat multiplies were replaced with 16x16 systolic
     // arrays!
-    "(concat
+    "(concatenate
       (elementwise-add
        (bsg-systolic-array 16 16
-        (slice v-32 0 16)
-        (slice t-32-32 0 16 0 16)
+        (slice v-32 0 0 16)
+        (slice (slice t-32-32 1 0 16) 0 0 16)
        )
        (bsg-systolic-array 16 16
-        (slice v-32 16 32)
-        (slice t-32-32 16 32 0 16)
+        (slice v-32 0 16 32)
+        (slice (slice t-32-32 1 0 16) 0 16 32)
        )
       )
       (elementwise-add
        (bsg-systolic-array 16 16
-        (slice v-32 0 16)
-        (slice t-32-32 0 16 16 32)
+        (slice v-32 0 0 16)
+        (slice (slice t-32-32 1 16 32) 0 0 16)
        )
        (bsg-systolic-array 16 16
-        (slice v-32 16 32)
-        (slice t-32-32 16 32 16 32)
+        (slice v-32 0 16 32)
+        (slice (slice t-32-32 1 16 32) 0 16 32)
        )
       )
       0)"
@@ -152,19 +151,19 @@ fn regular_vector_matrix_multiply() {
     // The egraph will find a ton of different hardware combinations!
 
     // For example: using both a 32x16 and a 16x16 systolic array:
-    "(concat
+    "(concatenate
       (bsg-systolic-array 32 16
        v-32
-       (slice t-32-32 0 32 0 16)
+       (slice t-32-32 1 0 16)
       )
       (elementwise-add
        (bsg-systolic-array 16 16
-        (slice v-32 0 16)
-        (slice t-32-32 0 16 16 32)
+        (slice v-32 0 0 16)
+        (slice (slice t-32-32 1 16 32) 0 0 16)
        )
        (bsg-systolic-array 16 16
-        (slice v-32 16 32)
-        (slice t-32-32 16 32 16 32)
+        (slice v-32 0 16 32)
+        (slice (slice t-32-32 1 16 32) 0 16 32)
        )
       )
       0)"
@@ -174,14 +173,14 @@ fn regular_vector_matrix_multiply() {
     .expect("Did not find expected program");
 
     // Or a 32x16 systolic array (with no need to accumulate!)
-    "(concat
+    "(concatenate
       (bsg-systolic-array 32 16
        v-32
-       (slice t-32-32 0 32 0 16)
+       (slice t-32-32 1 0 16)
       )
       (bsg-systolic-array 32 16
        v-32
-       (slice t-32-32 0 32 16 32)
+       (slice t-32-32 1 16 32)
       )
       0)"
     .parse::<Pattern<_>>()
@@ -192,12 +191,12 @@ fn regular_vector_matrix_multiply() {
     // Or a 16x32 systolic array (with no need for concatenation!)
     "(elementwise-add
       (bsg-systolic-array 16 32
-       (slice v-32 0 16)
-       (slice t-32-32 0 16 0 32)
+       (slice v-32 0 0 16)
+       (slice t-32-32 0 0 16)
       )
       (bsg-systolic-array 16 32
-       (slice v-32 16 32)
-       (slice t-32-32 16 32 0 32)
+       (slice v-32 0 16 32)
+       (slice t-32-32 0 16 32)
       )
      )"
     .parse::<Pattern<_>>()

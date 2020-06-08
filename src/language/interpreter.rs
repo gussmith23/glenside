@@ -207,7 +207,8 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             debug!("interpreting symbol");
             MemoizedInterpreterResult::InterpretedValue(env[&name[..]].clone())
         }
-        MapDotProduct => {
+        MapDotProduct(t0_id) => {
+            todo!("reimplement");
             assert_eq!(enode.children.len(), 1);
 
             // Get the argument as a tensor.
@@ -335,7 +336,8 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             MemoizedInterpreterResult::InterpretedValue(Value::Tensor(transpose))
         }
-        CartesianProduct => {
+        CartesianProduct([t0_id, t1_id]) => {
+            todo!("reimplement");
             // Semantics of cartesian product:
             // Rightmost thing varies the fastest.
 
@@ -422,7 +424,8 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             MemoizedInterpreterResult::InterpretedValue(Value::Tensor(reshaped_into_tensor))
         }
-        Slice => {
+        Slice([tensor_id, axis_id, low_id, high_id]) => {
+            todo!("reimplement this");
             // TODO(gus) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
             assert_eq!(enode.children.len(), 5);
@@ -482,8 +485,9 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             ))
         }
         Usize(u) => MemoizedInterpreterResult::InterpretedValue(Value::Usize(*u)),
-        BsgSystolicArray => panic!(),
+        BsgSystolicArray([_rows_id, _cols_id, _t0_id, _t1_id]) => panic!(),
         Concat => {
+            todo!("reimplement");
             // TODO(gus) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
             assert!(enode.children.len() >= 3);
@@ -600,7 +604,8 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             MemoizedInterpreterResult::InterpretedValue(Value::Tensor(new_tensor))
         }
-        ElementwiseAdd => {
+        ElementwiseAdd([t0_id, t1_id]) => {
+            todo!("reimplement");
             // TODO(gus) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
             assert!(enode.children.len() == 2);
@@ -736,7 +741,7 @@ mod tests {
         let mut env = Environment::new();
         env.insert("single-matrix-multiply-input-a", a_val);
         env.insert("single-matrix-multiply-input-b", b_val);
-        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        let (egraph, id) = egg::EGraph::<Language, MyAnalysis>::from_expr(&program);
         let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
         let out = unpack_interpreter_output(out);
 
@@ -786,7 +791,7 @@ mod tests {
         env.insert("w1", w1_val);
         env.insert("w2", w2_val);
         env.insert("w3", w3_val);
-        let (egraph, id) = egg::EGraph::<Language, Meta>::from_expr(&program);
+        let (egraph, id) = egg::EGraph::<Language, MyAnalysis>::from_expr(&program);
         let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
         let out = unpack_interpreter_output(out);
 
