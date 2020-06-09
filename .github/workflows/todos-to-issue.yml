@@ -39,6 +39,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue-number: 1
         comment-id: 640962463
+        edit-mode: replace
         body: |
           These TODOs were scraped from the code.
           
