@@ -26,7 +26,7 @@ jobs:
     - name: Find and format TODOs
       id: generate-todos
       run: |
-        find . -name '*.rs' | xargs grep -n TODO | sed 's/^\(.*\):\([0-9]*\):.*TODO\((\([^)]*\))\)\{0,1\} *\(.*\)$/- (\4) \5 [🔗](https:\/\/github.com\/$GITHUB_REPOSITORY\/blob\/master\/\1#L\2)/' > todos.txt
+        find . -name '*.rs' | xargs grep -n TODO | sed 's/^\(.*\):\([0-9]*\):.*TODO\((\([^)]*\))\)\{0,1\} *\(.*\)$/- (\4) \5 [🔗](https:\/\/github.com\/gussmith23\/glenside\/blob\/master\/\1#L\2)/' > todos.txt
         result=$(cat todos.txt)
         result="${result//'%'/'%25'}"
         result="${result//$'\n'/'%0A'}"
