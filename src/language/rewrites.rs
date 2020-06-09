@@ -2,7 +2,7 @@ use super::{Language, MyAnalysis};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
-// TODO(gus) I think I should make this a conditional applier, and fold in
+// TODO(@gussmith23) I think I should make this a conditional applier, and fold in
 // checks to make sure it has a shape and that it's an input
 pub fn has_shape(
     var: &'static str,
@@ -13,13 +13,13 @@ pub fn has_shape(
 /// short_circuit lets us return early if we don't actually care about the
 /// result of this check. This is the easiest way I could find to do this using
 /// egg's conditional appliers.
-/// TODO(gus) make this cleaner
+/// TODO(@gussmith23) make this cleaner
 pub fn is_symbol(
     short_circuit: bool,
     var: &'static str,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    // TODO(gus) should this be `all` or `any` or something else entirely?
+    // TODO(@gussmith23) should this be `all` or `any` or something else entirely?
     move |egraph, _, subst| {
         if short_circuit {
             true
@@ -66,7 +66,7 @@ fn dimension_is_even(
     move |egraph, _, subst| egraph[subst[&var]].data.shape.as_ref().unwrap()[axis] % 2 == 0
 }
 
-// TODO(gus) not sure all this should be public.
+// TODO(@gussmith23) not sure all this should be public.
 pub struct RewriteNonMatchingCartConcatenateApplier {
     pub a1: egg::Var,
     pub a2: egg::Var,
@@ -102,7 +102,7 @@ impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApp
         // These will become our innermost concatenates.
         // One of these is already concatenateted along the 1 axis!
 
-        // TODO(gus) left off here, I think I should actually do something
+        // TODO(@gussmith23) left off here, I think I should actually do something
         // simpler here and just rewrite the two concatenates that are the
         // children of this cartesian product.
         // It needs some information from elsewhere in the graph, though,
@@ -110,7 +110,7 @@ impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApp
 
         // So we're going to slice-and-concatenate all 4 tensors. We'll slice the
         // as based on the bs size, and slice the bs based on the as size.
-        // TODO(gus) I could write an even simpler rewrite rule that slices
+        // TODO(@gussmith23) I could write an even simpler rewrite rule that slices
         // more indiscriminately, everywhere. Right now I'm using some
         // context clue (the overarching cartesian product) to only apply
         // this where needed.
@@ -243,7 +243,7 @@ pub fn bubble_concatenate_through_move_axis() -> Rewrite<Language, MyAnalysis> {
 
             // If the move now happens /before/ the concatenate, we have to
             // figure out what the new axis for the concatenate is.
-            // TODO(gus) Would be nice to have a more principled system of
+            // TODO(@gussmith23) Would be nice to have a more principled system of
             // keeping track of axes. This is where Remy's relational algebra
             // stuff could be really useful!
             let new_concatenate_axis: usize = if (original_concatenate_axis < src_axis
@@ -335,7 +335,7 @@ fn same_number_of_dimensions(
     }
 }
 
-// TODO(gus) naming
+// TODO(@gussmith23) naming
 pub fn bubble_concatenate_through_cartesian_product_not_last_axis_left(
 ) -> Rewrite<Language, MyAnalysis> {
     rewrite!("bubble-concatenate-through-cartesian-product-not-last-axis-left";
@@ -384,7 +384,7 @@ impl Applier<Language, MyAnalysis>
     }
 }
 
-// TODO(gus) naming
+// TODO(@gussmith23) naming
 pub fn bubble_concatenate_through_cartesian_product_not_last_axis_right(
 ) -> Rewrite<Language, MyAnalysis> {
     rewrite!("bubble-concatenate-through-cartesian-product-not-last-axis-right";
@@ -453,9 +453,9 @@ impl Applier<Language, MyAnalysis> for BubbleConcatenateThroughCartesianProductL
     }
 }
 
-// TODO(gus) naming
+// TODO(@gussmith23) naming
 pub fn bubble_concatenate_through_cartesian_product_last_axis() -> Rewrite<Language, MyAnalysis> {
-    // TODO(gus) I think we need more checks here, to make sure that the sizes
+    // TODO(@gussmith23) I think we need more checks here, to make sure that the sizes
     // actually line up correctly.
     rewrite!("bubble-concatenate-through-cartesian-product-last-axis";
     "(cartesian-product (concatenate ?a1 ?a2 ?axis1) (concatenate ?b1 ?b2 ?axis2))" =>
@@ -482,13 +482,13 @@ pub fn bubble_concatenate_through_cartesian_product_last_axis() -> Rewrite<Langu
 }
 
 pub fn bubble_concatenate_through_cartesian_product_axis_0_0() -> Rewrite<Language, MyAnalysis> {
-    // TODO(gus) this isn't the only way this could be done.
+    // TODO(@gussmith23) this isn't the only way this could be done.
     // Also there's gotta be a name for this in terms of algebraic rules
-    // TODO(gus) would it make our pattern-matching life easier if (1) we
+    // TODO(@gussmith23) would it make our pattern-matching life easier if (1) we
     // put the axes at the start of concatenate and (2) we used cons cells?
     rewrite!("bubble-concatenate-through-cartesian-product-axes-0-0";
                   "(cartesian-product (concatenate ?a1 ?a2 0) (concatenate ?b1 ?b2 0))"
-                  // TODO(gus) check this
+                  // TODO(@gussmith23) check this
                   => "(concatenate
                            (concatenate (cartesian-product ?a1 ?b1)
                                    (cartesian-product ?a1 ?b2) 1)
@@ -577,7 +577,7 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
     }
 
     rewrite!("systolic-array";
-             // TODO(gus) should check that ?a is a vector.
+             // TODO(@gussmith23) should check that ?a is a vector.
              "(map-dot-product (cartesian-product ?a (move-axis ?b 1 0)))" =>
              {SystolicArrayApplier{a: "?a".parse().unwrap(), b: "?b".parse().unwrap(),}})
 }

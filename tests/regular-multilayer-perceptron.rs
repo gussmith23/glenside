@@ -101,6 +101,6 @@ fn regular_multilayer_perceptron() {
     .search_eclass(&runner.egraph, id)
     .expect("Did not find expected program");
 
-    // TODO(gus) add more checks. I should be using extraction to do this,
+    // TODO(@gussmith23) add more checks. I should be using extraction to do this,
     // instead of writing these out by hand.
 }

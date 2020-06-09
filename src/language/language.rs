@@ -38,14 +38,14 @@ define_language! {
 
 
         // (elementwise-add <t0> <t1>)
-        // TODO(gus) this will probably need to be signed at some point?
-        // TODO(gus) ^^ what did I mean by this?
+        // TODO(@gussmith23) this will probably need to be signed at some point?
+        // TODO(@gussmith23) ^^ what did I mean by this?
         "elementwise-add" = ElementwiseAdd([Id; 2]),
 
         // (bsg-systolic-array <rows (usize)> <cols (usize)> <t0> <t1>)
         // Represents a systolic array of size rows X cols, fed with tensors t0
         // and t1.
-        // TODO(gus) do we need to specify rows and cols? You can infer these
+        // TODO(@gussmith23) do we need to specify rows and cols? You can infer these
         // from the size of the input, but it's also useful for searching.
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
 
@@ -54,7 +54,7 @@ define_language! {
     }
 }
 
-// TODO(gus) Pick a better analysis name.
+// TODO(@gussmith23) Pick a better analysis name.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MyAnalysisData {
     pub(crate) shape: Option<IxDyn>,
@@ -164,7 +164,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let left_shape_len: usize = left_shape.as_array_view().len();
                 let right_shape_len: usize = right_shape.as_array_view().len();
 
-                // TODO(gus) check that the rows/cols params sizes are correct
+                // TODO(@gussmith23) check that the rows/cols params sizes are correct
                 // given the input tensor shapes.
 
                 // Assumptions I'm making right now.
@@ -242,7 +242,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             "w1" => vec![784, 512],
                             "w2" => vec![512, 512],
                             "w3" => vec![512, 10],
-                            // TODO(gus) have to figure out a way around this.
+                            // TODO(@gussmith23) have to figure out a way around this.
                             // Max seems to think the tensors should just go
                             // into the egraph. I was hoping to have some kind
                             // of environment that we could wrap the egraph in

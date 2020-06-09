@@ -1,15 +1,15 @@
-// TODO(gus) Redesign interepreter to interpret RecExprs
+// TODO(@gussmith23) Redesign interepreter to interpret RecExprs
 use super::*;
 use log::{debug, info};
 use ndarray::s;
 use std::collections::hash_map::HashMap;
 
-// TODO(gus) hide this interface later
+// TODO(@gussmith23) hide this interface later
 pub type Environment<'a> = HashMap<&'a str, Value>;
 
 type DataType = f64;
 
-// TODO(gus) not sure this should actually be pub; I'm being lazy
+// TODO(@gussmith23) not sure this should actually be pub; I'm being lazy
 /// Values are `ndarray::ArrayD` tensors or `usize`s.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Value {
@@ -19,7 +19,7 @@ pub enum Value {
 
 // impl num_traits::identities::Zero for ListValue {
 //     fn zero() {
-//         // TODO(gus) This seems bad
+//         // TODO(@gussmith23) This seems bad
 //         ListValue::Scalar(DataType::zero())
 // }
 
@@ -40,7 +40,7 @@ impl std::ops::Add for Value {
     }
 }
 
-// TODO(gus) not sure this should actually be pub; I'm being lazy
+// TODO(@gussmith23) not sure this should actually be pub; I'm being lazy
 #[derive(Clone, Debug)]
 pub enum MemoizedInterpreterResult {
     InterpretedValue(Value),
@@ -50,15 +50,15 @@ pub enum MemoizedInterpreterResult {
     CanNotInterpret,
 }
 
-// TODO(gus) hide this interface later
+// TODO(@gussmith23) hide this interface later
 pub type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
 
-// TODO(gus) design better interface later
+// TODO(@gussmith23) design better interface later
 pub fn interpret_eclass<M: egg::Metadata<Language>>(
     egraph: &egg::EGraph<Language, M>,
     eclass: &egg::EClass<Language, M>,
     env: &Environment,
-    // TODO(gus) shoot, i think i'm mixing up where to put the "mut". Should
+    // TODO(@gussmith23) shoot, i think i'm mixing up where to put the "mut". Should
     // probably not be on both.
     mut memo_map: &mut MemoizationMap,
 ) -> MemoizedInterpreterResult {
@@ -66,7 +66,7 @@ pub fn interpret_eclass<M: egg::Metadata<Language>>(
     debug!("{:?}", eclass);
 
     if memo_map.contains_key(&eclass.id) {
-        // TODO(gus) is this right?
+        // TODO(@gussmith23) is this right?
         return memo_map[&eclass.id].clone();
     }
 
@@ -145,7 +145,7 @@ pub fn interpret_eclass<M: egg::Metadata<Language>>(
         &MemoizedInterpreterResult::StillInterpreting => true,
         _ => panic!(),
     });
-    // TODO(gus) cloning, inefficient and lazy
+    // TODO(@gussmith23) cloning, inefficient and lazy
     match memo_map.insert(
         eclass.id,
         MemoizedInterpreterResult::InterpretedValue(filtered_results[0].clone()),
@@ -168,12 +168,12 @@ pub fn interpret_eclass<M: egg::Metadata<Language>>(
         assert!(results.iter().all(|result| match result {
             MemoizedInterpreterResult::InterpretedValue(v) =>
                 v == match memo_map.get(&eclass.id).unwrap() {
-                    // TODO(gus) probably inefficient
+                    // TODO(@gussmith23) probably inefficient
                     MemoizedInterpreterResult::InterpretedValue(v) => v,
                     _ => panic!(),
                 },
             MemoizedInterpreterResult::CanNotInterpret => {
-                // TODO(gus) remove this once I figure out if this is expected.
+                // TODO(@gussmith23) remove this once I figure out if this is expected.
                 debug!("CanNotInterpret found while checking");
                 true
             }
@@ -182,7 +182,7 @@ pub fn interpret_eclass<M: egg::Metadata<Language>>(
         }));
     }
 
-    // TODO(gus) probably inefficient
+    // TODO(@gussmith23) probably inefficient
     memo_map.get(&eclass.id).unwrap().clone()
 }
 
@@ -242,7 +242,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                 t: ndarray::ArrayViewD<T>,
             ) -> ndarray::ArrayD<T> {
                 if t.shape().len() > 2 {
-                    // TODO(gus) Definitely not performant
+                    // TODO(@gussmith23) Definitely not performant
                     let to_be_stacked = t
                         .axis_iter(ndarray::Axis(0))
                         .map(map_dot_product)
@@ -278,7 +278,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                         .to_owned()
                         .into_dimensionality::<ndarray::Ix1>()
                         .unwrap();
-                    // TODO(gus) left off here, no idea how to fix the current
+                    // TODO(@gussmith23) left off here, no idea how to fix the current
                     // compiler error
                     ndarray::arr0(v1.dot(&v2)).into_dyn()
                 }
@@ -291,7 +291,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             assert_eq!(enode.children.len(), 1);
 
             // Expect that the result of interpreting it is a tensor.
-            // TODO(gus) clean up this syntax.
+            // TODO(@gussmith23) clean up this syntax.
             let arg_as_tensor = interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
             let arg_as_tensor = match arg_as_tensor {
                 // Return early if we've found a recursive cycle
@@ -315,7 +315,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             assert_eq!(enode.children.len(), 1);
 
             // Expect that the result of interpreting it is a tensor.
-            // TODO(gus) clean up this syntax.
+            // TODO(@gussmith23) clean up this syntax.
             let arg_as_tensor = interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
             let arg_as_tensor = match arg_as_tensor {
                 // Return early if we've found a recursive cycle
@@ -389,7 +389,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             //let new_shape = vec![left.shape()[0], right.shape()[0], 2, left.shape()[1]];
 
-            // TODO(gus) this whole chain of things is definitely not performant
+            // TODO(@gussmith23) this whole chain of things is definitely not performant
             if left.shape().len() == 1 {
                 left = left.insert_axis(ndarray::Axis(0));
             }
@@ -414,7 +414,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
             let to_be_reshaped: ndarray::ArrayD<DataType> =
                 ndarray::stack(ndarray::Axis(0), &vec[..]).unwrap();
 
-            // TODO(gus) probably unnecessary cloning happening here.
+            // TODO(@gussmith23) probably unnecessary cloning happening here.
             let reshaped_into_tensor: ndarray::ArrayD<DataType> =
                 ndarray::ArrayD::<DataType>::from_shape_vec(
                     new_shape,
@@ -426,7 +426,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
         }
         Slice([tensor_id, axis_id, low_id, high_id]) => {
             todo!("reimplement this");
-            // TODO(gus) this is true for our minimal working example, not
+            // TODO(@gussmith23) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
             assert_eq!(enode.children.len(), 5);
 
@@ -453,7 +453,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
                 .iter()
                 .map(|eclass_id: &u32| {
                     match interpret_eclass(egraph, &egraph[*eclass_id], env, memo_map) {
-                        // TODO(gus) this panic is me just being lazy. if
+                        // TODO(@gussmith23) this panic is me just being lazy. if
                         // StillInterpreting is found, we should return
                         MemoizedInterpreterResult::InterpretedValue(v) => match v {
                             Value::Usize(u) => u,
@@ -488,19 +488,19 @@ fn interpret_enode<M: egg::Metadata<Language>>(
         BsgSystolicArray([_rows_id, _cols_id, _t0_id, _t1_id]) => panic!(),
         Concat => {
             todo!("reimplement");
-            // TODO(gus) this is true for our minimal working example, not
+            // TODO(@gussmith23) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
             assert!(enode.children.len() >= 3);
 
             println!("Interpreting: {:?}", enode);
-            // TODO(gus) it seems like there's a loop.
+            // TODO(@gussmith23) it seems like there's a loop.
             // concat a has concat b as a child. concat b has concat a as a child.
             let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode.children
                 [0..enode.children.len() - 1]
                 .iter()
                 .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
                 .collect();
-            // TODO(gus) the order of this and the next if block matters!
+            // TODO(@gussmith23) the order of this and the next if block matters!
             if tensors.iter().any(|t| match t {
                 MemoizedInterpreterResult::CanNotInterpret => true,
                 _ => false,
@@ -544,7 +544,7 @@ fn interpret_enode<M: egg::Metadata<Language>>(
 
             // Have to stack manually, because ndarray::stack doesn't actually
             // support tensors holding values that don't implement Copy! :(
-            // TODO(gus) given that i changed to a simpler value system, I can
+            // TODO(@gussmith23) given that i changed to a simpler value system, I can
             // actually go back to stacking with their code.
 
             let shapes: std::vec::Vec<&[usize]> = tensors.iter().map(|t| t.shape()).collect();
@@ -606,19 +606,19 @@ fn interpret_enode<M: egg::Metadata<Language>>(
         }
         ElementwiseAdd([t0_id, t1_id]) => {
             todo!("reimplement");
-            // TODO(gus) this is true for our minimal working example, not
+            // TODO(@gussmith23) this is true for our minimal working example, not
             // expected to be true in the future, definitely not.
             assert!(enode.children.len() == 2);
 
             println!("Interpreting: {:?}", enode);
-            // TODO(gus) it seems like there's a loop.
+            // TODO(@gussmith23) it seems like there's a loop.
             // concat a has concat b as a child. concat b has concat a as a child.
             let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode
                 .children
                 .iter()
                 .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
                 .collect();
-            // TODO(gus) the order of this and the next if block matters!
+            // TODO(@gussmith23) the order of this and the next if block matters!
             if tensors.iter().any(|t| match t {
                 MemoizedInterpreterResult::CanNotInterpret => true,
                 _ => false,
