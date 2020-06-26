@@ -6,13 +6,6 @@ pub fn find_all_systolic_array_configurations(
     egraph: &EGraph<Language, MyAnalysis>,
 ) -> HashSet<(usize, usize)> {
     let mut systolic_arrays = HashSet::new();
-    println!(
-        "{:?}",
-        "(bsg-systolic-array ?rows ?cols ?x ?y)"
-            .parse::<Pattern<Language>>()
-            .unwrap()
-            .search(egraph)
-    );
     for matches in "(bsg-systolic-array ?rows ?cols ?x ?y)"
         .parse::<Pattern<Language>>()
         .unwrap()
