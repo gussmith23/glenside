@@ -8,7 +8,7 @@ pub fn has_shape(
     var: &'static str,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| !egraph[subst[&var]].data.shape.is_none()
+    move |egraph, _, subst| !egraph[subst[var]].data.shape.is_none()
 }
 /// short_circuit lets us return early if we don't actually care about the
 /// result of this check. This is the easiest way I could find to do this using
@@ -24,7 +24,7 @@ pub fn is_symbol(
         if short_circuit {
             true
         } else {
-            egraph[subst[&var]]
+            egraph[subst[var]]
                 .nodes
                 .iter()
                 .map(|enode| match enode {
@@ -41,7 +41,7 @@ fn has_axis(
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| {
-        axis < egraph[subst[&var]]
+        axis < egraph[subst[var]]
             .data
             .shape
             .as_ref()
@@ -56,14 +56,14 @@ fn dimension_greater_than(
     greater_than: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| egraph[subst[&var]].data.shape.as_ref().unwrap()[axis] > greater_than
+    move |egraph, _, subst| egraph[subst[var]].data.shape.as_ref().unwrap()[axis] > greater_than
 }
 fn dimension_is_even(
     var: &'static str,
     axis: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| egraph[subst[&var]].data.shape.as_ref().unwrap()[axis] % 2 == 0
+    move |egraph, _, subst| egraph[subst[var]].data.shape.as_ref().unwrap()[axis] % 2 == 0
 }
 
 // TODO(@gussmith23) not sure all this should be public.
@@ -177,11 +177,11 @@ pub fn split(
 ) -> Rewrite<Language, MyAnalysis> {
     rewrite!(format!("split-axis-{}", axis); "?a" =>
                   {SplitApplier{axis: axis}}
-                  if self::dimension_greater_than("?a", axis, dimension_greater_than)
-                  if dimension_is_even("?a", axis)
-                  if has_axis("?a", axis)
-                  if has_shape("?a")
-                  if is_symbol(split_all_nodes, "?a"))
+             if is_symbol(split_all_nodes, "?a")
+             if has_shape("?a")
+             if has_axis("?a", axis)
+             if dimension_is_even("?a", axis)
+             if self::dimension_greater_than("?a", axis, dimension_greater_than))
 }
 
 pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
@@ -198,10 +198,10 @@ pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
             eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
-            let low0: usize = MyAnalysis::get_usize(subst[&self.low0], egraph);
-            let high0: usize = MyAnalysis::get_usize(subst[&self.high0], egraph);
-            let low1: usize = MyAnalysis::get_usize(subst[&self.low1], egraph);
-            let high1: usize = MyAnalysis::get_usize(subst[&self.high1], egraph);
+            let low0: usize = MyAnalysis::get_usize(subst[self.low0], egraph);
+            let high0: usize = MyAnalysis::get_usize(subst[self.high0], egraph);
+            let low1: usize = MyAnalysis::get_usize(subst[self.low1], egraph);
+            let high1: usize = MyAnalysis::get_usize(subst[self.high1], egraph);
 
             let new_low: usize = low0 + low1;
             assert!(high1 - low1 <= high0 - low0);
@@ -237,9 +237,9 @@ pub fn bubble_concatenate_through_move_axis() -> Rewrite<Language, MyAnalysis> {
             subst: &Subst,
         ) -> Vec<Id> {
             let original_concatenate_axis: usize =
-                MyAnalysis::get_usize(subst[&self.concatenate_axis], egraph);
-            let src_axis: usize = MyAnalysis::get_usize(subst[&self.src_axis], egraph);
-            let dst_axis: usize = MyAnalysis::get_usize(subst[&self.dst_axis], egraph);
+                MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
+            let src_axis: usize = MyAnalysis::get_usize(subst[self.src_axis], egraph);
+            let dst_axis: usize = MyAnalysis::get_usize(subst[self.dst_axis], egraph);
 
             // If the move now happens /before/ the concatenate, we have to
             // figure out what the new axis for the concatenate is.
@@ -294,7 +294,7 @@ fn last_axis(
     let var = var.parse().unwrap();
     let axis_id = axis.parse().unwrap();
     move |egraph, _, subst| {
-        egraph[subst[&var]]
+        egraph[subst[var]]
             .data
             .shape
             .as_ref()
@@ -302,7 +302,7 @@ fn last_axis(
             .as_array_view()
             .len()
             - 1
-            == egraph[subst[&axis_id]].data.usize_value.unwrap()
+            == egraph[subst[axis_id]].data.usize_value.unwrap()
     }
 }
 fn not_last_axis(
@@ -318,14 +318,14 @@ fn same_number_of_dimensions(
     let a = a.parse().unwrap();
     let b = b.parse().unwrap();
     move |egraph, _, subst| {
-        egraph[subst[&a]]
+        egraph[subst[a]]
             .data
             .shape
             .as_ref()
             .unwrap()
             .as_array_view()
             .len()
-            == egraph[subst[&b]]
+            == egraph[subst[b]]
                 .data
                 .shape
                 .as_ref()
@@ -365,9 +365,9 @@ impl Applier<Language, MyAnalysis>
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // So the axis gets shifted over by the a1, ..., an added in.
-        let left_shape = MyAnalysis::get_shape(subst[&self.left], egraph);
+        let left_shape = MyAnalysis::get_shape(subst[self.left], egraph);
         let left_shape_length: usize = left_shape.as_array_view().len();
-        let old_axis: usize = MyAnalysis::get_usize(subst[&self.axis], egraph);
+        let old_axis: usize = MyAnalysis::get_usize(subst[self.axis], egraph);
         let new_axis = old_axis + left_shape_length - 1;
 
         let applier: Pattern<Language> = format!(
@@ -420,9 +420,9 @@ impl Applier<Language, MyAnalysis> for BubbleConcatenateThroughCartesianProductL
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // axis1 and axis2 both point to their c dimension.
-        let a_shape = MyAnalysis::get_shape(subst[&self.a1], egraph);
+        let a_shape = MyAnalysis::get_shape(subst[self.a1], egraph);
         let a_shape_length: usize = a_shape.as_array_view().len();
-        let b_shape = MyAnalysis::get_shape(subst[&self.b1], egraph);
+        let b_shape = MyAnalysis::get_shape(subst[self.b1], egraph);
         let b_shape_length: usize = b_shape.as_array_view().len();
         let new_axis = a_shape_length - 1 // skip [a1, ..., an]
             + b_shape_length - 1          // skip [b1, ..., bm]
@@ -560,8 +560,8 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
             eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
-            let a_shape = MyAnalysis::get_shape(subst[&self.a], egraph);
-            let b_shape = MyAnalysis::get_shape(subst[&self.b], egraph);
+            let a_shape = MyAnalysis::get_shape(subst[self.a], egraph);
+            let b_shape = MyAnalysis::get_shape(subst[self.b], egraph);
             assert_eq!(a_shape.as_array_view().len(), 1);
             assert_eq!(b_shape.as_array_view().len(), 2);
             let rows: usize = b_shape.as_array_view()[0];
