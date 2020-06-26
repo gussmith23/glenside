@@ -31,9 +31,9 @@ pub fn find_all_systolic_array_configurations(
 }
 
 pub struct MonolithicCostFunction<'a> {
-    systolic_array_configuration: (usize, usize),
-    egraph: &'a EGraph<Language, MyAnalysis>,
-    infinite_cost_value: <MonolithicCostFunction<'a> as CostFunction<Language>>::Cost,
+    pub systolic_array_configuration: (usize, usize),
+    pub egraph: &'a EGraph<Language, MyAnalysis>,
+    pub infinite_cost_value: <MonolithicCostFunction<'a> as CostFunction<Language>>::Cost,
 }
 impl CostFunction<Language> for MonolithicCostFunction<'_> {
     type Cost = usize;
