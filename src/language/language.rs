@@ -158,7 +158,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                     usize_value: None,
                 }
             }
-            &BsgSystolicArray([_rows_id, _cols_id, t0_id, t1_id]) => {
+            &BsgSystolicArray([rows_id, cols_id, t0_id, t1_id]) => {
+                egraph[rows_id].data.usize_value.unwrap();
+                egraph[cols_id].data.usize_value.unwrap();
                 let left_shape = Self::get_shape(t0_id, egraph);
                 let right_shape = Self::get_shape(t1_id, egraph);
                 let left_shape_len: usize = left_shape.as_array_view().len();
