@@ -590,6 +590,8 @@ mod tests {
 
     #[test]
     fn split() {
+        test_logger::ensure_env_logger_initialized();
+
         let program = "t-32-32".parse().unwrap();
 
         let rws = vec![
