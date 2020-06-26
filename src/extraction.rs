@@ -30,7 +30,7 @@ pub fn find_all_systolic_array_configurations(
     systolic_arrays
 }
 
-struct MonolithicCostFunction<'a> {
+pub struct MonolithicCostFunction<'a> {
     systolic_array_configuration: (usize, usize),
     egraph: &'a EGraph<Language, MyAnalysis>,
     infinite_cost_value: <MonolithicCostFunction<'a> as CostFunction<Language>>::Cost,
