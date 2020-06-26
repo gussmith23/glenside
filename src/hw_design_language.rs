@@ -18,9 +18,9 @@ pub enum DType {
 }
 
 pub struct SystolicArrayWeightStationaryParams {
-    dtype: DType,
-    rows: usize,
-    cols: usize,
+    pub dtype: DType,
+    pub rows: usize,
+    pub cols: usize,
 }
 
 pub enum AtomConfig {
@@ -28,12 +28,12 @@ pub enum AtomConfig {
 }
 
 pub struct Atom {
-    name: String,
-    config: AtomConfig,
+    pub name: String,
+    pub config: AtomConfig,
 }
 
 pub struct HardwareDesign {
-    atoms: Vec<Atom>,
+    pub atoms: Vec<Atom>,
 }
 
 pub fn design_to_json(design: &HardwareDesign) -> Value {
