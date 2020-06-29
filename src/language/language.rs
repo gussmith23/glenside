@@ -61,7 +61,7 @@ define_language! {
 }
 
 /// Specifies how to pick the values we pad with.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub enum PadType {
     /// Pad with zeroes.
     ZeroPadding,
@@ -300,7 +300,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     usize_value: None,
                 }
             }
-            PadType(_) => Meta {
+            PadType(_) => {
                 todo!("Need to figure out how to represent pad type in metadata...I think I want to move to new egg version first...");
             }
         }
