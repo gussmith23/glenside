@@ -1,7 +1,8 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
+use itertools::multizip;
 use ndarray::{Dimension, IxDyn};
-use std::str::FromStr;
 use std::fmt::Display;
+use std::str::FromStr;
 
 define_language! {
     pub enum Language {
@@ -50,6 +51,13 @@ define_language! {
         // TODO(@gussmith23) do we need to specify rows and cols? You can infer these
         // from the size of the input, but it's also useful for searching.
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
+
+        // (form-windows <tensor> <filters> <padding> <x-pad> <y-pad>
+        //  <x-stride> <y-stride>)
+        // TODO(@gussmith23) form-windows shouldn't take in the filters
+        // All it needs is the filters' shape.
+        // Form the windows which will be convolved over.
+        "form-windows" = FormWindows([Id; 7]),
 
         Usize(usize),
 
@@ -294,14 +302,70 @@ impl egg::Analysis<Language> for MyAnalysis {
                             "t-32-64" => vec![32, 64],
                             "t-64-128" => vec![64, 128],
                             "t-128-16" => vec![128, 16],
+                            // A 3-channel "image" in CHW format.
+                            "t-3-32-32" => vec![3, 32, 32],
+                            // An OIHW set of convolution filters.
+                            "t-8-3-3-3" => vec![8, 3, 3, 3],
                             _ => panic!("No shape defined for {}", name),
                         })[..],
                     )),
                     usize_value: None,
                 }
             }
-            PadType(_) => {
-                todo!("Need to figure out how to represent pad type in metadata...I think I want to move to new egg version first...");
+            PadType(_) => Self::Data {
+                shape: None,
+                usize_value: None,
+            },
+            // (form-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
+            &FormWindows(
+                [tensor_id, filters_tensor_id, padding_id, x_pad_id, y_pad_id, x_stride_id, y_stride_id],
+            ) => {
+                let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
+                let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
+                let x_pad = MyAnalysis::get_usize(x_pad_id, egraph);
+                let y_pad = MyAnalysis::get_usize(y_pad_id, egraph);
+                let tensor_shape = MyAnalysis::get_shape(tensor_id, egraph);
+                let filters_shape = MyAnalysis::get_shape(filters_tensor_id, egraph);
+                match egraph[padding_id].nodes[0] {
+                    Language::PadType(super::language::PadType::ZeroPadding) => (),
+                    _ => panic!("Expected zero padding"),
+                };
+
+                assert_eq!(tensor_shape.ndim(), 3);
+                assert_eq!(filters_shape.ndim(), 4);
+
+                let new_shape: Vec<usize> = multizip((
+                    tensor_shape.as_array_view().iter().skip(1),
+                    filters_shape.as_array_view().iter().skip(2),
+                    &[x_stride, y_stride],
+                    &[x_pad, y_pad],
+                ))
+                .map(
+                    |(&dim_len, &kernel_dim_len, &stride, &padding): (
+                        &usize,
+                        &usize,
+                        &usize,
+                        &usize,
+                    )| {
+                        // TODO(@gussmith23) Support separate before/after padding
+                        // Assumption right now is that same padding is added on
+                        // both sides.
+                        let total_dim_len = padding + dim_len + padding;
+                        assert!(total_dim_len >= kernel_dim_len);
+                        let num_spots = total_dim_len - (kernel_dim_len - 1);
+                        (num_spots + stride - 1) / stride
+                    },
+                )
+                .collect();
+
+                Self::Data {
+                    shape: Some(IxDyn(
+                        &std::iter::once(filters_shape[0])
+                            .chain(new_shape)
+                            .collect::<Vec<_>>(),
+                    )),
+                    usize_value: None,
+                }
             }
         }
     }
@@ -348,5 +412,29 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[32, 2, 32]));
+    }
+
+    #[test]
+    fn form_windows() {
+        // TODO(@gussmith23) Could probably clean this up with a for loop
+        // Would make it easier to add more tests.
+
+        let program = "
+         (form-windows t-3-32-32 t-8-3-3-3 zero-padding 1 1 1 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[8, 32, 32]));
+
+        let program = "
+         (form-windows t-3-32-32 t-8-3-3-3 zero-padding 1 1 2 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[8, 16, 32]));
     }
 }
