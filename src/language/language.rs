@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::fmt::Display;
 
 define_language! {
-   pub enum Language {
+    pub enum Language {
         // (move-axis <tensor> <axis (usize)> <dest (usize)>)
         // Moves axis <axis> so that it is now axis <dest>.
         // Replaces the "rows" and "cols" operators.
