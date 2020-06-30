@@ -59,6 +59,10 @@ define_language! {
         // Form the windows which will be convolved over.
         "form-windows" = FormWindows([Id; 7]),
 
+        // (shape-of <tensor>)
+        // Returns the shape of the tensor.
+        "shape-of" = ShapeOf([Id; 1]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -100,6 +104,7 @@ impl Display for PadType {
 pub struct MyAnalysisData {
     pub(crate) shape: Option<IxDyn>,
     pub(crate) usize_value: Option<usize>,
+    pub(crate) shape_of_value: Option<IxDyn>,
 }
 pub struct MyAnalysis;
 impl MyAnalysis {
@@ -108,6 +113,9 @@ impl MyAnalysis {
     }
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         egraph[id].data.shape.as_ref().unwrap()
+    }
+    pub(crate) fn get_shape_of_value(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
+        egraph[id].data.shape_of_value.as_ref().unwrap()
     }
 }
 impl egg::Analysis<Language> for MyAnalysis {
@@ -134,6 +142,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[src_axis] = tmp;
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 }
@@ -175,6 +184,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         + 1
                 );
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 }
@@ -195,6 +205,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 }
@@ -223,6 +234,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .collect();
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(ndarray::IxDyn(&new_shape)),
                     usize_value: None,
                 }
@@ -241,6 +253,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[axis] = high - low;
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 }
@@ -257,6 +270,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[axis] += t1_shape[axis];
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 }
@@ -268,17 +282,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(Self::get_shape(t0_id, egraph).clone()),
                     usize_value: None,
                 }
             }
             Usize(u) => Self::Data {
+                shape_of_value: None,
                 shape: None,
                 usize_value: Some(*u),
             },
             Symbol(name) => {
                 //println!("Symbol");
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(ndarray::IxDyn(
                         &(match &name[..] {
                             "in" => vec![1, 784],
@@ -313,19 +330,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                 }
             }
             PadType(_) => Self::Data {
+                shape_of_value: None,
                 shape: None,
                 usize_value: None,
             },
             // (form-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
             &FormWindows(
-                [tensor_id, filters_tensor_id, padding_id, x_pad_id, y_pad_id, x_stride_id, y_stride_id],
+                [tensor_id, filters_shape_id, padding_id, x_pad_id, y_pad_id, x_stride_id, y_stride_id],
             ) => {
                 let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
                 let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
                 let x_pad = MyAnalysis::get_usize(x_pad_id, egraph);
                 let y_pad = MyAnalysis::get_usize(y_pad_id, egraph);
                 let tensor_shape = MyAnalysis::get_shape(tensor_id, egraph);
-                let filters_shape = MyAnalysis::get_shape(filters_tensor_id, egraph);
+                let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, egraph);
                 match egraph[padding_id].nodes[0] {
                     Language::PadType(super::language::PadType::ZeroPadding) => (),
                     _ => panic!("Expected zero padding"),
@@ -359,6 +377,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 .collect();
 
                 Self::Data {
+                    shape_of_value: None,
                     shape: Some(IxDyn(
                         &std::iter::once(filters_shape[0])
                             .chain(new_shape)
@@ -367,6 +386,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                     usize_value: None,
                 }
             }
+
+            &ShapeOf([tensor_id]) => Self::Data {
+                shape_of_value: Some(MyAnalysis::get_shape(tensor_id, egraph).clone()),
+                shape: None,
+                usize_value: None,
+            },
         }
     }
 }
@@ -420,7 +445,7 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (form-windows t-3-32-32 t-8-3-3-3 zero-padding 1 1 1 1)
+         (form-windows t-3-32-32 (shape-of t-8-3-3-3) zero-padding 1 1 1 1)
          "
         .parse()
         .unwrap();
@@ -429,12 +454,27 @@ mod tests {
         assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[8, 32, 32]));
 
         let program = "
-         (form-windows t-3-32-32 t-8-3-3-3 zero-padding 1 1 2 1)
+         (form-windows t-3-32-32 (shape-of t-8-3-3-3) zero-padding 1 1 2 1)
          "
         .parse()
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[8, 16, 32]));
+    }
+
+    #[test]
+    fn shape_of() {
+        let program = "
+         (shape-of t-3-32-32)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(
+            MyAnalysis::get_shape_of_value(id, &egraph),
+            &IxDyn(&[3, 32, 32])
+        );
     }
 }
