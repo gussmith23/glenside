@@ -353,7 +353,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(filters_shape.ndim(), 4);
 
                 let new_shape: Vec<usize> = multizip((
+                    // rows, cols dimensions of tensor shape
                     tensor_shape.as_array_view().iter().skip(1),
+                    // rows, cols dimensions of filter shape
                     filters_shape.as_array_view().iter().skip(2),
                     &[x_stride, y_stride],
                     &[x_pad, y_pad],
