@@ -111,6 +111,12 @@ impl Display for PadType {
 pub enum MyAnalysisData {
     Legacy(MyAnalysisDataLegacyData),
     AccessPattern(AccessPatternData),
+    Shape(ShapeData),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeData {
+    shape: IxDyn,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,7 +130,6 @@ pub struct AccessPatternData {
 pub struct MyAnalysisDataLegacyData {
     pub(crate) shape: Option<IxDyn>,
     pub(crate) usize_value: Option<usize>,
-    pub(crate) shape_of_value: Option<IxDyn>,
 }
 pub struct MyAnalysis;
 impl MyAnalysis {
@@ -142,7 +147,7 @@ impl MyAnalysis {
     }
     pub(crate) fn get_shape_of_value(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         match &egraph[id].data {
-            MyAnalysisData::Legacy(s) => s.shape_of_value.as_ref().unwrap(),
+            MyAnalysisData::Shape(s) => &s.shape,
             _ => panic!(),
         }
     }
@@ -175,7 +180,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[src_axis] = tmp;
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 })
@@ -217,7 +221,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                         + 1
                 );
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 })
@@ -238,7 +241,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 })
@@ -269,7 +271,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .collect();
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(ndarray::IxDyn(&new_shape)),
                     usize_value: None,
                 })
@@ -288,7 +289,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[axis] = high - low;
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 })
@@ -305,7 +305,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[axis] += t1_shape[axis];
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
                 })
@@ -317,20 +316,17 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(Self::get_shape(t0_id, egraph).clone()),
                     usize_value: None,
                 })
             }
             Usize(u) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                shape_of_value: None,
                 shape: None,
                 usize_value: Some(*u),
             }),
             Symbol(name) => {
                 //println!("Symbol");
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(ndarray::IxDyn(
                         &(match &name[..] {
                             "in" => vec![1, 784],
@@ -365,7 +361,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             PadType(_) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                shape_of_value: None,
                 shape: None,
                 usize_value: None,
             }),
@@ -414,7 +409,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 .collect();
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape_of_value: None,
                     shape: Some(IxDyn(
                         &std::iter::once(filters_shape[0])
                             .chain(new_shape)
@@ -424,10 +418,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
 
-            &ShapeOf([tensor_id]) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                shape_of_value: Some(MyAnalysis::get_shape(tensor_id, egraph).clone()),
-                shape: None,
-                usize_value: None,
+            &ShapeOf([tensor_id]) => MyAnalysisData::Shape(ShapeData {
+                shape: MyAnalysis::get_shape(tensor_id, egraph).clone(),
             }),
         }
     }
