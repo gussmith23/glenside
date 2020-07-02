@@ -52,12 +52,11 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
 
-        // (form-windows <tensor> <filters> <padding> <x-pad> <y-pad>
-        //  <x-stride> <y-stride>)
+        // (form-windows <tensor> <filters> <x-stride> <y-stride>)
         // TODO(@gussmith23) form-windows shouldn't take in the filters
         // All it needs is the filters' shape.
         // Form the windows which will be convolved over.
-        "form-windows" = FormWindows([Id; 7]),
+        "form-windows" = FormWindows([Id; 4]),
 
         // (shape-of <tensor>)
         // Returns the shape of the tensor.
@@ -376,42 +375,27 @@ impl egg::Analysis<Language> for MyAnalysis {
                 usize_value: None,
             }),
             // (form-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
-            &FormWindows(
-                [tensor_id, filters_shape_id, padding_id, x_pad_id, y_pad_id, x_stride_id, y_stride_id],
-            ) => {
+            &FormWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
                 let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
                 let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
-                let x_pad = MyAnalysis::get_usize(x_pad_id, egraph);
-                let y_pad = MyAnalysis::get_usize(y_pad_id, egraph);
                 let tensor_shape = MyAnalysis::get_shape(tensor_id, egraph);
                 let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, egraph);
-                match egraph[padding_id].nodes[0] {
-                    Language::PadType(super::language::PadType::ZeroPadding) => (),
-                    _ => panic!("Expected zero padding"),
-                };
 
+                // TODO(@gussmith23) Figure out how to generalize form-windows
+                // Should be able to generalize to other shapes.
                 assert_eq!(tensor_shape.ndim(), 3);
-                assert_eq!(filters_shape.ndim(), 4);
+                assert_eq!(filters_shape.ndim(), 3);
 
                 let new_shape: Vec<usize> = multizip((
                     // rows, cols dimensions of tensor shape
                     tensor_shape.as_array_view().iter().skip(1),
                     // rows, cols dimensions of filter shape
-                    filters_shape.as_array_view().iter().skip(2),
+                    filters_shape.as_array_view().iter().skip(1),
                     &[x_stride, y_stride],
-                    &[x_pad, y_pad],
                 ))
                 .map(
-                    |(&dim_len, &kernel_dim_len, &stride, &padding): (
-                        &usize,
-                        &usize,
-                        &usize,
-                        &usize,
-                    )| {
-                        // TODO(@gussmith23) Support separate before/after padding
-                        // Assumption right now is that same padding is added on
-                        // both sides.
-                        let total_dim_len = padding + dim_len + padding;
+                    |(&dim_len, &kernel_dim_len, &stride): (&usize, &usize, &usize)| {
+                        let total_dim_len = dim_len;
                         assert!(total_dim_len >= kernel_dim_len);
                         let num_spots = total_dim_len - (kernel_dim_len - 1);
                         (num_spots + stride - 1) / stride
@@ -421,9 +405,11 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape: Some(IxDyn(
-                        &std::iter::once(filters_shape[0])
-                            .chain(new_shape)
-                            .collect::<Vec<_>>(),
+                        &new_shape
+                            .iter()
+                            .cloned()
+                            .chain(filters_shape.as_array_view().iter().cloned())
+                            .collect::<Vec<usize>>(),
                     )),
                     usize_value: None,
                 })
@@ -485,22 +471,28 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (form-windows t-3-32-32 (shape-of t-8-3-3-3) zero-padding 1 1 1 1)
+         (form-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 1 1)
          "
         .parse()
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
-        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[8, 32, 32]));
+        assert_eq!(
+            MyAnalysis::get_shape(id, &egraph),
+            &IxDyn(&[30, 30, 3, 3, 3])
+        );
 
         let program = "
-         (form-windows t-3-32-32 (shape-of t-8-3-3-3) zero-padding 1 1 2 1)
+         (form-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
          "
         .parse()
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
-        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[8, 16, 32]));
+        assert_eq!(
+            MyAnalysis::get_shape(id, &egraph),
+            &IxDyn(&[15, 30, 3, 3, 3])
+        );
     }
 
     #[test]
