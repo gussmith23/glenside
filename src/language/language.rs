@@ -1,6 +1,6 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::multizip;
-use ndarray::{Dimension, IxDyn};
+use ndarray::{s, Dimension, IxDyn};
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -62,6 +62,10 @@ define_language! {
         // (shape-of <tensor>)
         // Returns the shape of the tensor.
         "shape-of" = ShapeOf([Id; 1]),
+
+        // (slice-shape <shape> <dim>)
+        // Slices a shape by taking dimensions >= <dim>.
+        "slice-shape" = SliceShape([Id; 2]),
 
         // (access <tensor> <dim>)
         // The most basic access pattern.
@@ -163,6 +167,13 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &SliceShape([shape_id, dim_id]) => {
+                let shape = MyAnalysis::get_shape_of_value(shape_id, egraph);
+                let dim = MyAnalysis::get_usize(dim_id, egraph);
+                MyAnalysisData::Shape(ShapeData {
+                    shape: IxDyn(shape.as_array_view().slice(s![dim..]).to_slice().unwrap()),
+                })
+            }
             &Access([tensor_id, dim_id]) => MyAnalysisData::AccessPattern(AccessPatternData {
                 shape: MyAnalysis::get_shape(tensor_id, egraph).clone(),
                 dim: MyAnalysis::get_usize(dim_id, egraph),
@@ -523,5 +534,42 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn slice_shape() {
+        let program = "
+         (slice-shape (shape-of t-3-32-32) 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape_of_value(id, &egraph), &IxDyn(&[32]));
+
+        let program = "
+         (slice-shape (shape-of t-3-32-32) 0)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(
+            MyAnalysis::get_shape_of_value(id, &egraph),
+            &IxDyn(&[3, 32, 32])
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn slice_shape_invalid_slice() {
+        let program = "
+         (slice-shape (shape-of t-3-32-32) 10)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape_of_value(id, &egraph), &IxDyn(&[]));
     }
 }
