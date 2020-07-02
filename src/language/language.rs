@@ -101,7 +101,13 @@ impl Display for PadType {
 
 // TODO(@gussmith23) Pick a better analysis name.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MyAnalysisData {
+pub enum MyAnalysisData {
+    Legacy(MyAnalysisDataLegacyData),
+}
+
+// TODO(@gussmith23) Pick a better analysis name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MyAnalysisDataLegacyData {
     pub(crate) shape: Option<IxDyn>,
     pub(crate) usize_value: Option<usize>,
     pub(crate) shape_of_value: Option<IxDyn>,
@@ -109,13 +115,19 @@ pub struct MyAnalysisData {
 pub struct MyAnalysis;
 impl MyAnalysis {
     pub(crate) fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
-        egraph[id].data.usize_value.unwrap()
+        match &egraph[id].data {
+            MyAnalysisData::Legacy(s) => s.usize_value.unwrap(),
+        }
     }
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
-        egraph[id].data.shape.as_ref().unwrap()
+        match &egraph[id].data {
+            MyAnalysisData::Legacy(s) => s.shape.as_ref().unwrap(),
+        }
     }
     pub(crate) fn get_shape_of_value(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
-        egraph[id].data.shape_of_value.as_ref().unwrap()
+        match &egraph[id].data {
+            MyAnalysisData::Legacy(s) => s.shape_of_value.as_ref().unwrap(),
+        }
     }
 }
 impl egg::Analysis<Language> for MyAnalysis {
@@ -141,11 +153,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[dest_axis] = new_shape[src_axis];
                 new_shape[src_axis] = tmp;
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
-                }
+                })
             }
             &CartesianProduct([t0_id, t1_id]) => {
                 let initial_shape_left: &IxDyn = Self::get_shape(t0_id, egraph);
@@ -183,11 +195,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                         + 1
                         + 1
                 );
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
-                }
+                })
             }
             &MapDotProduct(tensor_id) => {
                 let shape: &IxDyn = Self::get_shape(tensor_id, egraph);
@@ -204,15 +216,17 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .collect::<Vec<usize>>()[..],
                 );
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
-                }
+                })
             }
             &BsgSystolicArray([rows_id, cols_id, t0_id, t1_id]) => {
-                egraph[rows_id].data.usize_value.unwrap();
-                egraph[cols_id].data.usize_value.unwrap();
+                // Check that the rows and cols are usizes.
+                let _unused = Self::get_usize(rows_id, egraph);
+                let _unused = Self::get_usize(cols_id, egraph);
+
                 let left_shape = Self::get_shape(t0_id, egraph);
                 let right_shape = Self::get_shape(t1_id, egraph);
                 let left_shape_len: usize = left_shape.as_array_view().len();
@@ -233,11 +247,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .chain(right_shape.as_array_view().iter().cloned().skip(1))
                     .collect();
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(ndarray::IxDyn(&new_shape)),
                     usize_value: None,
-                }
+                })
             }
             &Slice([tensor_id, axis_id, low_id, high_id]) => {
                 let mut new_shape: IxDyn = Self::get_shape(tensor_id, egraph).clone();
@@ -252,11 +266,11 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 new_shape[axis] = high - low;
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
-                }
+                })
             }
             &Concatenate([t0_id, t1_id, axis_id]) => {
                 let axis = Self::get_usize(axis_id, egraph);
@@ -269,11 +283,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert!(axis < t1_shape.as_array_view().len());
                 new_shape[axis] += t1_shape[axis];
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(new_shape),
                     usize_value: None,
-                }
+                })
             }
             &ElementwiseAdd([t0_id, t1_id]) => {
                 assert_eq!(
@@ -281,20 +295,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                     Self::get_shape(t1_id, egraph)
                 );
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(Self::get_shape(t0_id, egraph).clone()),
                     usize_value: None,
-                }
+                })
             }
-            Usize(u) => Self::Data {
+            Usize(u) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                 shape_of_value: None,
                 shape: None,
                 usize_value: Some(*u),
-            },
+            }),
             Symbol(name) => {
                 //println!("Symbol");
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(ndarray::IxDyn(
                         &(match &name[..] {
@@ -327,13 +341,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                         })[..],
                     )),
                     usize_value: None,
-                }
+                })
             }
-            PadType(_) => Self::Data {
+            PadType(_) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                 shape_of_value: None,
                 shape: None,
                 usize_value: None,
-            },
+            }),
             // (form-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
             &FormWindows(
                 [tensor_id, filters_shape_id, padding_id, x_pad_id, y_pad_id, x_stride_id, y_stride_id],
@@ -378,7 +392,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 )
                 .collect();
 
-                Self::Data {
+                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape_of_value: None,
                     shape: Some(IxDyn(
                         &std::iter::once(filters_shape[0])
@@ -386,14 +400,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>(),
                     )),
                     usize_value: None,
-                }
+                })
             }
 
-            &ShapeOf([tensor_id]) => Self::Data {
+            &ShapeOf([tensor_id]) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                 shape_of_value: Some(MyAnalysis::get_shape(tensor_id, egraph).clone()),
                 shape: None,
                 usize_value: None,
-            },
+            }),
         }
     }
 }

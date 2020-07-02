@@ -1,4 +1,4 @@
-use super::{Language, MyAnalysis};
+use super::{Language, MyAnalysis, MyAnalysisData};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
@@ -8,7 +8,9 @@ pub fn has_shape(
     var: &'static str,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| !egraph[subst[var]].data.shape.is_none()
+    move |egraph, _, subst| match &egraph[subst[var]].data {
+        MyAnalysisData::Legacy(s) => !s.shape.is_none(),
+    }
 }
 /// short_circuit lets us return early if we don't actually care about the
 /// result of this check. This is the easiest way I could find to do this using
@@ -40,15 +42,7 @@ fn has_axis(
     axis: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| {
-        axis < egraph[subst[var]]
-            .data
-            .shape
-            .as_ref()
-            .unwrap()
-            .as_array_view()
-            .len()
-    }
+    move |egraph, _, subst| axis < MyAnalysis::get_shape(subst[var], egraph).ndim()
 }
 fn dimension_greater_than(
     var: &'static str,
@@ -56,14 +50,14 @@ fn dimension_greater_than(
     greater_than: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| egraph[subst[var]].data.shape.as_ref().unwrap()[axis] > greater_than
+    move |egraph, _, subst| MyAnalysis::get_shape(subst[var], egraph)[axis] > greater_than
 }
 fn dimension_is_even(
     var: &'static str,
     axis: usize,
 ) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
-    move |egraph, _, subst| egraph[subst[var]].data.shape.as_ref().unwrap()[axis] % 2 == 0
+    move |egraph, _, subst| MyAnalysis::get_shape(subst[var], egraph)[axis] % 2 == 0
 }
 
 // TODO(@gussmith23) not sure all this should be public.
@@ -294,15 +288,8 @@ fn last_axis(
     let var = var.parse().unwrap();
     let axis_id = axis.parse().unwrap();
     move |egraph, _, subst| {
-        egraph[subst[var]]
-            .data
-            .shape
-            .as_ref()
-            .unwrap()
-            .as_array_view()
-            .len()
-            - 1
-            == egraph[subst[axis_id]].data.usize_value.unwrap()
+        MyAnalysis::get_usize(subst[axis_id], egraph)
+            == MyAnalysis::get_shape(subst[var], egraph).ndim() - 1
     }
 }
 fn not_last_axis(
@@ -318,20 +305,8 @@ fn same_number_of_dimensions(
     let a = a.parse().unwrap();
     let b = b.parse().unwrap();
     move |egraph, _, subst| {
-        egraph[subst[a]]
-            .data
-            .shape
-            .as_ref()
-            .unwrap()
-            .as_array_view()
-            .len()
-            == egraph[subst[b]]
-                .data
-                .shape
-                .as_ref()
-                .unwrap()
-                .as_array_view()
-                .len()
+        MyAnalysis::get_shape(subst[a], egraph).ndim()
+            == MyAnalysis::get_shape(subst[b], egraph).ndim()
     }
 }
 
