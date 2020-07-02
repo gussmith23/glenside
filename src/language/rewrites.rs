@@ -10,6 +10,7 @@ pub fn has_shape(
     let var = var.parse().unwrap();
     move |egraph, _, subst| match &egraph[subst[var]].data {
         MyAnalysisData::Legacy(s) => !s.shape.is_none(),
+        _ => panic!(),
     }
 }
 /// short_circuit lets us return early if we don't actually care about the

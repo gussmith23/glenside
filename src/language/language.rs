@@ -63,6 +63,13 @@ define_language! {
         // Returns the shape of the tensor.
         "shape-of" = ShapeOf([Id; 1]),
 
+        // (access <tensor> <dim>)
+        // The most basic access pattern.
+        // Let <tensor> have dims d0, .., dn.
+        // Interprets <tensor> as a shaped list of shape d0, .., d(<dim>-1)
+        // whose elements are of shape d<dim>, .., dn.
+        "access" = Access([Id; 2]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -103,6 +110,13 @@ impl Display for PadType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MyAnalysisData {
     Legacy(MyAnalysisDataLegacyData),
+    AccessPattern(AccessPatternData),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AccessPatternData {
+    shape: IxDyn,
+    dim: usize,
 }
 
 // TODO(@gussmith23) Pick a better analysis name.
@@ -117,16 +131,19 @@ impl MyAnalysis {
     pub(crate) fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
         match &egraph[id].data {
             MyAnalysisData::Legacy(s) => s.usize_value.unwrap(),
+            _ => panic!(),
         }
     }
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         match &egraph[id].data {
             MyAnalysisData::Legacy(s) => s.shape.as_ref().unwrap(),
+            _ => panic!(),
         }
     }
     pub(crate) fn get_shape_of_value(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         match &egraph[id].data {
             MyAnalysisData::Legacy(s) => s.shape_of_value.as_ref().unwrap(),
+            _ => panic!(),
         }
     }
 }
@@ -141,6 +158,10 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &Access([tensor_id, dim_id]) => MyAnalysisData::AccessPattern(AccessPatternData {
+                shape: MyAnalysis::get_shape(tensor_id, egraph).clone(),
+                dim: MyAnalysis::get_usize(dim_id, egraph),
+            }),
             &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
                 let mut new_shape = Self::get_shape(tensor_id, egraph).clone();
                 let src_axis = Self::get_usize(src_axis_id, egraph);
@@ -492,5 +513,23 @@ mod tests {
             MyAnalysis::get_shape_of_value(id, &egraph),
             &IxDyn(&[3, 32, 32])
         );
+    }
+
+    #[test]
+    fn access() {
+        let program = "
+         (access t-3-32-32 0)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32, 32]));
+                assert_eq!(a.dim, 0);
+            }
+            _ => panic!(),
+        }
     }
 }
