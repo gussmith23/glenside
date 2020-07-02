@@ -125,7 +125,7 @@ pub struct ShapeData {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessPatternData {
     shape: IxDyn,
-    dim: usize,
+    item_shape: IxDyn,
 }
 
 // TODO(@gussmith23) Pick a better analysis name.
@@ -173,10 +173,27 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(shape.as_array_view().slice(s![dim..]).to_slice().unwrap()),
                 })
             }
-            &Access([tensor_id, dim_id]) => MyAnalysisData::AccessPattern(AccessPatternData {
-                shape: MyAnalysis::get_shape(tensor_id, egraph).clone(),
-                dim: MyAnalysis::get_usize(dim_id, egraph),
-            }),
+            &Access([tensor_id, dim_id]) => {
+                let dim = MyAnalysis::get_usize(dim_id, egraph);
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(
+                        MyAnalysis::get_shape(tensor_id, egraph)
+                            .as_array_view()
+                            .slice(s![..dim])
+                            .clone()
+                            .as_slice()
+                            .unwrap(),
+                    ),
+                    item_shape: IxDyn(
+                        MyAnalysis::get_shape(tensor_id, egraph)
+                            .as_array_view()
+                            .slice(s![dim..])
+                            .clone()
+                            .as_slice()
+                            .unwrap(),
+                    ),
+                })
+            }
             &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
                 let mut new_shape = Self::get_shape(tensor_id, egraph).clone();
                 let src_axis = Self::get_usize(src_axis_id, egraph);
@@ -521,11 +538,53 @@ mod tests {
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
-                assert_eq!(a.shape, IxDyn(&[3, 32, 32]));
-                assert_eq!(a.dim, 0);
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 32, 32]));
             }
             _ => panic!(),
         }
+
+        let program = "
+         (access t-3-32-32 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[32]));
+            }
+            _ => panic!(),
+        }
+
+        let program = "
+         (access t-3-32-32 3)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_invalid() {
+        let program = "
+         (access t-3-32-32 4)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
     }
 
     #[test]
