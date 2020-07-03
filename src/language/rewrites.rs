@@ -2,11 +2,11 @@ use super::{Language, MyAnalysis, MyAnalysisData};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
+type EG = EGraph<Language, MyAnalysis>;
+
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
 // checks to make sure it has a shape and that it's an input
-pub fn has_shape(
-    var: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| match &egraph[subst[var]].data {
         MyAnalysisData::Legacy(s) => !s.shape.is_none(),
@@ -20,7 +20,7 @@ pub fn has_shape(
 pub fn is_symbol(
     short_circuit: bool,
     var: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     // TODO(@gussmith23) should this be `all` or `any` or something else entirely?
     move |egraph, _, subst| {
@@ -38,10 +38,7 @@ pub fn is_symbol(
         }
     }
 }
-fn has_axis(
-    var: &'static str,
-    axis: usize,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+fn has_axis(var: &'static str, axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| axis < MyAnalysis::get_shape(subst[var], egraph).ndim()
 }
@@ -49,14 +46,14 @@ fn dimension_greater_than(
     var: &'static str,
     axis: usize,
     greater_than: usize,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| MyAnalysis::get_shape(subst[var], egraph)[axis] > greater_than
 }
 fn dimension_is_even(
     var: &'static str,
     axis: usize,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| MyAnalysis::get_shape(subst[var], egraph)[axis] % 2 == 0
 }
@@ -73,7 +70,7 @@ pub struct RewriteNonMatchingCartConcatenateApplier {
 impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApplier {
     fn apply_one(
         &self,
-        _egraph: &mut egg::EGraph<Language, MyAnalysis>,
+        _egraph: &mut EG,
         _id: egg::Id,
         _subst: &egg::Subst,
     ) -> std::vec::Vec<egg::Id> {
@@ -131,7 +128,7 @@ struct SplitApplier {
 impl egg::Applier<Language, MyAnalysis> for SplitApplier {
     fn apply_one(
         &self,
-        egraph: &mut egg::EGraph<Language, MyAnalysis>,
+        egraph: &mut EG,
         id: egg::Id,
         _subst: &egg::Subst,
     ) -> std::vec::Vec<egg::Id> {
@@ -187,12 +184,7 @@ pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
         high1: Var,
     }
     impl Applier<Language, MyAnalysis> for CollapseNestedSlicesApplier {
-        fn apply_one(
-            &self,
-            egraph: &mut EGraph<Language, MyAnalysis>,
-            eclass: Id,
-            subst: &Subst,
-        ) -> Vec<Id> {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let low0: usize = MyAnalysis::get_usize(subst[self.low0], egraph);
             let high0: usize = MyAnalysis::get_usize(subst[self.high0], egraph);
             let low1: usize = MyAnalysis::get_usize(subst[self.low1], egraph);
@@ -225,12 +217,7 @@ pub fn bubble_concatenate_through_move_axis() -> Rewrite<Language, MyAnalysis> {
         dst_axis: Var,
     }
     impl Applier<Language, MyAnalysis> for MoveAxisApplier {
-        fn apply_one(
-            &self,
-            egraph: &mut EGraph<Language, MyAnalysis>,
-            eclass: Id,
-            subst: &Subst,
-        ) -> Vec<Id> {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let original_concatenate_axis: usize =
                 MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
             let src_axis: usize = MyAnalysis::get_usize(subst[self.src_axis], egraph);
@@ -285,7 +272,7 @@ pub fn bubble_concatenate_through_move_axis() -> Rewrite<Language, MyAnalysis> {
 fn last_axis(
     var: &'static str,
     axis: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     let axis_id = axis.parse().unwrap();
     move |egraph, _, subst| {
@@ -296,13 +283,13 @@ fn last_axis(
 fn not_last_axis(
     var: &'static str,
     axis: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     move |egraph, id, subst| !(last_axis(var, axis)(egraph, id, subst))
 }
 fn same_number_of_dimensions(
     a: &'static str,
     b: &'static str,
-) -> impl Fn(&mut egg::EGraph<Language, MyAnalysis>, egg::Id, &egg::Subst) -> bool {
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let a = a.parse().unwrap();
     let b = b.parse().unwrap();
     move |egraph, _, subst| {
@@ -332,12 +319,7 @@ struct BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier {
 impl Applier<Language, MyAnalysis>
     for BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier
 {
-    fn apply_one(
-        &self,
-        egraph: &mut EGraph<Language, MyAnalysis>,
-        matched_id: Id,
-        subst: &Subst,
-    ) -> Vec<Id> {
+    fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // So the axis gets shifted over by the a1, ..., an added in.
@@ -387,12 +369,7 @@ struct BubbleConcatenateThroughCartesianProductLastAxisApplier {
     b1: Var,
 }
 impl Applier<Language, MyAnalysis> for BubbleConcatenateThroughCartesianProductLastAxisApplier {
-    fn apply_one(
-        &self,
-        egraph: &mut EGraph<Language, MyAnalysis>,
-        matched_id: Id,
-        subst: &Subst,
-    ) -> Vec<Id> {
+    fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // axis1 and axis2 both point to their c dimension.
@@ -531,12 +508,7 @@ pub fn slice_move_axis_composition_commutative() -> Rewrite<Language, MyAnalysis
         slice_axis: Var,
     }
     impl Applier<Language, MyAnalysis> for SliceMoveAxisCompositionCommutativeApplier {
-        fn apply_one(
-            &self,
-            egraph: &mut EGraph<Language, MyAnalysis>,
-            matched_id: Id,
-            subst: &Subst,
-        ) -> Vec<Id> {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
             let src_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_src], egraph);
             let dst_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_dest], egraph);
             let old_slice_axis: usize = MyAnalysis::get_usize(subst[self.slice_axis], egraph);
@@ -581,12 +553,7 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
         b: Var,
     }
     impl Applier<Language, MyAnalysis> for SystolicArrayApplier {
-        fn apply_one(
-            &self,
-            egraph: &mut EGraph<Language, MyAnalysis>,
-            eclass: Id,
-            subst: &Subst,
-        ) -> Vec<Id> {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let a_shape = MyAnalysis::get_shape(subst[self.a], egraph);
             let b_shape = MyAnalysis::get_shape(subst[self.b], egraph);
             assert_eq!(a_shape.as_array_view().len(), 1);
@@ -627,7 +594,7 @@ mod tests {
             super::collapse_nested_slices(),
         ];
 
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
         let runner = Runner::<_, _, ()>::new(MyAnalysis)
             .with_egraph(egraph)
@@ -678,7 +645,7 @@ mod tests {
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
 
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
         let runner = Runner::<_, _, ()>::new(MyAnalysis)
             .with_egraph(egraph)
@@ -697,7 +664,7 @@ mod tests {
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
 
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
         let runner = Runner::<_, _, ()>::new(MyAnalysis)
             .with_egraph(egraph)
@@ -716,7 +683,7 @@ mod tests {
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
 
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
         let runner = Runner::<_, _, ()>::new(MyAnalysis)
             .with_egraph(egraph)
