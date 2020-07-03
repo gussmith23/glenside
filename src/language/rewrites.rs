@@ -3,6 +3,7 @@ use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Su
 use ndarray::Dimension;
 
 type EG = EGraph<Language, MyAnalysis>;
+type RW = Rewrite<Language, MyAnalysis>;
 
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
 // checks to make sure it has a shape and that it's an input
@@ -576,6 +577,19 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
              {SystolicArrayApplier{a: "?a".parse().unwrap(), b: "?b".parse().unwrap(),}})
 }
 
+pub fn flatten_unflatten_access_windows() -> RW {
+    rewrite!("access-windows-to-im2col";
+             "(access-windows ?access ?kernel-shape ?stride-0 ?stride-1)" =>
+             "(access-reshape
+               (access-flatten
+                (access-windows ?access ?kernel-shape ?stride-0 ?stride-1)
+               )
+               (get-access-shape
+                (access-windows ?access ?kernel-shape ?stride-0 ?stride-1)
+               )
+              )")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -695,6 +709,57 @@ mod tests {
                 .unwrap()
                 .search(&runner.egraph)
                 .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn flatten_unflatten_access_windows() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "
+         (access-windows
+          t-3-32-32
+          (slice-shape (shape-of t-8-3-3-3) 1)
+          1
+          2
+         )
+         "
+        .parse()
+        .unwrap();
+
+        let rws = vec![super::flatten_unflatten_access_windows()];
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        assert_eq!(
+            "
+            (access-reshape
+             (access-flatten
+              (access-windows
+               t-3-32-32
+               (slice-shape (shape-of t-8-3-3-3) 1)
+               1
+               2
+              )
+             )
+             (get-access-shape
+              (access-windows
+               t-3-32-32
+               (slice-shape (shape-of t-8-3-3-3) 1)
+               1
+               2
+              )
+             )
+            )
+            "
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search(&runner.egraph)
+            .len(),
             1
         );
     }
