@@ -52,11 +52,11 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
 
-        // (form-windows <tensor> <filters> <x-stride> <y-stride>)
-        // TODO(@gussmith23) form-windows shouldn't take in the filters
+        // (access-windows <tensor> <filters> <x-stride> <y-stride>)
+        // TODO(@gussmith23) access-windows shouldn't take in the filters
         // All it needs is the filters' shape.
         // Form the windows which will be convolved over.
-        "form-windows" = FormWindows([Id; 4]),
+        "access-windows" = AccessWindows([Id; 4]),
 
         // (shape-of <tensor>)
         // Returns the shape of the tensor.
@@ -475,14 +475,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                 shape: None,
                 usize_value: None,
             }),
-            // (form-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
-            &FormWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
+            // (access-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
+            &AccessWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
                 let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
                 let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
                 let tensor_shape = MyAnalysis::get_shape(tensor_id, egraph);
                 let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, egraph);
 
-                // TODO(@gussmith23) Figure out how to generalize form-windows
+                // TODO(@gussmith23) Figure out how to generalize access-windows
                 // Should be able to generalize to other shapes.
                 assert_eq!(tensor_shape.ndim(), 3);
                 assert_eq!(filters_shape.ndim(), 3);
@@ -572,7 +572,7 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (form-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 1 1)
+         (access-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 1 1)
          "
         .parse()
         .unwrap();
@@ -584,7 +584,7 @@ mod tests {
         );
 
         let program = "
-         (form-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
+         (access-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
          "
         .parse()
         .unwrap();
@@ -831,7 +831,7 @@ mod tests {
           (access-cartesian-product
            (access t-8-3-3-3 1)
            (access
-            (form-windows
+            (access-windows
              t-3-32-32
              (slice-shape (shape-of t-8-3-3-3) 1)
              1
@@ -857,7 +857,7 @@ mod tests {
           (access-cartesian-product
            (access t-8-3-3-3 1)
            (access
-            (form-windows
+            (access-windows
              t-3-32-32
              (slice-shape (shape-of t-8-3-3-3) 1)
              1
