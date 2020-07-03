@@ -86,6 +86,14 @@ define_language! {
         // which represents the cartesian product of the items in both accesses.
         "access-cartesian-product" = AccessCartesianProduct([Id; 2]),
 
+        // (compute-dot-product <access>)
+        // Compute a generalized dot product over the items in <access>.
+        // Expects an item shape of
+        // [n, a0, ..., am]
+        // Where n specifies the tuple multiplicity and [a0, ..., am] is the
+        // shape of the tensors to be dot-producted with one another.
+        "compute-dot-product" = ComputeDotProduct([Id; 1]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -128,6 +136,7 @@ pub enum MyAnalysisData {
     Legacy(MyAnalysisDataLegacyData),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
+    Tensor(TensorData),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +148,11 @@ pub struct ShapeData {
 pub struct AccessPatternData {
     shape: IxDyn,
     item_shape: IxDyn,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TensorData {
+    shape: IxDyn,
 }
 
 // TODO(@gussmith23) Pick a better analysis name.
@@ -179,6 +193,24 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &ComputeDotProduct([access_id]) => {
+                let a0 = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a0) => a0,
+                    _ => panic!(),
+                };
+
+                // If it's =1, that's just a "dot product" of scalars, which is
+                // just a sum.
+                //
+                // Honestly, it could also be 0. It doesn't make much sense but
+                // it's not wrong. Can remove this later if we want those
+                // semantics.
+                assert!(a0.item_shape.ndim() >= 1);
+
+                MyAnalysisData::Tensor(TensorData {
+                    shape: a0.shape.clone(),
+                })
+            }
             &AccessCartesianProduct([a0_id, a1_id]) => {
                 let (a0, a1) = match (&egraph[a0_id].data, &egraph[a1_id].data) {
                     (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => {
@@ -710,6 +742,71 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[32]));
                 assert_eq!(a.item_shape, IxDyn(&[2, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_dot_product() {
+        let program = "
+         (compute-dot-product (access t-3-32-32 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::Tensor(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+
+        let program = "
+         (compute-dot-product (access t-3-32-32 1))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::Tensor(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+            }
+            _ => panic!(),
+        }
+
+        let program = "
+         (compute-dot-product (access t-3-32-32 2))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::Tensor(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    // This may not panic in the future, if we allow dot products over empty
+    // tuples.
+    #[should_panic]
+    #[test]
+    fn compute_dot_product_panic() {
+        let program = "
+         (compute-dot-product (access t-3-32-32 3))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::Tensor(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
             }
             _ => panic!(),
         }
