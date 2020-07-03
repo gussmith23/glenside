@@ -546,15 +546,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 )
                 .collect();
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(IxDyn(
-                        &new_shape
-                            .iter()
-                            .cloned()
-                            .chain(filters_shape.as_array_view().iter().cloned())
-                            .collect::<Vec<usize>>(),
-                    )),
-                    usize_value: None,
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(new_shape.clone().as_slice()),
+                    item_shape: filters_shape.clone(),
                 })
             }
 
@@ -609,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn form_windows() {
+    fn access_windows() {
         // TODO(@gussmith23) Could probably clean this up with a for loop
         // Would make it easier to add more tests.
 
@@ -620,10 +614,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
-        assert_eq!(
-            MyAnalysis::get_shape(id, &egraph),
-            &IxDyn(&[30, 30, 3, 3, 3])
-        );
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[30, 30]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 3, 3]));
+            }
+            _ => panic!(),
+        }
 
         let program = "
          (access-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
@@ -632,10 +629,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
-        assert_eq!(
-            MyAnalysis::get_shape(id, &egraph),
-            &IxDyn(&[15, 30, 3, 3, 3])
-        );
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[15, 30]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 3, 3]));
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]
@@ -872,14 +872,11 @@ mod tests {
          (compute dot-product
           (access-cartesian-product
            (access t-8-3-3-3 1)
-           (access
-            (access-windows
-             t-3-32-32
-             (slice-shape (shape-of t-8-3-3-3) 1)
-             1
-             1
-            )
-            2
+           (access-windows
+            t-3-32-32
+            (slice-shape (shape-of t-8-3-3-3) 1)
+            1
+            1
            )
           )
          )
@@ -898,13 +895,10 @@ mod tests {
          (compute dot-product
           (access-cartesian-product
            (access t-8-3-3-3 1)
-           (access
-            (access-windows
-             t-3-32-32
-             (slice-shape (shape-of t-8-3-3-3) 1)
-             1
-             2
-            )
+           (access-windows
+            t-3-32-32
+            (slice-shape (shape-of t-8-3-3-3) 1)
+            1
             2
            )
           )
