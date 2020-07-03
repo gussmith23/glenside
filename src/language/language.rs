@@ -811,4 +811,71 @@ mod tests {
             _ => panic!(),
         }
     }
+
+    #[test]
+    fn conv2d() {
+        // The following TVM/Python code will compute the correct sizes of
+        // cov2ds.
+        //
+        // import tvm
+        // from tvm import relay
+        //
+        // mod = relay.module.Module.from_expr(
+        //     relay.nn.conv2d(relay.var('x', shape=[1, 3, 32, 32]),
+        //                     relay.var('weight', shape=[8, 3, 3, 3])))
+        //
+        // print(mod)
+
+        let program = "
+         (compute-dot-product
+          (access-cartesian-product
+           (access t-8-3-3-3 1)
+           (access
+            (form-windows
+             t-3-32-32
+             (slice-shape (shape-of t-8-3-3-3) 1)
+             1
+             1
+            )
+            2
+           )
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+
+        match &egraph[id].data {
+            MyAnalysisData::Tensor(t) => assert_eq!(t.shape, IxDyn(&[8, 30, 30])),
+            _ => panic!(),
+        }
+
+        let program = "
+         (compute-dot-product
+          (access-cartesian-product
+           (access t-8-3-3-3 1)
+           (access
+            (form-windows
+             t-3-32-32
+             (slice-shape (shape-of t-8-3-3-3) 1)
+             1
+             2
+            )
+            2
+           )
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+
+        match &egraph[id].data {
+            MyAnalysisData::Tensor(t) => assert_eq!(t.shape, IxDyn(&[8, 30, 15])),
+            _ => panic!(),
+        }
+    }
 }
