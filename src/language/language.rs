@@ -73,6 +73,19 @@ define_language! {
         // whose elements are of shape d<dim>, .., dn.
         "access" = Access([Id; 2]),
 
+        // (access-cartesian-product <access1> <access2>)
+        // Cartesian product access pattern.
+        // Assume <access1> has shape
+        // [a1, ..., an]
+        // and <access2> has shape
+        // [b1, ..., bm].
+        // Both must have the same item shape,
+        // [c1, ..., co]
+        // Outputs a tensor of shape
+        // [a1, ..., an, b1, ..., bm, 2, c1, ..., co]
+        // which represents the cartesian product of the items in both accesses.
+        "access-cartesian-product" = AccessCartesianProduct([Id; 2]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -166,6 +179,45 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessCartesianProduct([a0_id, a1_id]) => {
+                let (a0, a1) = match (&egraph[a0_id].data, &egraph[a1_id].data) {
+                    (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => {
+                        (a0, a1)
+                    }
+                    _ => panic!(),
+                };
+                assert_eq!(a0.item_shape, a1.item_shape);
+
+                let new_shape = IxDyn(
+                    a0.shape
+                        .as_array_view()
+                        .iter()
+                        .cloned()
+                        .chain(a1.shape.as_array_view().iter().cloned())
+                        .collect::<Vec<usize>>()
+                        .as_slice(),
+                );
+                let new_item_shape = IxDyn(
+                    std::iter::once(2)
+                        .chain(a0.item_shape.as_array_view().iter().cloned())
+                        .collect::<Vec<usize>>()
+                        .as_slice(),
+                );
+
+                assert_eq!(
+                    new_shape.as_array_view().iter().product::<usize>()
+                        * new_item_shape.as_array_view().iter().product::<usize>(),
+                    a0.shape.as_array_view().iter().product::<usize>()
+                        * a1.shape.as_array_view().iter().product::<usize>()
+                        * 2
+                        * a0.item_shape.as_array_view().iter().product::<usize>()
+                );
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: new_shape,
+                    item_shape: new_item_shape,
+                })
+            }
             &SliceShape([shape_id, dim_id]) => {
                 let shape = MyAnalysis::get_shape_of_value(shape_id, egraph);
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
@@ -622,5 +674,44 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         assert_eq!(MyAnalysis::get_shape_of_value(id, &egraph), &IxDyn(&[]));
+    }
+
+    #[test]
+    fn access_cartesian_product() {
+        let program = "
+         (access-cartesian-product
+          (access v-32 0)
+          (access (move-axis t-32-32 1 0) 1)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[2, 32]));
+            }
+            _ => panic!(),
+        }
+
+        let program = "
+         (access-cartesian-product
+          (access (move-axis t-32-32 1 0) 1)
+          (access v-32 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[2, 32]));
+            }
+            _ => panic!(),
+        }
     }
 }
