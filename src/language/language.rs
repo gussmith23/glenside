@@ -1020,8 +1020,8 @@ mod tests {
           (access-shape (shape 1) (shape 16 2))
          )
         "
-            .parse()
-            .unwrap();
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
 
