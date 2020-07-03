@@ -86,20 +86,52 @@ define_language! {
         // which represents the cartesian product of the items in both accesses.
         "access-cartesian-product" = AccessCartesianProduct([Id; 2]),
 
-        // (compute-dot-product <access>)
-        // Compute a generalized dot product over the items in <access>.
+        // (compute <compute-type> <access>)
+        // Compute over the items in <access>.
+        //
+        // Compute types:
+        //
+        // dot-product
         // Expects an item shape of
         // [n, a0, ..., am]
         // Where n specifies the tuple multiplicity and [a0, ..., am] is the
         // shape of the tensors to be dot-producted with one another.
-        "compute-dot-product" = ComputeDotProduct([Id; 1]),
+        "compute" = Compute([Id; 2]),
 
         Usize(usize),
 
         // pad-type: zero-padding
         // (No other options right now)
         PadType(PadType),
+
+        ComputeType(ComputeType),
+
         Symbol(String),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ComputeType {
+    DotProduct,
+}
+impl FromStr for ComputeType {
+    type Err = ();
+    fn from_str(input: &str) -> Result<ComputeType, Self::Err> {
+        match input {
+            "dot-product" => Ok(ComputeType::DotProduct),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for ComputeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ComputeType::DotProduct => "dot-product",
+            }
+        )
     }
 }
 
@@ -137,6 +169,7 @@ pub enum MyAnalysisData {
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
     Tensor(TensorData),
+    ComputeType(ComputeType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,23 +226,32 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
-            &ComputeDotProduct([access_id]) => {
+            ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
+            &Compute([compute_type_id, access_id]) => {
+                let compute_type = match &egraph[compute_type_id].data {
+                    MyAnalysisData::ComputeType(t) => t,
+                    _ => panic!("Argument 0 of {:?} should be a ComputeType", enode),
+                };
                 let a0 = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a0) => a0,
                     _ => panic!(),
                 };
 
-                // If it's =1, that's just a "dot product" of scalars, which is
-                // just a sum.
-                //
-                // Honestly, it could also be 0. It doesn't make much sense but
-                // it's not wrong. Can remove this later if we want those
-                // semantics.
-                assert!(a0.item_shape.ndim() >= 1);
+                match compute_type {
+                    self::ComputeType::DotProduct => {
+                        // If it's =1, that's just a "dot product" of scalars,
+                        // which is just a sum.
+                        //
+                        // Honestly, it could also be 0. It doesn't make much
+                        // sense but it's not wrong. Can remove this later if we
+                        // want those semantics.
+                        assert!(a0.item_shape.ndim() >= 1);
 
-                MyAnalysisData::Tensor(TensorData {
-                    shape: a0.shape.clone(),
-                })
+                        MyAnalysisData::Tensor(TensorData {
+                            shape: a0.shape.clone(),
+                        })
+                    }
+                }
             }
             &AccessCartesianProduct([a0_id, a1_id]) => {
                 let (a0, a1) = match (&egraph[a0_id].data, &egraph[a1_id].data) {
@@ -750,7 +792,7 @@ mod tests {
     #[test]
     fn compute_dot_product() {
         let program = "
-         (compute-dot-product (access t-3-32-32 0))
+         (compute dot-product (access t-3-32-32 0))
          "
         .parse()
         .unwrap();
@@ -764,7 +806,7 @@ mod tests {
         }
 
         let program = "
-         (compute-dot-product (access t-3-32-32 1))
+         (compute dot-product (access t-3-32-32 1))
          "
         .parse()
         .unwrap();
@@ -778,7 +820,7 @@ mod tests {
         }
 
         let program = "
-         (compute-dot-product (access t-3-32-32 2))
+         (compute dot-product (access t-3-32-32 2))
          "
         .parse()
         .unwrap();
@@ -798,7 +840,7 @@ mod tests {
     #[test]
     fn compute_dot_product_panic() {
         let program = "
-         (compute-dot-product (access t-3-32-32 3))
+         (compute dot-product (access t-3-32-32 3))
          "
         .parse()
         .unwrap();
@@ -827,7 +869,7 @@ mod tests {
         // print(mod)
 
         let program = "
-         (compute-dot-product
+         (compute dot-product
           (access-cartesian-product
            (access t-8-3-3-3 1)
            (access
@@ -853,7 +895,7 @@ mod tests {
         }
 
         let program = "
-         (compute-dot-product
+         (compute dot-product
           (access-cartesian-product
            (access t-8-3-3-3 1)
            (access
