@@ -98,6 +98,26 @@ define_language! {
         // shape of the tensors to be dot-producted with one another.
         "compute" = Compute([Id; 2]),
 
+        // (get-access-shape <access>)
+        // Returns the shape of the access.
+        "get-access-shape" = GetAccessShape(Id),
+
+        // (access-reshape <access> <shape>)
+        // Reshapes the access to have the given
+        "access-reshape" = AccessReshape([Id; 2]),
+
+        // (access-flatten <access>)
+        // Flattens the access's shape and item shape.
+        "access-flatten" = AccessFlatten(Id),
+
+        // (shape <usize>...)
+        // Shape literal.
+        "shape" = Shape(Box<[Id]>),
+
+        // (access-shape <shape: shape> <item-shape: shape>)
+        // Access shape literal.
+        "access-shape" = AccessShape([Id;2]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -226,6 +246,60 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessShape([shape_id, item_shape_id]) => {
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: match &egraph[shape_id].data {
+                        MyAnalysisData::Shape(s) => s.shape.clone(),
+                        _ => panic!(),
+                    },
+                    item_shape: match &egraph[item_shape_id].data {
+                        MyAnalysisData::Shape(s) => s.shape.clone(),
+                        _ => panic!(),
+                    },
+                })
+            }
+            Shape(list) => MyAnalysisData::Shape(ShapeData {
+                shape: IxDyn(
+                    list.iter()
+                        .map(|id: &Id| MyAnalysis::get_usize(*id, egraph))
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ),
+            }),
+            &AccessReshape([access_id, access_shape_id]) => {
+                let a = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+                let new_shape = match &egraph[access_shape_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+                assert_eq!(
+                    a.shape.as_array_view().iter().product::<usize>(),
+                    new_shape.shape.as_array_view().iter().product::<usize>(),
+                );
+                assert_eq!(
+                    a.item_shape.as_array_view().iter().product::<usize>(),
+                    new_shape
+                        .item_shape
+                        .as_array_view()
+                        .iter()
+                        .product::<usize>(),
+                );
+                MyAnalysisData::AccessPattern(new_shape.clone())
+            }
+            &AccessFlatten(access_id) => {
+                let a = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&[a.shape.as_array_view().iter().product()]),
+                    item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
+                })
+            }
+            &GetAccessShape(access_id) => egraph[access_id].data.clone(),
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
             &Compute([compute_type_id, access_id]) => {
                 let compute_type = match &egraph[compute_type_id].data {
@@ -911,6 +985,51 @@ mod tests {
 
         match &egraph[id].data {
             MyAnalysisData::Tensor(t) => assert_eq!(t.shape, IxDyn(&[8, 30, 15])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn flatten_reshape() {
+        let program = "
+         (access-reshape
+          (access-flatten (access t-3-32-32 2))
+          (access-shape (shape 32 3) (shape 16 2))
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 3]));
+                assert_eq!(a.item_shape, IxDyn(&[16, 2]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn flatten_reshape_panic() {
+        let program = "
+         (access-reshape
+          (access-flatten (access t-3-32-32 2))
+          (access-shape (shape 1) (shape 16 2))
+         )
+        "
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 3]));
+                assert_eq!(a.item_shape, IxDyn(&[16, 2]));
+            }
             _ => panic!(),
         }
     }
