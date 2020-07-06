@@ -577,17 +577,91 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
              {SystolicArrayApplier{a: "?a".parse().unwrap(), b: "?b".parse().unwrap(),}})
 }
 
-pub fn flatten_unflatten_access_windows() -> RW {
-    rewrite!("access-windows-to-im2col";
-             "(access-windows ?access ?kernel-shape ?stride-0 ?stride-1)" =>
+// pub fn flatten_unflatten_access_windows() -> RW {
+//     rewrite!("access-windows-to-im2col";
+//              "(access-windows ?access ?kernel-shape ?stride-0 ?stride-1)" =>
+//              "(access-reshape
+//                (access-flatten
+//                 (access-windows ?access ?kernel-shape ?stride-0 ?stride-1)
+//                )
+//                (get-access-shape
+//                 (access-windows ?access ?kernel-shape ?stride-0 ?stride-1)
+//                )
+//               )")
+// }
+
+pub fn flatten_unflatten_any_access() -> RW {
+    fn is_access() -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(_) => true,
+            _ => false,
+        }
+    }
+    rewrite!("flatten-unflatten-all-accesses";
+             "?access" =>
              "(access-reshape
                (access-flatten
-                (access-windows ?access ?kernel-shape ?stride-0 ?stride-1)
+                ?access
                )
                (get-access-shape
-                (access-windows ?access ?kernel-shape ?stride-0 ?stride-1)
+                ?access
                )
-              )")
+              )"
+             if is_access())
+}
+
+pub fn bubble_reshape_through_cartesian_product() -> RW {
+    fn access_item_shapes_equal(
+        left: Var,
+        right: Var,
+    ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match (&egraph[subst[left]].data, &egraph[subst[right]].data) {
+            (MyAnalysisData::AccessPattern(left), MyAnalysisData::AccessPattern(right)) => {
+                left.item_shape == right.item_shape
+            }
+            _ => false,
+        }
+    }
+    // TODO(@gussmith23) Calculate new cartesian product shape by hand?
+    // The fact that we're using get-access-shape in the rewrite feels bad,
+    // somehow. I'm not fully sure why.
+    // Pro: we don't have to duplicate the logic for figuring out the shape of a
+    // cartesian product. Using get-access-shape just extracts the shape from
+    // the access-cartesian-product.
+    // Con: I'm not sure. If there's an existing bug, it'll just propagate? I
+    // guess I should just make sure the cartesian product definition is right,
+    // and that get-access-shape works as expected!
+    rewrite!("bubble-reshape-through-cartesian-product";
+             "(access-cartesian-product
+               (access-reshape
+                ?left-access
+                ?left-shape
+               )
+               (access-reshape
+                ?right-access
+                ?right-shape
+               )
+              )" =>
+              "(access-reshape
+                (access-cartesian-product
+                 ?left-access
+                 ?right-access
+                )
+                (get-access-shape
+                 (access-cartesian-product
+                  (access-reshape
+                   ?left-access
+                   ?left-shape
+                  )
+                  (access-reshape
+                   ?right-access
+                   ?right-shape
+                  )
+                 )
+                )
+               )"
+             if access_item_shapes_equal("?left-access".parse().unwrap(),
+                                         "?right-access".parse().unwrap()))
 }
 
 #[cfg(test)]
@@ -595,6 +669,7 @@ mod tests {
 
     use super::*;
     use egg::{Pattern, Runner, Searcher};
+    use ndarray::IxDyn;
 
     #[test]
     fn split() {
@@ -728,7 +803,7 @@ mod tests {
         .parse()
         .unwrap();
 
-        let rws = vec![super::flatten_unflatten_access_windows()];
+        let rws = vec![super::flatten_unflatten_any_access()];
         let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
         let runner = Runner::<_, _, ()>::new(MyAnalysis)
@@ -762,5 +837,70 @@ mod tests {
             .len(),
             1
         );
+    }
+
+    #[test]
+    fn bubble_reshape_through_cartesian_product() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "
+         (access-cartesian-product
+          (access t-8-3-3-3 1)
+          (access-windows
+           t-3-32-32
+           (slice-shape (shape-of t-8-3-3-3) 1)
+           1
+           1
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let rws = vec![
+            super::flatten_unflatten_any_access(),
+            super::bubble_reshape_through_cartesian_product(),
+        ];
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (access-reshape
+             (access-cartesian-product
+              (access-flatten
+               (access t-8-3-3-3 1)
+              )
+              (access-flatten
+               (access-windows
+                t-3-32-32
+                (slice-shape (shape-of t-8-3-3-3) 1)
+                1
+                1
+               )
+              )
+             )
+             ?shape
+            )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        // ?shape should be what we expect. This is kind of over-testing, in the
+        // sense that, if we find the above pattern, then the analysis data is
+        // guaranteed (for now) to match, and so the shapes should be the same,
+        // but I figure over-testing is better than under-testing (given that
+        // "for now").
+        match &runner.egraph[matches.substs[0]["?shape".parse().unwrap()]].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.item_shape, IxDyn(&[2, 3, 3, 3]));
+                assert_eq!(a.shape, IxDyn(&[8, 30, 30]));
+            }
+            _ => panic!(),
+        }
     }
 }
