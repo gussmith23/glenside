@@ -586,6 +586,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             "t-3-32-32" => vec![3, 32, 32],
                             // An OIHW set of convolution filters.
                             "t-8-3-3-3" => vec![8, 3, 3, 3],
+                            "t-1024-2-256" => vec![1024, 2, 256],
                             _ => panic!("No shape defined for {}", name),
                         })[..],
                     )),
