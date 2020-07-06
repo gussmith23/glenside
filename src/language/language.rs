@@ -270,7 +270,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             &AccessReshape([access_id, access_shape_id]) => {
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
-                    _ => panic!(),
+                    _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
                 let new_shape = match &egraph[access_shape_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
