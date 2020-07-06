@@ -199,8 +199,8 @@ pub struct ShapeData {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessPatternData {
-    shape: IxDyn,
-    item_shape: IxDyn,
+    pub shape: IxDyn,
+    pub item_shape: IxDyn,
 }
 
 #[derive(Debug, Clone, PartialEq)]
