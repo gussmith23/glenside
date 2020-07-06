@@ -664,6 +664,42 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
                                          "?right-access".parse().unwrap()))
 }
 
+pub fn bubble_reshape_through_compute_dot_product() -> RW {
+    fn is_dot_product(op: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match &egraph[subst[op]].data {
+            MyAnalysisData::ComputeType(c) => *c == super::language::ComputeType::DotProduct,
+            _ => false,
+        }
+    }
+    struct ApplierImpl(Var);
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let a = match &egraph[subst[self.0]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            assert_eq!(a.item_shape.as_array_view()[0], 2);
+
+            format!(
+                "(access-reshape (compute ?op ?a) (access-shape (shape {}) (shape)))",
+                a.shape
+                    .as_array_view()
+                    .iter()
+                    .map(|u: &usize| { format!("{}", u) })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+            .parse::<Pattern<Language>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("bubble-reshape-through-compute";
+             "(compute ?op (access-reshape ?a ?shape))" =>
+             { ApplierImpl("?shape".parse().unwrap()) }
+             if is_dot_product("?op".parse().unwrap()))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -899,6 +935,47 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.item_shape, IxDyn(&[2, 3, 3, 3]));
                 assert_eq!(a.shape, IxDyn(&[8, 30, 30]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn bubble_reshape_through_dot_product() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "
+         (compute dot-product
+          (access-reshape (access t-1024-2-256 1) (access-shape (shape 32 32) (shape 2 16 16)))
+         )
+        "
+        .parse()
+        .unwrap();
+        let rws = vec![super::bubble_reshape_through_compute_dot_product()];
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (access-reshape
+             (compute dot-product
+              (access t-1024-2-256 1)
+             )
+             ?shape
+            )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        match &runner.egraph[matches.substs[0]["?shape".parse().unwrap()]].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.item_shape, IxDyn(&[]));
+                assert_eq!(a.shape, IxDyn(&[32, 32]));
             }
             _ => panic!(),
         }
