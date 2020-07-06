@@ -188,7 +188,8 @@ pub enum MyAnalysisData {
     Legacy(MyAnalysisDataLegacyData),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
-    Tensor(TensorData),
+    // TODO(@gussmith23) Needed?
+    //Tensor(TensorData),
     ComputeType(ComputeType),
 }
 
@@ -203,10 +204,10 @@ pub struct AccessPatternData {
     pub item_shape: IxDyn,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TensorData {
-    shape: IxDyn,
-}
+// #[derive(Debug, Clone, PartialEq)]
+// pub struct TensorData {
+//     shape: IxDyn,
+// }
 
 // TODO(@gussmith23) Pick a better analysis name.
 #[derive(Debug, Clone, PartialEq)]
@@ -321,8 +322,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                         // want those semantics.
                         assert!(a0.item_shape.ndim() >= 1);
 
-                        MyAnalysisData::Tensor(TensorData {
+                        // MyAnalysisData::Tensor(TensorData {
+                        //     shape: a0.shape.clone(),
+                        // })
+                        MyAnalysisData::AccessPattern(AccessPatternData {
                             shape: a0.shape.clone(),
+                            item_shape: IxDyn(&[]),
                         })
                     }
                 }
@@ -873,8 +878,9 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
-            MyAnalysisData::Tensor(a) => {
+            MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }
@@ -887,8 +893,9 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
-            MyAnalysisData::Tensor(a) => {
+            MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }
@@ -901,8 +908,9 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
-            MyAnalysisData::Tensor(a) => {
+            MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }
@@ -921,8 +929,9 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
-            MyAnalysisData::Tensor(a) => {
+            MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }
@@ -961,7 +970,10 @@ mod tests {
         let id = egraph.add_expr(&program);
 
         match &egraph[id].data {
-            MyAnalysisData::Tensor(t) => assert_eq!(t.shape, IxDyn(&[8, 30, 30])),
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[8, 30, 30]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
             _ => panic!(),
         }
 
@@ -984,7 +996,10 @@ mod tests {
         let id = egraph.add_expr(&program);
 
         match &egraph[id].data {
-            MyAnalysisData::Tensor(t) => assert_eq!(t.shape, IxDyn(&[8, 30, 15])),
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[8, 30, 15]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
             _ => panic!(),
         }
     }
