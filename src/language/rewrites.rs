@@ -678,7 +678,6 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
             };
-            assert_eq!(a.item_shape.as_array_view()[0], 2);
 
             format!(
                 "(access-reshape (compute ?op ?a) (access-shape (shape {}) (shape)))",
