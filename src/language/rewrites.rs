@@ -699,6 +699,56 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
              if is_dot_product("?op".parse().unwrap()))
 }
 
+pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
+    fn constrain_access(
+        access: Var,
+        constraint: impl Fn(&super::language::AccessPatternData) -> bool,
+    ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match &egraph[subst[access]].data {
+            MyAnalysisData::AccessPattern(a) => constraint(a),
+            _ => false,
+        }
+    }
+    struct ApplierImpl {
+        a: Var,
+        b: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let (a, b) = match (&egraph[subst[self.a]].data, &egraph[subst[self.b]].data) {
+                (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => (a, b),
+                _ => panic!(),
+            };
+            assert_eq!(a.shape.ndim(), 1);
+            assert_eq!(a.item_shape.ndim(), 1);
+            assert_eq!(b.shape.ndim(), 1);
+            assert_eq!(b.item_shape.ndim(), 1);
+            let rows: usize = b.shape.as_array_view()[0];
+            let cols: usize = b.item_shape.as_array_view()[0];
+
+            let pattern: Pattern<Language> =
+                format!("(systolic-array {} {} ?access-1 ?access-2)", rows, cols)
+                    .parse()
+                    .unwrap();
+
+            pattern.apply_one(egraph, eclass, subst)
+        }
+    }
+
+    rewrite!("systolic-array";
+             // TODO(@gussmith23) should check that ?a is a vector.
+             "(compute dot-product
+               (access-cartesian-product
+                ?access-1
+                ?access-2
+               )
+              )
+             " =>
+             { ApplierImpl{a: "?access-1".parse().unwrap(), b: "?access-2".parse().unwrap(),}}
+             if constrain_access("?access-1".parse().unwrap(), |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1)
+             if constrain_access("?access-2".parse().unwrap(), |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -978,5 +1028,59 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn conv2d_im2col_systolic_array() {
+        let program = "
+         (compute dot-product
+          (access-cartesian-product
+           (access t-8-3-3-3 1)
+           (access-windows
+            t-3-32-32
+            (slice-shape (shape-of t-8-3-3-3) 1)
+            1
+            1
+           )
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![
+            super::flatten_unflatten_any_access(),
+            super::bubble_reshape_through_cartesian_product(),
+            super::bubble_reshape_through_compute_dot_product(),
+            super::systolic_array(),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (access-reshape
+             (systolic-array 900 27
+              (access-flatten (access t-8-3-3-3 1))
+              (access-flatten
+               (access-windows
+                t-3-32-32
+                (slice-shape (shape-of t-8-3-3-3) 1)
+                1
+                1
+               )
+              )
+             )
+             ?shape
+            )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }

@@ -52,6 +52,13 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
 
+        // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
+        // Represents a systolic array of size rows X cols, fed with two
+        // accesses.
+        // TODO(@gussmith23) do we need to specify rows and cols? You can infer these
+        // from the size of the input, but it's also useful for searching.
+        "systolic-array" = SystolicArray([Id; 4]),
+
         // (access-windows <tensor> <filters> <x-stride> <y-stride>)
         // TODO(@gussmith23) access-windows shouldn't take in the filters
         // All it needs is the filters' shape.
@@ -505,6 +512,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                 MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
                     shape: Some(ndarray::IxDyn(&new_shape)),
                     usize_value: None,
+                })
+            }
+            &SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
+                // Check that the rows and cols are usizes.
+                let _unused = Self::get_usize(rows_id, egraph);
+                let _unused = Self::get_usize(cols_id, egraph);
+
+                let (a0, a1) = match (&egraph[a0_id].data, &egraph[a1_id].data) {
+                    (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => {
+                        (a0, a1)
+                    }
+                    _ => panic!(),
+                };
+
+                assert_eq!(a0.shape.ndim(), 1);
+                assert_eq!(a0.item_shape.ndim(), 1);
+                assert_eq!(a1.shape.ndim(), 1);
+                assert_eq!(a1.item_shape.ndim(), 1);
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&[a0.shape.as_array_view()[0], a1.shape.as_array_view()[0]]),
+                    item_shape: IxDyn(&[]),
                 })
             }
             &Slice([tensor_id, axis_id, low_id, high_id]) => {
