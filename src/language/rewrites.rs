@@ -750,6 +750,132 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
              if constrain_access("?access-2".parse().unwrap(), |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
 }
 
+pub fn slice_concatenate_accesses(
+    axis: usize,
+    dimension_greater_than: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    fn access_has_axis(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _subst| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => axis < a.shape.ndim() + a.item_shape.ndim(),
+            _ => panic!(),
+        }
+    }
+
+    fn access_dimension_greater_than(
+        axis: usize,
+        greater_than: usize,
+    ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _subst| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                if axis < a.shape.ndim() {
+                    a.shape[axis] > greater_than
+                } else {
+                    a.item_shape[axis - a.shape.ndim()] > greater_than
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn access_dimension_is_even(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _subst| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                if axis < a.shape.ndim() {
+                    a.shape[axis] % 2 == 0
+                } else {
+                    a.item_shape[axis - a.shape.ndim()] % 2 == 0
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    struct ApplierImpl {
+        axis: usize,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let shape = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            assert!(self.axis < shape.shape.ndim() + shape.item_shape.ndim());
+            let low_bound = 0;
+            let high_bound = if self.axis < shape.shape.ndim() {
+                shape.shape[self.axis]
+            } else {
+                shape.item_shape[self.axis - shape.shape.ndim()]
+            };
+            assert_eq!(high_bound % 2, 0);
+            let middle_bound = high_bound / 2;
+
+            format!(
+                "(access-concatenate (access-slice ?a {} {} {}) (access-slice ?a {} {} {}) {})",
+                self.axis, low_bound, middle_bound, self.axis, middle_bound, high_bound, self.axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, id, subst)
+        }
+    }
+    rewrite!(format!("slice-concatenate-access-axis-{}", axis);
+             "?a" => { ApplierImpl {axis: axis} }
+             // TODO(@gussmith) Wouldn't need this if we had an "access" op
+             // We could have an access op that takes the access type, the
+             // access config, and then a number of arguments. I.e. access-1
+             // would take 1, access-2 would take 2, etc. Then we wouldn't need
+             // this check.
+             // TODO(@gussmith) Need to limit what gets sliced
+             // I used to do this with the old split() rewrite. It's a little
+             // trickier now with accesses, because you have to match only on
+             // accesses to tensor literals. Not impossible, obviously. I'm just
+             // being lazy right now.
+             if is_access()
+             if access_has_axis(axis)
+             if access_dimension_is_even(axis)
+             if access_dimension_greater_than(axis, dimension_greater_than))
+}
+
+// TODO(@gussmith) Can also implement a collapse_nested_concatenate
+pub fn collapse_nested_access_slices() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        low0: Var,
+        high0: Var,
+        low1: Var,
+        high1: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let low0: usize = MyAnalysis::get_usize(subst[self.low0], egraph);
+            let high0: usize = MyAnalysis::get_usize(subst[self.high0], egraph);
+            let low1: usize = MyAnalysis::get_usize(subst[self.low1], egraph);
+            let high1: usize = MyAnalysis::get_usize(subst[self.high1], egraph);
+
+            let new_low: usize = low0 + low1;
+            assert!(high1 - low1 <= high0 - low0);
+            let new_high: usize = new_low + (high1 - low1);
+
+            format!("(access-slice ?t ?axis {} {})", new_low, new_high)
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("collapse-nested-slices";
+    "(access-slice (access-slice ?t ?axis ?low0 ?high0) ?axis ?low1 ?high1)" =>
+    { ApplierImpl {
+        low0: "?low0".parse().unwrap(),
+        low1: "?low1".parse().unwrap(),
+        high0: "?high0".parse().unwrap(),
+        high1: "?high1".parse().unwrap(),
+    }})
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1083,5 +1209,60 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn slice_concatenate_accesses() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "(access t-32-32 1)".parse().unwrap();
+
+        let rws = vec![
+            super::slice_concatenate_accesses(0, 16),
+            super::slice_concatenate_accesses(1, 16),
+            super::collapse_nested_access_slices(),
+        ];
+
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        assert_eq!(
+            "(access-slice (access-slice (access t-32-32 1) 1 0 16) 0 0 16)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+
+        assert_eq!(
+            "(access-slice (access-slice (access t-32-32 1) 1 16 32) 0 0 16)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+
+        assert_eq!(
+            "(access-slice (access-slice (access t-32-32 1) 1 0 16) 0 16 32)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
+
+        assert_eq!(
+            "(access-slice (access-slice (access t-32-32 1) 1 16 32) 0 16 32)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search(&runner.egraph)
+                .len(),
+            1
+        );
     }
 }
