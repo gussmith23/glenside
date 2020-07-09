@@ -286,8 +286,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     assert!(high <= new_access.shape[axis]);
                     new_access.shape[axis] = high - low;
                 } else {
-                    assert!(low < new_access.item_shape[axis- new_access.shape.ndim()]);
-                    assert!(high <= new_access.item_shape[axis- new_access.shape.ndim()]);
+                    assert!(low < new_access.item_shape[axis - new_access.shape.ndim()]);
+                    assert!(high <= new_access.item_shape[axis - new_access.shape.ndim()]);
                     new_access.item_shape[axis - new_access.shape.ndim()] = high - low;
                 }
 
