@@ -125,6 +125,22 @@ define_language! {
         // Access shape literal.
         "access-shape" = AccessShape([Id;2]),
 
+        // (access-slice <access> <axis (usize)> <low (usize)> <high (usize)>)
+        // Slices into <access> at axis <axis>, slicing the half-open range
+        // [<low>, <high>).
+        // TODO(@gussmith23) Implement access-slice-item
+        // If axis >= access.shape.ndim(), it slices into access.item_shape.
+        // This is me being lazy and not wanting to implement separate
+        // access-slice-shape and access-slice-item operators for right now.
+        "access-slice" = AccessSlice([Id; 4]),
+
+        // (access-concatenate <a0> <a1> <axis (usize)>)
+        // Concatenate accesses <a0> and <a1> along <axis>.
+        // TODO(@gussmith23) Implement access-concatenate-item
+        // If axis >= access.shape.ndim(), it concatenates along dimensions in
+        // access.item_shape.
+        "access-concatenate" = AccessConcatenate([Id; 3]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -254,6 +270,51 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessSlice([access_id, axis_id, low_id, high_id]) => {
+                let mut new_access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
+
+                let axis: usize = Self::get_usize(axis_id, egraph);
+                let low: usize = Self::get_usize(low_id, egraph);
+                let high: usize = Self::get_usize(high_id, egraph);
+
+                assert!(new_access.shape.ndim() + new_access.item_shape.ndim() > axis);
+                if axis <= new_access.shape.ndim() - 1 {
+                    assert!(low < new_access.shape[axis]);
+                    assert!(high <= new_access.shape[axis]);
+                    new_access.shape[axis] = high - low;
+                } else {
+                    assert!(low < new_access.item_shape[axis]);
+                    assert!(high <= new_access.item_shape[axis]);
+                    new_access.item_shape[axis - new_access.shape.ndim()] = high - low;
+                }
+
+                MyAnalysisData::AccessPattern(new_access)
+            }
+            &AccessConcatenate([a0_id, a1_id, axis_id]) => {
+                let axis = Self::get_usize(axis_id, egraph);
+                let mut new_access = match &egraph[a0_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
+                let a1 = match &egraph[a1_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+                assert_eq!(new_access.shape.ndim(), a1.shape.ndim(),);
+                assert_eq!(new_access.item_shape.ndim(), a1.item_shape.ndim(),);
+                assert!(axis < a1.shape.ndim() + a1.item_shape.ndim());
+                if axis < new_access.shape.ndim() {
+                    new_access.shape[axis] += a1.shape[axis];
+                } else {
+                    new_access.item_shape[axis - new_access.shape.ndim()] +=
+                        a1.item_shape[axis - new_access.shape.ndim()];
+                }
+
+                MyAnalysisData::AccessPattern(new_access)
+            }
             &AccessShape([shape_id, item_shape_id]) => {
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: match &egraph[shape_id].data {
@@ -1074,6 +1135,119 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[32, 3]));
                 assert_eq!(a.item_shape, IxDyn(&[16, 2]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_0() {
+        let program = "(access-slice (access t-3-32-32 1) 0 0 1)".parse().unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_1() {
+        let program = "(access-slice (access t-3-32-32 1) 1 16 32)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[16, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_slice_panic() {
+        let program = "(access-slice (access t-3-32-32 1) 3 16 32)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[16, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_concatenate_0() {
+        let program = "(access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[6]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_concatenate_1() {
+        let program = "(access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 2)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 64]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn access_concatenate_panic_0() {
+        let program = "(access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 3)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 64]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn access_concatenate_panic_1() {
+        let program = "(access-concatenate (access t-3-32-32 1) (access t-8-3-3-3 1) 2)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 64]));
             }
             _ => panic!(),
         }
