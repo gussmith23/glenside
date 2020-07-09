@@ -80,6 +80,10 @@ define_language! {
         // whose elements are of shape d<dim>, .., dn.
         "access" = Access([Id; 2]),
 
+        // (access-move-axis <access> <axis (usize)> <dest (usize)>)
+        // Move <axis> so it is now <dest>, shifting other axes as needed.
+        "access-move-axis" = AccessMoveAxis([Id; 3]),
+
         // (access-cartesian-product <access1> <access2>)
         // Cartesian product access pattern.
         // Assume <access1> has shape
@@ -270,6 +274,48 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessMoveAxis([access_id, src_axis_id, dest_axis_id]) => {
+                let (split_axis, shape) = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => (
+                        a.shape.ndim(),
+                        a.shape
+                            .as_array_view()
+                            .iter()
+                            .chain(a.item_shape.as_array_view().iter())
+                            .cloned()
+                            .collect::<Vec<_>>(),
+                    ),
+                    _ => panic!(),
+                };
+                let src_axis = Self::get_usize(src_axis_id, egraph);
+                let dest_axis = Self::get_usize(dest_axis_id, egraph);
+
+                assert!(src_axis < shape.len());
+                assert!(dest_axis < shape.len());
+
+                let new_shape_order = if src_axis <= dest_axis {
+                    shape[..src_axis]
+                        .iter()
+                        .chain(shape[src_axis + 1..=dest_axis].iter())
+                        .chain(std::iter::once(&shape[src_axis]))
+                        .chain(shape[dest_axis + 1..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                } else {
+                    shape[..dest_axis]
+                        .iter()
+                        .chain(std::iter::once(&shape[src_axis]))
+                        .chain(shape[dest_axis..src_axis].iter())
+                        .chain(shape[src_axis + 1..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                };
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&new_shape_order[..split_axis]),
+                    item_shape: IxDyn(&new_shape_order[split_axis..]),
+                })
+            }
             &AccessSlice([access_id, axis_id, low_id, high_id]) => {
                 let mut new_access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
@@ -1264,6 +1310,88 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3]));
                 assert_eq!(a.item_shape, IxDyn(&[32, 64]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_move_axis_0() {
+        let program = "(access-move-axis (access t-3-32-32 1) 0 2)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 3]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_move_axis_1() {
+        let program = "(access-move-axis (access t-3-32-32 1) 1 0)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_move_axis_2() {
+        let program = "(access-move-axis (access t-3-32-32 1) 1 1)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn access_move_axis_panic_0() {
+        let program = "(access-move-axis (access t-3-32-32 1) 3 1)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[should_panic]
+    #[test]
+    fn access_move_axis_panic_1() {
+        let program = "(access-move-axis (access t-3-32-32 1) 1 3)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
             }
             _ => panic!(),
         }
