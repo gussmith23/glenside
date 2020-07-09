@@ -876,6 +876,52 @@ pub fn collapse_nested_access_slices() -> Rewrite<Language, MyAnalysis> {
     }})
 }
 
+pub fn access_slice_access_move_axis_composition_commutative() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        move_axis_src: Var,
+        move_axis_dest: Var,
+        slice_axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let src_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_src], egraph);
+            let dst_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_dest], egraph);
+            let old_slice_axis: usize = MyAnalysis::get_usize(subst[self.slice_axis], egraph);
+            let new_slice_axis = if (old_slice_axis < src_axis && old_slice_axis < dst_axis)
+                || (old_slice_axis > src_axis && old_slice_axis > dst_axis)
+            {
+                // Axis is unaffected if it's not between src and dst.
+                old_slice_axis
+            } else if old_slice_axis == dst_axis {
+                src_axis
+            } else if old_slice_axis <= src_axis && old_slice_axis > dst_axis {
+                old_slice_axis - 1
+            } else if old_slice_axis >= src_axis && old_slice_axis < dst_axis {
+                old_slice_axis + 1
+            } else {
+                unreachable!()
+            };
+
+            format!(
+                "(access-move-axis (access-slice ?tensor {} ?bottom ?top) ?src ?dest)",
+                new_slice_axis
+            )
+            .parse::<Pattern<Language>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite!(
+        "access-slice-access-move-axis-composition-commutative";
+        "(access-slice (access-move-axis ?tensor ?src ?dest) ?axis ?bottom ?top)" =>
+        { ApplierImpl {
+            move_axis_src: "?src".parse().unwrap(),
+            move_axis_dest: "?dest".parse().unwrap(),
+            slice_axis: "?axis".parse().unwrap(),
+        }}
+    )
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1264,5 +1310,91 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn access_slice_access_move_axis_composition_commutative_0() {
+        let program = "
+        (access-slice (access-move-axis (access t-3-32-32 1) 2 0) 0 16 32)
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 2 16 32) 2 0)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn access_slice_access_move_axis_composition_commutative_1() {
+        let program = "
+        (access-slice (access-move-axis (access t-3-32-32 1) 2 0) 1 0 2)
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 0 0 2) 2 0)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn access_slice_access_move_axis_composition_commutative_2() {
+        let program = "
+        (access-slice (access-move-axis (access t-3-32-32 1) 1 0) 2 0 16)
+        "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 2 0 16) 1 0)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn access_slice_access_move_axis_composition_commutative_3() {
+        let program = "(access-slice (access-move-axis (access t-3-32-32 1) 0 1) 1 0 2)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 0 0 2) 0 1)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
