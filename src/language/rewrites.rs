@@ -5,6 +5,13 @@ use ndarray::Dimension;
 type EG = EGraph<Language, MyAnalysis>;
 type RW = Rewrite<Language, MyAnalysis>;
 
+fn is_access() -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    move |egraph, id, _| match &egraph[id].data {
+        MyAnalysisData::AccessPattern(_) => true,
+        _ => false,
+    }
+}
+
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
 // checks to make sure it has a shape and that it's an input
 pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
@@ -591,12 +598,6 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
 // }
 
 pub fn flatten_unflatten_any_access() -> RW {
-    fn is_access() -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-        move |egraph, id, _| match &egraph[id].data {
-            MyAnalysisData::AccessPattern(_) => true,
-            _ => false,
-        }
-    }
     rewrite!("flatten-unflatten-all-accesses";
              "?access" =>
              "(access-reshape
