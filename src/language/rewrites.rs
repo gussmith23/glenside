@@ -922,6 +922,63 @@ pub fn access_slice_access_move_axis_composition_commutative() -> Rewrite<Langua
     )
 }
 
+pub fn bubble_access_concatenate_through_access_move_axis() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        concatenate_axis: Var,
+        src_axis: Var,
+        dst_axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let original_concatenate_axis: usize =
+                MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
+            let src_axis: usize = MyAnalysis::get_usize(subst[self.src_axis], egraph);
+            let dst_axis: usize = MyAnalysis::get_usize(subst[self.dst_axis], egraph);
+
+            // If the move now happens /before/ the concatenate, we have to
+            // figure out what the new axis for the concatenate is.
+            // TODO(@gussmith23) Would be nice to have a more principled system of
+            // keeping track of axes. This is where Remy's relational algebra
+            // stuff could be really useful!
+            let new_concatenate_axis: usize = if (original_concatenate_axis < src_axis
+                && original_concatenate_axis < dst_axis)
+                || (original_concatenate_axis > src_axis && original_concatenate_axis > dst_axis)
+            {
+                // Axis is unaffected if it's not between src and dst.
+                original_concatenate_axis
+            } else if original_concatenate_axis == src_axis {
+                dst_axis
+            } else if original_concatenate_axis < src_axis && original_concatenate_axis >= dst_axis
+            {
+                original_concatenate_axis + 1
+            } else if original_concatenate_axis > src_axis && original_concatenate_axis <= dst_axis
+            {
+                original_concatenate_axis - 1
+            } else {
+                unreachable!()
+            };
+
+            format!(
+                "(access-concatenate
+                      (access-move-axis ?a ?src-axis ?dst-axis)
+                      (access-move-axis ?b ?src-axis ?dst-axis) {})",
+                new_concatenate_axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("bubble-access-concatenate-through-access-move-axis";
+        "(access-move-axis (access-concatenate ?a ?b ?concatenate-axis) ?src-axis ?dst-axis)" =>
+    {
+        ApplierImpl {
+            concatenate_axis: "?concatenate-axis".parse().unwrap(),
+            src_axis:"?src-axis".parse().unwrap(),
+            dst_axis:"?dst-axis".parse().unwrap()
+        }
+    })
+}
 #[cfg(test)]
 mod tests {
 
@@ -1391,6 +1448,90 @@ mod tests {
             .run(&rws);
 
         let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 0 0 2) 0 1)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_move_axis_0() {
+        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0) 0 2)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches =
+            "(access-concatenate (access-move-axis (access t-3-32-32 1) 0 2) (access-move-axis (access t-3-32-32 1) 0 2) 2)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_move_axis_1() {
+        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 1) 0 2)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches =
+            "(access-concatenate (access-move-axis (access t-3-32-32 1) 0 2) (access-move-axis (access t-3-32-32 1) 0 2) 0)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_move_axis_2() {
+        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 2) 0 1)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches =
+            "(access-concatenate (access-move-axis (access t-3-32-32 1) 0 1) (access-move-axis (access t-3-32-32 1) 0 1) 2)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_move_axis_3() {
+        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 1) 2 0)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches =
+            "(access-concatenate (access-move-axis (access t-3-32-32 1) 2 0) (access-move-axis (access t-3-32-32 1) 2 0) 2)"
             .parse::<Pattern<_>>()
             .unwrap()
             .search_eclass(&runner.egraph, id)
