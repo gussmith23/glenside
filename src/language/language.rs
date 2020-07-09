@@ -286,8 +286,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     assert!(high <= new_access.shape[axis]);
                     new_access.shape[axis] = high - low;
                 } else {
-                    assert!(low < new_access.item_shape[axis]);
-                    assert!(high <= new_access.item_shape[axis]);
+                    assert!(low < new_access.item_shape[axis- new_access.shape.ndim()]);
+                    assert!(high <= new_access.item_shape[axis- new_access.shape.ndim()]);
                     new_access.item_shape[axis - new_access.shape.ndim()] = high - low;
                 }
 
@@ -1165,6 +1165,22 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3]));
                 assert_eq!(a.item_shape, IxDyn(&[16, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_2() {
+        let program = "(access-slice (access t-3-32-32 2) 2 16 32)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[16]));
             }
             _ => panic!(),
         }
