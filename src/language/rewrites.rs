@@ -487,6 +487,7 @@ pub fn bubble_concatenate_through_cartesian_product_axis_0_0() -> Rewrite<Langua
                            0)"
     )
 }
+
 pub fn rewrite_nonmatching_cartesian_product_concatenate() -> Rewrite<Language, MyAnalysis> {
     rewrite!(
     "rewrite-nonmatching-cartesian-product-concatenate";
