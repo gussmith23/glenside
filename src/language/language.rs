@@ -1454,8 +1454,8 @@ mod tests {
         let program = "
          (compute reduce-sum (access t-3-32-32 2))
          "
-            .parse()
-            .unwrap();
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
