@@ -41,6 +41,15 @@ fn not_item_axis(axis: Var, access: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subs
     }
 }
 
+fn item_axis(axis: Var, access: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    move |egraph, _id, subst| match &egraph[subst[access]].data {
+        MyAnalysisData::AccessPattern(a) => {
+            MyAnalysis::get_usize(subst[axis], egraph) >= a.shape.ndim()
+        }
+        _ => panic!(),
+    }
+}
+
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
 // checks to make sure it has a shape and that it's an input
 pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
@@ -1095,6 +1104,36 @@ pub fn bubble_access_concatenate_through_access_cartesian_product_same_item_axis
     )
 }
 
+/// When bubbling up through (compute dot-product ...), what you do depends on
+/// whether you're concatenating along an item axis or not. If you are not, it's
+/// easy: you just bubble it straight through. If you are, then you are
+/// concatenating along an axis that's getting reduced in the reduction sum. So
+/// we need to explicitly insert another reduction.
+pub fn bubble_access_concatenate_through_compute_dot_product_not_item_axis(
+) -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-access-concatenate-through-compute-dot-product-not-item-axis";
+             "(compute dot-product (access-concatenate ?a0 ?a1 ?axis))" =>
+             "(access-concatenate
+               (compute dot-product ?a0)
+               (compute dot-product ?a1)
+               ?axis
+              )"
+             if not_item_axis("?axis".parse().unwrap(), "?a0".parse().unwrap()))
+}
+
+pub fn bubble_access_concatenate_through_compute_dot_product_item_axis(
+) -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-access-concatenate-through-compute-dot-product-item-axis";
+             "(compute dot-product (access-concatenate ?a0 ?a1 ?axis))" =>
+             "(compute reduce-sum
+               (access-pair
+                (compute dot-product ?a0)
+                (compute dot-product ?a1)
+               )
+              )"
+             if item_axis("?axis".parse().unwrap(), "?a0".parse().unwrap()))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1796,6 +1835,108 @@ mod tests {
               )
               3
              )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_compute_dot_product_not_item_access() {
+        let program = "
+             (compute dot-product
+              (access-concatenate
+               (access t-3-32-32 1)
+               (access t-3-32-32 1)
+               0
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_concatenate_through_compute_dot_product_not_item_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-concatenate
+              (compute dot-product (access t-3-32-32 1))
+              (compute dot-product (access t-3-32-32 1))
+              0
+             )
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_compute_dot_product_item_access_0() {
+        let program = "
+             (compute dot-product
+              (access-concatenate
+               (access t-3-32-32 1)
+               (access t-3-32-32 1)
+               1
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_compute_dot_product_item_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (compute reduce-sum
+              (access-pair
+               (compute dot-product (access t-3-32-32 1))
+               (compute dot-product (access t-3-32-32 1))
+              )
+             )
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_compute_dot_product_item_access_1() {
+        let program = "
+             (compute dot-product
+              (access-concatenate
+               (access t-3-32-32 1)
+               (access t-3-32-32 1)
+               2
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_compute_dot_product_item_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (compute reduce-sum
+              (access-pair
+               (compute dot-product (access t-3-32-32 1))
+               (compute dot-product (access t-3-32-32 1))
+              )
+             )
+             "
         .parse::<Pattern<_>>()
         .unwrap()
         .search_eclass(&runner.egraph, id)
