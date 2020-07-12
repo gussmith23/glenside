@@ -160,12 +160,14 @@ define_language! {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ComputeType {
     DotProduct,
+    ReduceSum,
 }
 impl FromStr for ComputeType {
     type Err = ();
     fn from_str(input: &str) -> Result<ComputeType, Self::Err> {
         match input {
             "dot-product" => Ok(ComputeType::DotProduct),
+            "reduce-sum" => Ok(ComputeType::ReduceSum),
             _ => Err(()),
         }
     }
@@ -177,6 +179,7 @@ impl Display for ComputeType {
             "{}",
             match self {
                 ComputeType::DotProduct => "dot-product",
+                ComputeType::ReduceSum => "reduce-sum",
             }
         )
     }
@@ -439,6 +442,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                         // MyAnalysisData::Tensor(TensorData {
                         //     shape: a0.shape.clone(),
                         // })
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: a0.shape.clone(),
+                            item_shape: IxDyn(&[]),
+                        })
+                    }
+                    self::ComputeType::ReduceSum => {
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
@@ -1392,6 +1401,42 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3]));
                 assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_sum_0() {
+        let program = "
+         (compute reduce-sum (access t-3-32-32 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_sum_1() {
+        let program = "
+         (compute reduce-sum (access t-3-32-32 2))
+         "
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }
