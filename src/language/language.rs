@@ -487,7 +487,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                     _ => panic!(),
                 };
-                assert_eq!(a0.item_shape, a1.item_shape);
+                assert_eq!(
+                    a0.item_shape, a1.item_shape,
+                    "Cartesian product argument shapes must match"
+                );
 
                 let new_shape = IxDyn(
                     a0.shape
