@@ -149,6 +149,10 @@ define_language! {
         // Simply pair every item of a0 with every item of a1.
         "access-pair" = AccessPair([Id; 2]),
 
+        // (access-shift-right <a0>)
+        // Shifts a dimension from shape to item shape.
+        "access-shift-right" = AccessShiftRight(Id),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -281,6 +285,24 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessShiftRight(a_id) => {
+                let a = match &egraph[a_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+
+                let combined = a
+                    .shape
+                    .as_array_view()
+                    .iter()
+                    .chain(a.item_shape.as_array_view().iter())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&combined[..(a.shape.ndim().saturating_sub(1))]),
+                    item_shape: IxDyn(&combined[(a.shape.ndim().saturating_sub(1))..]),
+                })
+            }
             &AccessPair([a0_id, a1_id]) => {
                 let (a0, a1) = match (&egraph[a0_id].data, &egraph[a1_id].data) {
                     (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => {
@@ -1502,6 +1524,60 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[32]));
                 assert_eq!(a.item_shape, IxDyn(&[2, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_shift_right_0() {
+        let program = "
+         (access-shift-right (access t-32-32 2))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_shift_right_1() {
+        let program = "
+         (access-shift-right (access t-32-32 1))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_shift_right_2() {
+        let program = "
+         (access-shift-right (access t-32-32 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
             }
             _ => panic!(),
         }
