@@ -377,7 +377,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let high: usize = Self::get_usize(high_id, egraph);
 
                 assert!(new_access.shape.ndim() + new_access.item_shape.ndim() > axis);
-                if axis <= new_access.shape.ndim() - 1 {
+                if axis < new_access.shape.ndim() {
                     assert!(low < new_access.shape[axis]);
                     assert!(high <= new_access.shape[axis]);
                     new_access.shape[axis] = high - low;
