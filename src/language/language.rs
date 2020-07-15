@@ -153,6 +153,10 @@ define_language! {
         // Shifts a dimension from shape to item shape.
         "access-shift-right" = AccessShiftRight(Id),
 
+        // (access-tensor <t>)
+        // Access a tensor literal.
+        "access-tensor" = AccessTensor(Id),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -285,6 +289,13 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessTensor(t_id) => MyAnalysisData::AccessPattern(AccessPatternData {
+                shape: match &egraph[t_id].data {
+                    MyAnalysisData::Legacy(l) => l.shape.as_ref().unwrap().clone(),
+                    _ => panic!(),
+                },
+                item_shape: IxDyn(&[]),
+            }),
             &AccessShiftRight(a_id) => {
                 let a = match &egraph[a_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
@@ -560,14 +571,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .as_array_view()
                         .iter()
                         .chain(a.item_shape.as_array_view().iter())
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                    MyAnalysisData::Legacy(l) => l
-                        .shape
-                        .as_ref()
-                        .unwrap()
-                        .as_array_view()
-                        .iter()
                         .cloned()
                         .collect::<Vec<_>>(),
                     _ => panic!(),
@@ -936,7 +939,7 @@ mod tests {
     #[test]
     fn access() {
         let program = "
-         (access t-3-32-32 0)
+         (access (access-tensor t-3-32-32) 0)
          "
         .parse()
         .unwrap();
@@ -951,7 +954,7 @@ mod tests {
         }
 
         let program = "
-         (access t-3-32-32 2)
+         (access (access-tensor t-3-32-32) 2)
          "
         .parse()
         .unwrap();
@@ -966,7 +969,7 @@ mod tests {
         }
 
         let program = "
-         (access t-3-32-32 3)
+         (access (access-tensor t-3-32-32) 3)
          "
         .parse()
         .unwrap();
@@ -984,7 +987,7 @@ mod tests {
     #[test]
     fn reaccess() {
         let program = "
-         (access (access t-3-32-32 3) 0)
+         (access (access (access-tensor t-3-32-32) 3) 0)
          "
         .parse()
         .unwrap();
@@ -1003,7 +1006,7 @@ mod tests {
     #[should_panic]
     fn access_invalid() {
         let program = "
-         (access t-3-32-32 4)
+         (access (access-tensor t-3-32-32) 4)
          "
         .parse()
         .unwrap();
@@ -1052,8 +1055,8 @@ mod tests {
     fn access_cartesian_product() {
         let program = "
          (access-cartesian-product
-          (access v-32 0)
-          (access (move-axis t-32-32 1 0) 1)
+          (access (access-tensor v-32) 0)
+          (access (access-tensor t-32-32) 1)
          )
          "
         .parse()
@@ -1070,8 +1073,8 @@ mod tests {
 
         let program = "
          (access-cartesian-product
-          (access (move-axis t-32-32 1 0) 1)
-          (access v-32 0)
+          (access (access-tensor t-32-32) 1)
+          (access (access-tensor v-32) 0)
          )
          "
         .parse()
@@ -1090,7 +1093,7 @@ mod tests {
     #[test]
     fn compute_dot_product() {
         let program = "
-         (compute dot-product (access t-3-32-32 0))
+         (compute dot-product (access (access-tensor t-3-32-32) 0))
          "
         .parse()
         .unwrap();
@@ -1105,7 +1108,7 @@ mod tests {
         }
 
         let program = "
-         (compute dot-product (access t-3-32-32 1))
+         (compute dot-product (access (access-tensor t-3-32-32) 1))
          "
         .parse()
         .unwrap();
@@ -1120,7 +1123,7 @@ mod tests {
         }
 
         let program = "
-         (compute dot-product (access t-3-32-32 2))
+         (compute dot-product (access (access-tensor t-3-32-32) 2))
          "
         .parse()
         .unwrap();
@@ -1141,7 +1144,7 @@ mod tests {
     #[test]
     fn compute_dot_product_panic() {
         let program = "
-         (compute dot-product (access t-3-32-32 3))
+         (compute dot-product (access (access-tensor t-3-32-32) 3))
          "
         .parse()
         .unwrap();
@@ -1173,7 +1176,7 @@ mod tests {
         let program = "
          (compute dot-product
           (access-cartesian-product
-           (access t-8-3-3-3 1)
+           (access (access-tensor t-8-3-3-3) 1)
            (access-windows
             t-3-32-32
             (slice-shape (shape-of t-8-3-3-3) 1)
@@ -1199,7 +1202,7 @@ mod tests {
         let program = "
          (compute dot-product
           (access-cartesian-product
-           (access t-8-3-3-3 1)
+           (access (access-tensor t-8-3-3-3) 1)
            (access-windows
             t-3-32-32
             (slice-shape (shape-of t-8-3-3-3) 1)
@@ -1227,7 +1230,7 @@ mod tests {
     fn flatten_reshape() {
         let program = "
          (access-reshape
-          (access-flatten (access t-3-32-32 2))
+          (access-flatten (access (access-tensor t-3-32-32) 2))
           (access-shape (shape 32 3) (shape 16 2))
          )
         "
@@ -1250,7 +1253,7 @@ mod tests {
     fn flatten_reshape_panic() {
         let program = "
          (access-reshape
-          (access-flatten (access t-3-32-32 2))
+          (access-flatten (access (access-tensor t-3-32-32) 2))
           (access-shape (shape 1) (shape 16 2))
          )
         "
@@ -1270,7 +1273,9 @@ mod tests {
 
     #[test]
     fn access_slice_0() {
-        let program = "(access-slice (access t-3-32-32 1) 0 0 1)".parse().unwrap();
+        let program = "(access-slice (access (access-tensor t-3-32-32) 1) 0 0 1)"
+            .parse()
+            .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
@@ -1284,7 +1289,7 @@ mod tests {
 
     #[test]
     fn access_slice_1() {
-        let program = "(access-slice (access t-3-32-32 1) 1 16 32)"
+        let program = "(access-slice (access (access-tensor t-3-32-32) 1) 1 16 32)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1300,7 +1305,7 @@ mod tests {
 
     #[test]
     fn access_slice_2() {
-        let program = "(access-slice (access t-3-32-32 2) 2 16 32)"
+        let program = "(access-slice (access (access-tensor t-3-32-32) 2) 2 16 32)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1317,7 +1322,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn access_slice_panic() {
-        let program = "(access-slice (access t-3-32-32 1) 3 16 32)"
+        let program = "(access-slice (access (access-tensor t-3-32-32) 1) 3 16 32)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1333,7 +1338,7 @@ mod tests {
 
     #[test]
     fn access_concatenate_0() {
-        let program = "(access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)"
+        let program = "(access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1349,7 +1354,7 @@ mod tests {
 
     #[test]
     fn access_concatenate_1() {
-        let program = "(access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 2)"
+        let program = "(access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 2)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1366,7 +1371,7 @@ mod tests {
     #[should_panic]
     #[test]
     fn access_concatenate_panic_0() {
-        let program = "(access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 3)"
+        let program = "(access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 3)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1383,7 +1388,7 @@ mod tests {
     #[should_panic]
     #[test]
     fn access_concatenate_panic_1() {
-        let program = "(access-concatenate (access t-3-32-32 1) (access t-8-3-3-3 1) 2)"
+        let program = "(access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-8-3-3-3) 1) 2)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1399,7 +1404,7 @@ mod tests {
 
     #[test]
     fn access_move_axis_0() {
-        let program = "(access-move-axis (access t-3-32-32 1) 0 2)"
+        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 0 2)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1415,7 +1420,7 @@ mod tests {
 
     #[test]
     fn access_move_axis_1() {
-        let program = "(access-move-axis (access t-3-32-32 1) 1 0)"
+        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 1 0)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1431,7 +1436,7 @@ mod tests {
 
     #[test]
     fn access_move_axis_2() {
-        let program = "(access-move-axis (access t-3-32-32 1) 1 1)"
+        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 1 1)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1448,7 +1453,7 @@ mod tests {
     #[should_panic]
     #[test]
     fn access_move_axis_panic_0() {
-        let program = "(access-move-axis (access t-3-32-32 1) 3 1)"
+        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 3 1)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1465,7 +1470,7 @@ mod tests {
     #[should_panic]
     #[test]
     fn access_move_axis_panic_1() {
-        let program = "(access-move-axis (access t-3-32-32 1) 1 3)"
+        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 1 3)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1482,7 +1487,7 @@ mod tests {
     #[test]
     fn compute_reduce_sum_0() {
         let program = "
-         (compute reduce-sum (access t-3-32-32 0))
+         (compute reduce-sum (access (access-tensor t-3-32-32) 0))
          "
         .parse()
         .unwrap();
@@ -1500,7 +1505,7 @@ mod tests {
     #[test]
     fn compute_reduce_sum_1() {
         let program = "
-         (compute reduce-sum (access t-3-32-32 2))
+         (compute reduce-sum (access (access-tensor t-3-32-32) 2))
          "
         .parse()
         .unwrap();
@@ -1518,7 +1523,7 @@ mod tests {
     #[test]
     fn access_pair() {
         let program = "
-         (access-pair (access t-32-32 1) (access t-32-32 1))
+         (access-pair (access (access-tensor t-32-32) 1) (access (access-tensor t-32-32) 1))
          "
         .parse()
         .unwrap();
@@ -1537,7 +1542,7 @@ mod tests {
     #[test]
     fn access_pair_panic() {
         let program = "
-         (access-pair (access t-32-32 0) (access t-32-32 1))
+         (access-pair (access (access-tensor t-32-32) 0) (access (access-tensor t-32-32) 1))
          "
         .parse()
         .unwrap();
@@ -1555,7 +1560,7 @@ mod tests {
     #[test]
     fn access_shift_right_0() {
         let program = "
-         (access-shift-right (access t-32-32 2))
+         (access-shift-right (access (access-tensor t-32-32) 2))
          "
         .parse()
         .unwrap();
@@ -1573,7 +1578,7 @@ mod tests {
     #[test]
     fn access_shift_right_1() {
         let program = "
-         (access-shift-right (access t-32-32 1))
+         (access-shift-right (access (access-tensor t-32-32) 1))
          "
         .parse()
         .unwrap();
@@ -1591,7 +1596,7 @@ mod tests {
     #[test]
     fn access_shift_right_2() {
         let program = "
-         (access-shift-right (access t-32-32 0))
+         (access-shift-right (access (access-tensor t-32-32) 0))
          "
         .parse()
         .unwrap();

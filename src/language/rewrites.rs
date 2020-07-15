@@ -1315,7 +1315,7 @@ mod tests {
 
         let program = "
          (access-cartesian-product
-          (access t-8-3-3-3 1)
+          (access (access-tensor t-8-3-3-3) 1)
           (access-windows
            t-3-32-32
            (slice-shape (shape-of t-8-3-3-3) 1)
@@ -1340,7 +1340,7 @@ mod tests {
             (access-reshape
              (access-cartesian-product
               (access-flatten
-               (access t-8-3-3-3 1)
+               (access (access-tensor t-8-3-3-3) 1)
               )
               (access-flatten
                (access-windows
@@ -1380,7 +1380,7 @@ mod tests {
 
         let program = "
          (compute dot-product
-          (access-reshape (access t-1024-2-256 1) (access-shape (shape 32 32) (shape 2 16 16)))
+          (access-reshape (access (access-tensor t-1024-2-256) 1) (access-shape (shape 32 32) (shape 2 16 16)))
          )
         "
         .parse()
@@ -1395,7 +1395,7 @@ mod tests {
         let matches = "
             (access-reshape
              (compute dot-product
-              (access t-1024-2-256 1)
+              (access (access-tensor t-1024-2-256) 1)
              )
              ?shape
             )
@@ -1420,7 +1420,7 @@ mod tests {
         let program = "
          (compute dot-product
           (access-cartesian-product
-           (access t-8-3-3-3 1)
+           (access (access-tensor t-8-3-3-3) 1)
            (access-windows
             t-3-32-32
             (slice-shape (shape-of t-8-3-3-3) 1)
@@ -1449,7 +1449,7 @@ mod tests {
         let matches = "
             (access-reshape
              (systolic-array 900 27
-              (access-flatten (access t-8-3-3-3 1))
+              (access-flatten (access (access-tensor t-8-3-3-3) 1))
               (access-flatten
                (access-windows
                 t-3-32-32
@@ -1473,7 +1473,7 @@ mod tests {
     fn slice_concatenate_accesses() {
         test_logger::ensure_env_logger_initialized();
 
-        let program = "(access t-32-32 1)".parse().unwrap();
+        let program = "(access (access-tensor t-32-32) 1)".parse().unwrap();
 
         let rws = vec![
             super::slice_concatenate_accesses(0, 16),
@@ -1488,7 +1488,7 @@ mod tests {
             .run(&rws);
 
         assert_eq!(
-            "(access-slice (access-slice (access t-32-32 1) 1 0 16) 0 0 16)"
+            "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 0 16) 0 0 16)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -1497,7 +1497,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(access-slice (access-slice (access t-32-32 1) 1 16 32) 0 0 16)"
+            "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 16 32) 0 0 16)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -1506,7 +1506,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(access-slice (access-slice (access t-32-32 1) 1 0 16) 0 16 32)"
+            "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 0 16) 0 16 32)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -1515,7 +1515,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(access-slice (access-slice (access t-32-32 1) 1 16 32) 0 16 32)"
+            "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 16 32) 0 16 32)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
@@ -1527,7 +1527,7 @@ mod tests {
     #[test]
     fn access_slice_access_move_axis_composition_commutative_0() {
         let program = "
-        (access-slice (access-move-axis (access t-3-32-32 1) 2 0) 0 16 32)
+        (access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) 0 16 32)
         "
         .parse()
         .unwrap();
@@ -1538,18 +1538,19 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 2 16 32) 2 0)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches =
+            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 2 16 32) 2 0)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search_eclass(&runner.egraph, id)
+                .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
     fn access_slice_access_move_axis_composition_commutative_1() {
         let program = "
-        (access-slice (access-move-axis (access t-3-32-32 1) 2 0) 1 0 2)
+        (access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) 1 0 2)
         "
         .parse()
         .unwrap();
@@ -1560,18 +1561,19 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 0 0 2) 2 0)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches =
+            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 0 0 2) 2 0)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search_eclass(&runner.egraph, id)
+                .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
     fn access_slice_access_move_axis_composition_commutative_2() {
         let program = "
-        (access-slice (access-move-axis (access t-3-32-32 1) 1 0) 2 0 16)
+        (access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 1 0) 2 0 16)
         "
         .parse()
         .unwrap();
@@ -1582,19 +1584,21 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 2 0 16) 1 0)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches =
+            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 2 0 16) 1 0)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search_eclass(&runner.egraph, id)
+                .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
     fn access_slice_access_move_axis_composition_commutative_3() {
-        let program = "(access-slice (access-move-axis (access t-3-32-32 1) 0 1) 1 0 2)"
-            .parse()
-            .unwrap();
+        let program =
+            "(access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) 1 0 2)"
+                .parse()
+                .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         let id = egraph.add_expr(&program);
         let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
@@ -1602,17 +1606,18 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "(access-move-axis (access-slice (access t-3-32-32 1) 0 0 2) 0 1)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches =
+            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 0 0 2) 0 1)"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search_eclass(&runner.egraph, id)
+                .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
     fn bubble_access_concatenate_through_access_move_axis_0() {
-        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0) 0 2)"
+        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0) 0 2)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1623,7 +1628,7 @@ mod tests {
             .run(&rws);
 
         let matches =
-            "(access-concatenate (access-move-axis (access t-3-32-32 1) 0 2) (access-move-axis (access t-3-32-32 1) 0 2) 2)"
+            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) 2)"
             .parse::<Pattern<_>>()
             .unwrap()
             .search_eclass(&runner.egraph, id)
@@ -1633,7 +1638,7 @@ mod tests {
 
     #[test]
     fn bubble_access_concatenate_through_access_move_axis_1() {
-        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 1) 0 2)"
+        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1) 0 2)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1644,7 +1649,7 @@ mod tests {
             .run(&rws);
 
         let matches =
-            "(access-concatenate (access-move-axis (access t-3-32-32 1) 0 2) (access-move-axis (access t-3-32-32 1) 0 2) 0)"
+            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) 0)"
             .parse::<Pattern<_>>()
             .unwrap()
             .search_eclass(&runner.egraph, id)
@@ -1654,7 +1659,7 @@ mod tests {
 
     #[test]
     fn bubble_access_concatenate_through_access_move_axis_2() {
-        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 2) 0 1)"
+        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 2) 0 1)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1665,7 +1670,7 @@ mod tests {
             .run(&rws);
 
         let matches =
-            "(access-concatenate (access-move-axis (access t-3-32-32 1) 0 1) (access-move-axis (access t-3-32-32 1) 0 1) 2)"
+            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) 2)"
             .parse::<Pattern<_>>()
             .unwrap()
             .search_eclass(&runner.egraph, id)
@@ -1675,7 +1680,7 @@ mod tests {
 
     #[test]
     fn bubble_access_concatenate_through_access_move_axis_3() {
-        let program = "(access-move-axis (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 1) 2 0)"
+        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1) 2 0)"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
@@ -1686,7 +1691,7 @@ mod tests {
             .run(&rws);
 
         let matches =
-            "(access-concatenate (access-move-axis (access t-3-32-32 1) 2 0) (access-move-axis (access t-3-32-32 1) 2 0) 2)"
+            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) 2)"
             .parse::<Pattern<_>>()
             .unwrap()
             .search_eclass(&runner.egraph, id)
@@ -1698,8 +1703,8 @@ mod tests {
     fn bubble_access_concatenate_through_access_cartesian_product_left() {
         let program = "
              (access-cartesian-product
-              (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
-              (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
+              (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
              )"
         .parse()
         .unwrap();
@@ -1715,12 +1720,12 @@ mod tests {
         let matches = "
              (access-concatenate
               (access-cartesian-product
-               (access t-3-32-32 1)
-               (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
+               (access (access-tensor t-3-32-32) 1)
+               (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
               )
               (access-cartesian-product
-               (access t-3-32-32 1)
-               (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
+               (access (access-tensor t-3-32-32) 1)
+               (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
               )
               0
              )"
@@ -1735,8 +1740,8 @@ mod tests {
     fn bubble_access_concatenate_through_access_cartesian_product_right() {
         let program = "
              (access-cartesian-product
-              (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
-              (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
+              (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
              )"
         .parse()
         .unwrap();
@@ -1752,12 +1757,12 @@ mod tests {
         let matches = "
              (access-concatenate
               (access-cartesian-product
-               (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
-               (access t-3-32-32 1)
+               (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+               (access (access-tensor t-3-32-32) 1)
               )
               (access-cartesian-product
-               (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 0)
-               (access t-3-32-32 1)
+               (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+               (access (access-tensor t-3-32-32) 1)
               )
               1
              )"
@@ -1772,8 +1777,8 @@ mod tests {
     fn bubble_access_concatenate_through_access_cartesian_product_same_item_axis_0() {
         let program = "
              (access-cartesian-product
-              (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 1)
-              (access-concatenate (access t-3-32-32 1) (access t-3-32-32 1) 1)
+              (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1)
+              (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1)
              )"
         .parse()
         .unwrap();
@@ -1789,12 +1794,12 @@ mod tests {
         let matches = "
              (access-concatenate
               (access-cartesian-product
-               (access t-3-32-32 1)
-               (access t-3-32-32 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
               )
               (access-cartesian-product
-               (access t-3-32-32 1)
-               (access t-3-32-32 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
               )
               3
              )"
@@ -1809,8 +1814,8 @@ mod tests {
     fn bubble_access_concatenate_through_access_cartesian_product_same_item_axis_1() {
         let program = "
              (access-cartesian-product
-              (access-concatenate (access t-3-32-32 0) (access t-3-32-32 0) 2)
-              (access-concatenate (access t-3-32-32 0) (access t-3-32-32 0) 2)
+              (access-concatenate (access (access-tensor t-3-32-32) 0) (access (access-tensor t-3-32-32) 0) 2)
+              (access-concatenate (access (access-tensor t-3-32-32) 0) (access (access-tensor t-3-32-32) 0) 2)
              )"
         .parse()
         .unwrap();
@@ -1826,12 +1831,12 @@ mod tests {
         let matches = "
              (access-concatenate
               (access-cartesian-product
-               (access t-3-32-32 0)
-               (access t-3-32-32 0)
+               (access (access-tensor t-3-32-32) 0)
+               (access (access-tensor t-3-32-32) 0)
               )
               (access-cartesian-product
-               (access t-3-32-32 0)
-               (access t-3-32-32 0)
+               (access (access-tensor t-3-32-32) 0)
+               (access (access-tensor t-3-32-32) 0)
               )
               3
              )"
@@ -1847,8 +1852,8 @@ mod tests {
         let program = "
              (compute dot-product
               (access-concatenate
-               (access t-3-32-32 1)
-               (access t-3-32-32 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
                0
               )
              )"
@@ -1864,8 +1869,8 @@ mod tests {
 
         let matches = "
              (access-concatenate
-              (compute dot-product (access t-3-32-32 1))
-              (compute dot-product (access t-3-32-32 1))
+              (compute dot-product (access (access-tensor t-3-32-32) 1))
+              (compute dot-product (access (access-tensor t-3-32-32) 1))
               0
              )
              "
@@ -1881,8 +1886,8 @@ mod tests {
         let program = "
              (compute dot-product
               (access-concatenate
-               (access t-3-32-32 1)
-               (access t-3-32-32 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
                1
               )
              )"
@@ -1898,8 +1903,8 @@ mod tests {
         let matches = "
              (compute reduce-sum
               (access-pair
-               (compute dot-product (access t-3-32-32 1))
-               (compute dot-product (access t-3-32-32 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
               )
              )
              "
@@ -1915,8 +1920,8 @@ mod tests {
         let program = "
              (compute dot-product
               (access-concatenate
-               (access t-3-32-32 1)
-               (access t-3-32-32 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
                2
               )
              )"
@@ -1932,8 +1937,8 @@ mod tests {
         let matches = "
              (compute reduce-sum
               (access-pair
-               (compute dot-product (access t-3-32-32 1))
-               (compute dot-product (access t-3-32-32 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
               )
              )
              "
