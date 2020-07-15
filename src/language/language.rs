@@ -551,25 +551,30 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(shape.as_array_view().slice(s![dim..]).to_slice().unwrap()),
                 })
             }
-            &Access([tensor_id, dim_id]) => {
+            &Access([tensor_or_access_id, dim_id]) => {
+                // TODO(@gussmith23) How to access tensor literals?
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
+                let shape = match &egraph[tensor_or_access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a
+                        .shape
+                        .as_array_view()
+                        .iter()
+                        .chain(a.item_shape.as_array_view().iter())
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    MyAnalysisData::Legacy(l) => l
+                        .shape
+                        .as_ref()
+                        .unwrap()
+                        .as_array_view()
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    _ => panic!(),
+                };
                 MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: IxDyn(
-                        MyAnalysis::get_shape(tensor_id, egraph)
-                            .as_array_view()
-                            .slice(s![..dim])
-                            .clone()
-                            .as_slice()
-                            .unwrap(),
-                    ),
-                    item_shape: IxDyn(
-                        MyAnalysis::get_shape(tensor_id, egraph)
-                            .as_array_view()
-                            .slice(s![dim..])
-                            .clone()
-                            .as_slice()
-                            .unwrap(),
-                    ),
+                    shape: IxDyn(&shape[..dim]),
+                    item_shape: IxDyn(&shape[dim..]),
                 })
             }
             &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
@@ -971,6 +976,24 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32, 32]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn reaccess() {
+        let program = "
+         (access (access t-3-32-32 3) 0)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 32, 32]));
             }
             _ => panic!(),
         }
