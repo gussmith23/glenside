@@ -1143,6 +1143,92 @@ pub fn bubble_access_concatenate_through_access() -> Rewrite<Language, MyAnalysi
               )")
 }
 
+pub fn bubble_access_concatenate_through_access_slice() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        a0: Var,
+        low: Var,
+        high: Var,
+        concatenate_axis: Var,
+        slice_axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let a0_shape = match &egraph[subst[self.a0]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let low = MyAnalysis::get_usize(subst[self.low], egraph);
+            let high = MyAnalysis::get_usize(subst[self.high], egraph);
+            let concatenate_axis = MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
+            let slice_axis = MyAnalysis::get_usize(subst[self.slice_axis], egraph);
+
+            let a0_dim_value = if concatenate_axis < a0_shape.shape.ndim() {
+                a0_shape.shape[concatenate_axis]
+            } else {
+                a0_shape.item_shape[concatenate_axis - a0_shape.shape.ndim()]
+            };
+
+            if slice_axis != concatenate_axis {
+                "(access-concatenate
+                  (access-slice ?a0 ?slice-axis ?low ?high)
+                  (access-slice ?a1 ?slice-axis ?low ?high)
+                  ?concatenate-axis
+                 )
+                "
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, matched_id, subst)
+            } else if low < a0_dim_value && high <= a0_dim_value {
+                // only in a0
+                "(access-slice ?a0 ?slice-axis ?low ?high)"
+                    .parse::<Pattern<_>>()
+                    .unwrap()
+                    .apply_one(egraph, matched_id, subst)
+            } else if low >= a0_dim_value && high >= a0_dim_value {
+                // only in a1
+                // Adjust low/high indices
+                let (low, high) = (low - a0_dim_value, high - a0_dim_value);
+                format!("(access-slice ?a1 ?slice-axis {} {})", low, high)
+                    .parse::<Pattern<_>>()
+                    .unwrap()
+                    .apply_one(egraph, matched_id, subst)
+            } else if low < a0_dim_value && high >= a0_dim_value {
+                // split between a0 and a1
+                // Adjust slice indices
+                let a0_low = low;
+                let a0_high = a0_dim_value;
+                let a1_low = 0;
+                let a1_high = high - a0_dim_value;
+                format!(
+                    "(access-concatenate
+                          (access-slice ?a0 ?slice-axis {} {})
+                          (access-slice ?a1 ?slice-axis {} {})
+                          ?concatenate-axis
+                         )
+                ",
+                    a0_low, a0_high, a1_low, a1_high
+                )
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, matched_id, subst)
+            } else {
+                unreachable!()
+            }
+        }
+    }
+    rewrite!("bubble-access-concatenate-through-access-slice";
+    "(access-slice (access-concatenate ?a0 ?a1 ?concatenate-axis) ?slice-axis ?low ?high)" =>
+    {
+        ApplierImpl {
+            a0: "?a0".parse().unwrap(),
+            low: "?low".parse().unwrap(),
+            high: "?high".parse().unwrap(),
+            concatenate_axis: "?concatenate-axis".parse().unwrap(),
+            slice_axis: "?slice-axis".parse().unwrap(),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1991,6 +2077,101 @@ mod tests {
               2
              )
              "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_slice_0() {
+        let program = "
+             (access-slice
+              (access-concatenate
+               (access (access-tensor t-32-32) 1)
+               (access (access-tensor t-32-64) 1)
+               1
+              )
+              1 0 16
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_slice()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-slice (access (access-tensor t-32-32) 1) 1 0 16)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_slice_1() {
+        let program = "
+             (access-slice
+              (access-concatenate
+               (access (access-tensor t-32-32) 1)
+               (access (access-tensor t-32-64) 1)
+               1
+              )
+              1 48 64
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_slice()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-slice (access (access-tensor t-32-64) 1) 1 16 32)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access_slice_2() {
+        let program = "
+             (access-slice
+              (access-concatenate
+               (access (access-tensor t-32-32) 1)
+               (access (access-tensor t-32-64) 1)
+               1
+              )
+              1 16 48
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access_slice()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (access-concatenate
+             (access-slice
+              (access (access-tensor t-32-32) 1)
+              1 16 32
+             )
+             (access-slice
+              (access (access-tensor t-32-64) 1)
+              1 0 16
+             )
+             1
+            )"
         .parse::<Pattern<_>>()
         .unwrap()
         .search_eclass(&runner.egraph, id)
