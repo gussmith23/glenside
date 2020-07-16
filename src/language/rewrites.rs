@@ -759,7 +759,6 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
                 (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => (a, b),
                 _ => panic!(),
             };
-            assert_eq!(a.shape.ndim(), 1);
             assert_eq!(a.item_shape.ndim(), 1);
             assert_eq!(b.shape.ndim(), 1);
             assert_eq!(b.item_shape.ndim(), 1);
@@ -785,7 +784,7 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
               )
              " =>
              { ApplierImpl{a: "?access-1".parse().unwrap(), b: "?access-2".parse().unwrap(),}}
-             if constrain_access("?access-1".parse().unwrap(), |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1)
+             if constrain_access("?access-1".parse().unwrap(), |a| a.shape.ndim() <= 1 && a.item_shape.ndim() == 1)
              if constrain_access("?access-2".parse().unwrap(), |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
 }
 

@@ -700,13 +700,21 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
 
-                assert_eq!(a0.shape.ndim(), 1);
+                assert!(a0.shape.ndim() <= 1);
                 assert_eq!(a0.item_shape.ndim(), 1);
                 assert_eq!(a1.shape.ndim(), 1);
                 assert_eq!(a1.item_shape.ndim(), 1);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: IxDyn(&[a0.shape.as_array_view()[0], a1.shape.as_array_view()[0]]),
+                    shape: IxDyn(
+                        a0.shape
+                            .as_array_view()
+                            .iter()
+                            .chain(a1.shape.as_array_view().iter())
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    ),
                     item_shape: IxDyn(&[]),
                 })
             }
