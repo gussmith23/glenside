@@ -1133,6 +1133,16 @@ pub fn bubble_access_concatenate_through_compute_dot_product_item_axis(
              if item_axis("?axis".parse().unwrap(), "?a0".parse().unwrap()))
 }
 
+pub fn bubble_access_concatenate_through_access() -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-access-concatenate-through-access";
+             "(access (access-concatenate ?a0 ?a1 ?concatenate-axis) ?access-axis)" =>
+             "(access-concatenate
+               (access ?a0 ?access-axis)
+               (access ?a1 ?access-axis)
+               ?concatenate-axis
+              )")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1939,6 +1949,46 @@ mod tests {
                (compute dot-product (access (access-tensor t-3-32-32) 1))
                (compute dot-product (access (access-tensor t-3-32-32) 1))
               )
+             )
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_through_access() {
+        let program = "
+             (access
+              (access-concatenate
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               2
+              )
+              0
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_concatenate_through_access()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-concatenate
+              (access
+               (access (access-tensor t-3-32-32) 1)
+               0
+              )
+              (access
+               (access (access-tensor t-3-32-32) 1)
+               0
+              )
+              2
              )
              "
         .parse::<Pattern<_>>()
