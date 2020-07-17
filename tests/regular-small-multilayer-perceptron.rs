@@ -4,15 +4,18 @@ use glenside::language::*;
 #[test]
 fn regular_small_multilayer_perceptron() {
     let program = "
-     (map-dot-product
-      (cartesian-product
-       (map-dot-product
-        (cartesian-product
-         v-32
-         (move-axis t-32-32 1 0)
+     (compute dot-product
+      (access-cartesian-product
+       (access
+        (compute dot-product
+         (access-cartesian-product
+          (access (access-tensor v-32) 0)
+          (access-move-axis (access (access-tensor t-32-32) 1) 1 0)
+         )
         )
+        0
        )
-       (move-axis t-32-32 1 0)
+       (access-move-axis (access (access-tensor t-32-32) 1) 1 0)
       )
      )
      "
@@ -20,17 +23,18 @@ fn regular_small_multilayer_perceptron() {
     .unwrap();
 
     let rws = vec![
-        rewrites::split(0, 16, true),
-        rewrites::split(1, 16, true),
-        rewrites::collapse_nested_slices(),
-        rewrites::bubble_concatenate_through_move_axis(),
-        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_left(),
-        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_right(),
-        rewrites::bubble_concatenate_through_cartesian_product_last_axis(),
-        rewrites::bubble_concatenate_through_map_dot_product_not_last_axis(),
-        rewrites::bubble_concatenate_through_map_dot_product_last_axis(),
-        rewrites::slice_move_axis_composition_commutative(),
-        rewrites::systolic_array_vector_matrix(),
+        rewrites::slice_concatenate_accesses(0, 16),
+        rewrites::slice_concatenate_accesses(1, 16),
+        rewrites::collapse_nested_access_slices(),
+        rewrites::bubble_access_concatenate_through_access(),
+        rewrites::bubble_access_concatenate_through_access_slice(),
+        rewrites::bubble_access_concatenate_through_access_move_axis(),
+        rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
+        rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
+        rewrites::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
+        rewrites::bubble_access_concatenate_through_compute_dot_product_item_axis(),
+        rewrites::bubble_access_concatenate_through_compute_dot_product_not_item_axis(),
+        rewrites::systolic_array(),
     ];
 
     // Run the rewrites over the egraph.
@@ -45,132 +49,203 @@ fn regular_small_multilayer_perceptron() {
         runner.stop_reason
     );
 
-    "(concatenate
-      (elementwise-add
-       (bsg-systolic-array 16 16
-        (slice
-         (concatenate
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 0 16) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 0 16) 0 16 32)
-           )
+    let matches = "
+(access-concatenate
+ (compute reduce-sum
+  (access-pair
+   (systolic-array 16 16
+    (access
+     (compute reduce-sum
+      (access-pair
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 0 16)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 0 16
           )
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 16 32) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 16 32) 0 16 32)
-           )
-          )
-          0
+          1 0 16
          )
-         0 0 16
+         1 0
         )
-        (slice (slice t-32-32 1 0 16) 0 0 16)
        )
-       (bsg-systolic-array 16 16
-        (slice
-         (concatenate
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 0 16) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 0 16) 0 16 32)
-           )
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 16 32)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 16 32
           )
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 16 32) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 16 32) 0 16 32)
-           )
-          )
-          0
+          1 0 16
          )
-         0 16 32
+         1 0
         )
-        (slice (slice t-32-32 1 0 16) 0 16 32)
        )
       )
-      (elementwise-add
-       (bsg-systolic-array 16 16
-        (slice
-         (concatenate
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 0 16) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 0 16) 0 16 32)
-           )
+     )
+     0
+    )
+    (access-move-axis
+     (access-slice
+      (access-slice
+       (access (access-tensor t-32-32) 1)
+       0 0 16
+      )
+      1 0 16
+     )
+     1 0
+    )
+   )
+   (systolic-array 16 16
+    (access
+     (compute reduce-sum
+      (access-pair
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 0 16)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 0 16
           )
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 16 32) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 16 32) 0 16 32)
-           )
-          )
-          0
+          1 16 32
          )
-         0 0 16
+         1 0
         )
-        (slice (slice t-32-32 1 16 32) 0 0 16)
        )
-       (bsg-systolic-array 16 16
-        (slice
-         (concatenate
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 0 16) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 0 16) 0 16 32)
-           )
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 16 32)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 16 32
           )
-          (elementwise-add
-           (bsg-systolic-array 16 16
-            (slice v-32 0 0 16)
-            (slice (slice t-32-32 1 16 32) 0 0 16)
-           )
-           (bsg-systolic-array 16 16
-            (slice v-32 0 16 32)
-            (slice (slice t-32-32 1 16 32) 0 16 32)
-           )
-          )
-          0
+          1 16 32
          )
-         0 16 32
+         1 0
         )
-        (slice (slice t-32-32 1 16 32) 0 16 32)
        )
       )
-      0)"
+     )
+     0
+    )
+    (access-move-axis
+     (access-slice
+      (access-slice
+       (access (access-tensor t-32-32) 1)
+       0 16 32
+      )
+      1 0 16
+     )
+     1 0
+    )
+   )
+  )
+ )
+ (compute reduce-sum
+  (access-pair
+   (systolic-array 16 16
+    (access
+     (compute reduce-sum
+      (access-pair
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 0 16)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 0 16
+          )
+          1 0 16
+         )
+         1 0
+        )
+       )
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 16 32)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 16 32
+          )
+          1 0 16
+         )
+         1 0
+        )
+       )
+      )
+     )
+     0
+    )
+    (access-move-axis
+     (access-slice
+      (access-slice
+       (access (access-tensor t-32-32) 1)
+       0 0 16
+      )
+      1 16 32
+     )
+     1 0
+    )
+   )
+   (systolic-array 16 16
+    (access
+     (compute reduce-sum
+      (access-pair
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 0 16)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 0 16
+          )
+          1 16 32
+         )
+         1 0
+        )
+       )
+       (systolic-array 16 16
+        (access-slice (access (access-tensor v-32) 0) 0 16 32)
+        (access-move-axis
+         (access-slice
+          (access-slice
+           (access (access-tensor t-32-32) 1)
+           0 16 32
+          )
+          1 16 32
+         )
+         1 0
+        )
+       )
+      )
+     )
+     0
+    )
+    (access-move-axis
+     (access-slice
+      (access-slice
+       (access (access-tensor t-32-32) 1)
+       0 16 32
+      )
+      1 16 32
+     )
+     1 0
+    )
+   )
+  )
+ )
+ 0
+)
+    "
     .parse::<Pattern<_>>()
     .unwrap()
     .search_eclass(&runner.egraph, id)
     .expect("Did not find expected program");
 
-    // TODO(@gussmith23) Find other programs
+    assert_eq!(matches.substs.len(), 1);
 }
