@@ -6,20 +6,26 @@ fn regular_multilayer_perceptron() {
     test_logger::ensure_env_logger_initialized();
 
     let program = "
-     (map-dot-product
-      (cartesian-product
-       (map-dot-product
-        (cartesian-product
-         (map-dot-product
-          (cartesian-product
-           v-32
-           (move-axis t-32-64 1 0)
+     (compute dot-product
+      (access-cartesian-product
+       (access
+        (compute dot-product
+         (access-cartesian-product
+          (access
+           (compute dot-product
+            (access-cartesian-product
+             (access (access-tensor v-32) 0)
+             (access-move-axis (access (access-tensor t-32-64) 1) 1 0)
+            )
+           )
+           0
           )
+          (access-move-axis (access (access-tensor t-64-128) 1) 1 0)
          )
-         (move-axis t-64-128 1 0)
         )
+        0
        )
-       (move-axis t-128-16 1 0)
+       (access-move-axis (access (access-tensor t-128-16) 1) 1 0)
       )
      )
      "
@@ -33,11 +39,11 @@ fn regular_multilayer_perceptron() {
         // them back together, along both axes (0 and 1). Currently, we don't
         // break down axes that are less than 16 in length, but we can adjust
         // that later.
-        rewrites::split(0, 16, false),
-        rewrites::split(1, 16, false),
+        rewrites::slice_concatenate_tensor_accesses(0, 16),
+        rewrites::slice_concatenate_tensor_accesses(1, 16),
         // This rewrite collapses multiple slice operators (introduced by the
         // above rewrites) into one.
-        rewrites::collapse_nested_slices(),
+        rewrites::collapse_nested_access_slices(),
         // These rewrites bubble concatenate operators (also introduced by the
         // split rewrites) up to the top of the program.
         // We need to get the concatenate operators to the top so that we can
@@ -58,12 +64,14 @@ fn regular_multilayer_perceptron() {
         // )
         // ...then we can map in systolic arrays for the (map-dot-product...)
         // expressions, and the top-level concatenate will be handled by the compiler.
-        rewrites::bubble_concatenate_through_move_axis(),
-        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_left(),
-        rewrites::bubble_concatenate_through_cartesian_product_not_last_axis_right(),
-        rewrites::bubble_concatenate_through_cartesian_product_last_axis(),
-        rewrites::bubble_concatenate_through_map_dot_product_not_last_axis(),
-        rewrites::bubble_concatenate_through_map_dot_product_last_axis(),
+        rewrites::bubble_access_concatenate_through_access(),
+        rewrites::bubble_access_concatenate_through_access_slice(),
+        rewrites::bubble_access_concatenate_through_access_move_axis(),
+        rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
+        rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
+        rewrites::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
+        rewrites::bubble_access_concatenate_through_compute_dot_product_item_axis(),
+        rewrites::bubble_access_concatenate_through_compute_dot_product_not_item_axis(),
         // Finally, this rewrite tensorizes!
         // It identifies patterns that we have hardware atoms for. Right now, it
         // finds:
@@ -72,7 +80,7 @@ fn regular_multilayer_perceptron() {
         // )
         // and rewrites it to:
         // (bsg-systolic-array <rows> <cols> < 1xrows vector> <a rowsxcols tensor>)
-        rewrites::systolic_array_vector_matrix(),
+        rewrites::systolic_array(),
     ];
 
     // Run the rewrites over the egraph.
@@ -80,6 +88,9 @@ fn regular_multilayer_perceptron() {
     let id = egraph.add_expr(&program);
     let runner = Runner::<_, _, ()>::new(MyAnalysis)
         .with_egraph(egraph)
+        .with_node_limit(100_000)
+        .with_time_limit(std::time::Duration::from_secs(60))
+        .with_iter_limit(40)
         .run(&rws);
     println!(
         "Stopped after {} iterations, reason: {:?}",
@@ -88,12 +99,21 @@ fn regular_multilayer_perceptron() {
     );
 
     // Find the monolithic program.
-    "(bsg-systolic-array 128 16
-      (bsg-systolic-array 64 128
-       (bsg-systolic-array 32 64 v-32 t-32-64)
-       t-64-128
+    "(systolic-array 16 128
+      (access
+       (systolic-array 128 64
+        (access
+         (systolic-array 64 32
+          (access (access-tensor v-32) 0)
+          (access-move-axis (access (access-tensor t-32-64) 1) 1 0)
+         )
+         0
+        )
+        (access-move-axis (access (access-tensor t-64-128) 1) 1 0)
+       )
+       0
       )
-      t-128-16
+      (access-move-axis (access (access-tensor t-128-16) 1) 1 0)
      )
      "
     .parse::<Pattern<_>>()
