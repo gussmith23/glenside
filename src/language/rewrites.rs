@@ -879,6 +879,90 @@ pub fn slice_concatenate_accesses(
              if access_dimension_greater_than(axis, dimension_greater_than))
 }
 
+pub fn slice_concatenate_tensor_accesses(
+    axis: usize,
+    dimension_greater_than: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    fn access_has_axis(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _subst| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => axis < a.shape.ndim() + a.item_shape.ndim(),
+            _ => panic!(),
+        }
+    }
+
+    fn access_dimension_greater_than(
+        axis: usize,
+        greater_than: usize,
+    ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _subst| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                if axis < a.shape.ndim() {
+                    a.shape[axis] > greater_than
+                } else {
+                    a.item_shape[axis - a.shape.ndim()] > greater_than
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    fn access_dimension_is_even(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, id, _subst| match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                if axis < a.shape.ndim() {
+                    a.shape[axis] % 2 == 0
+                } else {
+                    a.item_shape[axis - a.shape.ndim()] % 2 == 0
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    struct ApplierImpl {
+        axis: usize,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let shape = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            assert!(self.axis < shape.shape.ndim() + shape.item_shape.ndim());
+            let low_bound = 0;
+            let high_bound = if self.axis < shape.shape.ndim() {
+                shape.shape[self.axis]
+            } else {
+                shape.item_shape[self.axis - shape.shape.ndim()]
+            };
+            assert_eq!(high_bound % 2, 0);
+            let middle_bound = high_bound / 2;
+
+            format!(
+                "(access-concatenate
+                  (access-slice (access-tensor ?a) {} {} {})
+                  (access-slice (access-tensor ?a) {} {} {})
+                  {}
+                 )",
+                self.axis, low_bound, middle_bound, self.axis, middle_bound, high_bound, self.axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, id, subst)
+        }
+    }
+    rewrite!(format!("slice-concatenate-tensor-access-axis-{}", axis);
+             "(access-tensor ?a)" => { ApplierImpl {axis: axis} }
+             if access_has_axis(axis)
+             if access_dimension_is_even(axis)
+             if access_dimension_greater_than(axis, dimension_greater_than))
+}
+
 // TODO(@gussmith) Can also implement a collapse_nested_concatenate
 pub fn collapse_nested_access_slices() -> Rewrite<Language, MyAnalysis> {
     struct ApplierImpl {
@@ -2171,6 +2255,84 @@ mod tests {
               1 0 16
              )
              1
+            )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn slice_concatenate_tensor_accesses() {
+        let program = "(access-tensor t-32-32)".parse().unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        let rws = vec![
+            super::slice_concatenate_tensor_accesses(0, 1),
+            super::slice_concatenate_tensor_accesses(1, 1),
+        ];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (access-concatenate
+             (access-slice
+              (access-tensor t-32-32)
+              0 0 16
+             )
+             (access-slice
+              (access-tensor t-32-32)
+              0 16 32
+             )
+             0
+            )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+            (access-concatenate
+             (access-slice
+              (access-tensor t-32-32)
+              1 0 16
+             )
+             (access-slice
+              (access-tensor t-32-32)
+              1 16 32
+             )
+             1
+            )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+            (access-concatenate
+             (access-slice
+              (access-concatenate
+               (access-slice
+                (access-tensor t-32-32)
+                1 0 16
+               )
+               (access-slice
+                (access-tensor t-32-32)
+                1 16 32
+               )
+               1
+              )
+              0 0 16
+             )
+             (access-slice
+              (access-tensor t-32-32)
+              0 16 32
+             )
+             0
             )"
         .parse::<Pattern<_>>()
         .unwrap()
