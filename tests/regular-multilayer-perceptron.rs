@@ -88,9 +88,6 @@ fn regular_multilayer_perceptron() {
     let id = egraph.add_expr(&program);
     let runner = Runner::<_, _, ()>::new(MyAnalysis)
         .with_egraph(egraph)
-        .with_node_limit(100_000)
-        .with_time_limit(std::time::Duration::from_secs(60))
-        .with_iter_limit(40)
         .run(&rws);
     println!(
         "Stopped after {} iterations, reason: {:?}",
