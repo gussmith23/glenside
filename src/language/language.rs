@@ -67,6 +67,10 @@ define_language! {
 
         // (shape-of <tensor>)
         // Returns the shape of the tensor.
+        // TODO(@gussmith) Choose between ([Id; 1]) and (Id) and be consistent
+        // When describing the arguments of a construct that takes a single Id
+        // argument (like shape-of), we can use (Id) or ([Id; 1]). I'm not sure
+        // which is better, but I should choose one and be consistent.
         "shape-of" = ShapeOf([Id; 1]),
 
         // (slice-shape <shape> <dim>)
