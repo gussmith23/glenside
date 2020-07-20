@@ -6,6 +6,7 @@ use std::collections::hash_map::HashMap;
 pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
     Access(Access<DataType>),
+    Usize(usize),
 }
 
 pub struct Access<DataType> {
@@ -30,6 +31,7 @@ pub fn interpret<DataType: Clone>(
             _ => panic!(),
         },
         Language::Symbol(s) => Value::Tensor(env[s.as_str()].clone()),
+        &Language::Usize(u) => Value::Usize(u),
         _ => panic!(),
     }
 }
@@ -43,6 +45,19 @@ mod tests {
 
     fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn usize() {
+        let expr = RecExpr::<Language>::from_str("23").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Usize(23) => (),
+            _ => panic!(),
+        }
     }
 
     #[test]
