@@ -1,6 +1,6 @@
 use super::language::Language;
 use egg::RecExpr;
-use ndarray::{ArrayD, IxDyn};
+use ndarray::{s, ArrayD, Dimension, IxDyn};
 use std::collections::hash_map::HashMap;
 
 pub enum Value<DataType> {
@@ -23,6 +23,15 @@ pub fn interpret<DataType: Clone>(
     env: &Environment<DataType>,
 ) -> Value<DataType> {
     match &expr.as_ref()[index] {
+        &Language::SliceShape([shape_id, slice_axis_id]) => match (
+            interpret(expr, shape_id as usize, env),
+            interpret(expr, slice_axis_id as usize, env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
+            }
+            _ => panic!(),
+        },
         &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id as usize, env) {
             Value::Tensor(t) => Value::Shape(IxDyn(t.shape())),
             _ => panic!(),
@@ -50,6 +59,42 @@ mod tests {
 
     fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn slice_shape_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(slice-shape (shape-of t) 0)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 2])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn slice_shape_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(slice-shape (shape-of t) 1)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn slice_shape_2() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(slice-shape (shape-of t) 2)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[])),
+            _ => panic!(),
+        }
     }
 
     #[test]
