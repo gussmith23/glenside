@@ -1,12 +1,13 @@
 use super::language::Language;
 use egg::RecExpr;
-use ndarray::ArrayD;
+use ndarray::{ArrayD, IxDyn};
 use std::collections::hash_map::HashMap;
 
 pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
     Access(Access<DataType>),
     Usize(usize),
+    Shape(IxDyn),
 }
 
 pub struct Access<DataType> {
@@ -22,6 +23,10 @@ pub fn interpret<DataType: Clone>(
     env: &Environment<DataType>,
 ) -> Value<DataType> {
     match &expr.as_ref()[index] {
+        &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id as usize, env) {
+            Value::Tensor(t) => Value::Shape(IxDyn(t.shape())),
+            _ => panic!(),
+        },
         &Language::AccessTensor(tensor_id) => match interpret(expr, tensor_id as usize, env) {
             Value::Tensor(t) => Value::Access(Access {
                 tensor: t,
@@ -45,6 +50,18 @@ mod tests {
 
     fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn shape_of() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(shape-of t)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 2])),
+            _ => panic!(),
+        }
     }
 
     #[test]
