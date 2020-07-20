@@ -23,6 +23,15 @@ pub fn interpret<DataType: Clone>(
     env: &Environment<DataType>,
 ) -> Value<DataType> {
     match &expr.as_ref()[index] {
+        Language::Shape(list) => Value::Shape(IxDyn(
+            list.iter()
+                .map(|id: &u32| match interpret(expr, *id as usize, env) {
+                    Value::Usize(u) => u,
+                    _ => panic!(),
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )),
         &Language::SliceShape([shape_id, slice_axis_id]) => match (
             interpret(expr, shape_id as usize, env),
             interpret(expr, slice_axis_id as usize, env),
@@ -59,6 +68,19 @@ mod tests {
 
     fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn shape() {
+        let expr = RecExpr::<Language>::from_str("(shape 1 2 3)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
+            _ => panic!(),
+        }
     }
 
     #[test]
