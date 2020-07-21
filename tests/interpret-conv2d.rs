@@ -57,9 +57,12 @@ fn conv2d() {
     env.insert("filters", filters);
     env.insert("activations", activations);
 
+    use approx::AbsDiffEq;
     match interpret(&expr, expr.as_ref().len() - 1, &env) {
         Value::Access(a) => {
-            assert_eq!(a.tensor, result);
+            assert_eq!(a.tensor.shape(), result.shape());
+            // TODO(@gussmith) Is this tolerance too big?
+            assert!(a.tensor.abs_diff_eq(&result, 5e-6));
         }
         _ => panic!(),
     };
