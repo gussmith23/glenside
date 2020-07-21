@@ -29,8 +29,7 @@ result = ex.evaluate()(activations, filters).asnumpy()
 #     np.save(file, filters)
 # # TODO(@gussmith23) Support batch dimension
 # with open('conv2d_activations.npy', 'wb') as file:
-#     np.save(file, activations[0,:,:,:])
+#     np.save(file, activations[0, :, :, :])
+# # TODO(@gussmith23) Support batch dimension
 # with open('conv2d_result.npy', 'wb') as file:
-#     np.save(file, result)
-
-
+#     np.save(file, result[0, :, :, :])
