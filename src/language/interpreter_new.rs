@@ -115,7 +115,27 @@ where
                     }),
                     access_axis: access.access_axis,
                 }),
-                _ => panic!(),
+                ComputeType::ReduceSum => Value::Access(Access {
+                    tensor: access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            access.tensor.shape()[..access.access_axis]
+                                .iter()
+                                .cloned()
+                                .chain(std::iter::once(
+                                    access.tensor.shape()[access.access_axis..]
+                                        .iter()
+                                        .cloned()
+                                        .product(),
+                                ))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        )
+                        .unwrap()
+                        .sum_axis(ndarray::Axis(access.access_axis)),
+                    access_axis: access.access_axis,
+                }),
             }
         }
         &Language::AccessCartesianProduct([a0_id, a1_id]) => {
@@ -337,6 +357,126 @@ mod tests {
     use super::*;
     use ndarray::array;
     use std::str::FromStr;
+
+    #[test]
+    fn compute_reduce_sum_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-sum
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    ndarray::arr0(1 + -2 + 3 + 0 + -5 + 6 + 0 + 8 + -9 + 10 + 11 + 12).into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_sum_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-sum
+              (access (access-tensor t) 1)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 1);
+                assert_eq!(
+                    tensor,
+                    array![1 + -2 + 3 + 0, -5 + 6 + 0 + 8, -9 + 10 + 11 + 12].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_sum_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-sum
+              (access (access-tensor t) 2)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 2);
+                assert_eq!(
+                    tensor,
+                    array![[1 + -2, 3 + 0], [-5 + 6, 0 + 8], [-9 + 10, 11 + 12]].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_sum_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-sum
+              (access (access-tensor t) 3)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 3);
+                assert_eq!(
+                    tensor,
+                    array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
 
     #[test]
     fn compute_relu_0() {
