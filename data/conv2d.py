@@ -3,8 +3,8 @@ import tvm
 from tvm import relay
 
 filter_x, filter_y = 3, 3
-i, o = 32, 64
-image_x, image_y = 512, 512
+i, o = 4, 8
+image_x, image_y = 32, 32
 batch = 1
 
 filters = np.random.rand(o, i, filter_x, filter_y).astype('float32')
