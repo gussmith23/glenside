@@ -1,5 +1,6 @@
 use super::language::Language;
 use egg::RecExpr;
+use itertools::Itertools;
 use ndarray::{s, ArrayD, Dimension, IxDyn};
 use std::collections::hash_map::HashMap;
 
@@ -23,6 +24,92 @@ pub fn interpret<DataType: Copy>(
     env: &Environment<DataType>,
 ) -> Value<DataType> {
     match &expr.as_ref()[index] {
+        &Language::AccessCartesianProduct([a0_id, a1_id]) => {
+            let (a0, a1) = match (
+                interpret(expr, a0_id as usize, env),
+                interpret(expr, a1_id as usize, env),
+            ) {
+                (Value::Access(a0), Value::Access(a1)) => (a0, a1),
+                _ => panic!(),
+            };
+
+            assert_eq!(
+                a0.tensor.shape()[a0.access_axis..],
+                a1.tensor.shape()[a0.access_axis..]
+            );
+
+            let reshaped_0 = a0
+                .tensor
+                .clone()
+                .into_shape(
+                    std::iter::once(
+                        a0.tensor.shape()[..a0.access_axis]
+                            .iter()
+                            .cloned()
+                            .product(),
+                    )
+                    .chain(a0.tensor.shape()[a0.access_axis..].iter().cloned())
+                    .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            let reshaped_1 = a1
+                .tensor
+                .clone()
+                .into_shape(
+                    std::iter::once(
+                        a1.tensor.shape()[..a1.access_axis]
+                            .iter()
+                            .cloned()
+                            .product(),
+                    )
+                    .chain(a1.tensor.shape()[a1.access_axis..].iter().cloned())
+                    .collect::<Vec<_>>(),
+                )
+                .unwrap();
+
+            let to_stack = reshaped_0
+                .axis_iter(ndarray::Axis(0))
+                .cartesian_product(reshaped_1.axis_iter(ndarray::Axis(0)))
+                .map(|(t0, t1)| {
+                    ndarray::stack(
+                        ndarray::Axis(0),
+                        &[
+                            t0.insert_axis(ndarray::Axis(0)),
+                            t1.insert_axis(ndarray::Axis(0)),
+                        ],
+                    )
+                    .unwrap()
+                    .insert_axis(ndarray::Axis(0))
+                })
+                .collect::<Vec<_>>();
+
+            let unreshaped = ndarray::stack(
+                ndarray::Axis(0),
+                to_stack
+                    .iter()
+                    .map(|t| t.view())
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )
+            .unwrap();
+
+            let reshaped = unreshaped
+                .into_shape(
+                    a0.tensor.shape()[..a0.access_axis]
+                        .iter()
+                        .cloned()
+                        .chain(a1.tensor.shape()[..a1.access_axis].iter().cloned())
+                        .chain(std::iter::once(2))
+                        .chain(a0.tensor.shape()[a0.access_axis..].iter().cloned())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+
+            Value::Access(Access {
+                tensor: reshaped.into_dyn(),
+                access_axis: a0.access_axis + a1.access_axis,
+            })
+        }
         &Language::Access([access_id, dim_id]) => {
             let access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -162,6 +249,47 @@ mod tests {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
     }
 
+    #[test]
+    fn access_cartesian_product() {
+        let mut env = Environment::new();
+        env.insert(
+            "t0",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+        );
+        env.insert(
+            "t1",
+            // 2 x 2 x 2
+            array![[[13, 14], [15, 16]], [[17, 18], [19, 20]]].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-cartesian-product
+              (access (access-tensor t0) 2)
+              (access (access-tensor t1) 2)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), &[3, 2, 2, 2, 2, 2]);
+                assert_eq!(access_axis, 4);
+                assert_eq!(
+                    tensor.slice(s![0, 0, 0, 0, .., ..]),
+                    array![[1, 2], [13, 14]]
+                );
+                assert_eq!(
+                    tensor.slice(s![2, 0, 1, 0, .., ..]),
+                    array![[9, 10], [17, 18]]
+                );
+            }
+            _ => panic!(),
+        }
+    }
     #[test]
     fn access() {
         let mut env = Environment::new();
