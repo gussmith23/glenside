@@ -177,6 +177,7 @@ define_language! {
 pub enum ComputeType {
     DotProduct,
     ReduceSum,
+    ReLU,
 }
 impl FromStr for ComputeType {
     type Err = ();
@@ -184,6 +185,7 @@ impl FromStr for ComputeType {
         match input {
             "dot-product" => Ok(ComputeType::DotProduct),
             "reduce-sum" => Ok(ComputeType::ReduceSum),
+            "relu" => Ok(ComputeType::ReLU),
             _ => Err(()),
         }
     }
@@ -196,6 +198,7 @@ impl Display for ComputeType {
             match self {
                 ComputeType::DotProduct => "dot-product",
                 ComputeType::ReduceSum => "reduce-sum",
+                ComputeType::ReLU => "relu",
             }
         )
     }
@@ -515,6 +518,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: IxDyn(&[]),
                         })
                     }
+                    self::ComputeType::ReLU => MyAnalysisData::AccessPattern(a0.clone()),
                 }
             }
             &AccessCartesianProduct([a0_id, a1_id]) => {
@@ -1609,6 +1613,24 @@ mod tests {
     fn access_shift_right_2() {
         let program = "
          (access-shift-right (access (access-tensor t-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_relu() {
+        let program = "
+         (compute relu (access (access-tensor t-32-32) 0))
          "
         .parse()
         .unwrap();

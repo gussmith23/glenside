@@ -28,7 +28,8 @@ where
     DataType: Copy
         + std::ops::Mul<Output = DataType>
         + num_traits::identities::One
-        + num_traits::identities::Zero,
+        + num_traits::identities::Zero
+        + std::cmp::PartialOrd,
 {
     match &expr.as_ref()[index] {
         Language::ComputeType(t) => Value::ComputeType(t.clone()),
@@ -104,6 +105,16 @@ where
                         tensor: reshaped,
                     })
                 }
+                ComputeType::ReLU => Value::Access(Access {
+                    tensor: access.tensor.mapv(|v| {
+                        if v >= DataType::zero() {
+                            v
+                        } else {
+                            DataType::zero()
+                        }
+                    }),
+                    access_axis: access.access_axis,
+                }),
                 _ => panic!(),
             }
         }
@@ -326,6 +337,66 @@ mod tests {
     use super::*;
     use ndarray::array;
     use std::str::FromStr;
+
+    #[test]
+    fn compute_relu_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute relu
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_relu_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute relu
+              (access (access-tensor t) 2)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 2);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
 
     #[test]
     fn compute_dot_product_0() {
