@@ -1,4 +1,4 @@
-use super::language::Language;
+use super::language::{ComputeType, Language};
 use egg::RecExpr;
 use itertools::Itertools;
 use ndarray::{s, ArrayD, Dimension, IxDyn};
@@ -9,6 +9,7 @@ pub enum Value<DataType> {
     Access(Access<DataType>),
     Usize(usize),
     Shape(IxDyn),
+    ComputeType(ComputeType),
 }
 
 pub struct Access<DataType> {
@@ -18,12 +19,94 @@ pub struct Access<DataType> {
 
 pub type Environment<'a, DataType> = HashMap<&'a str, ArrayD<DataType>>;
 
-pub fn interpret<DataType: Copy>(
+pub fn interpret<DataType>(
     expr: &RecExpr<Language>,
     index: usize,
     env: &Environment<DataType>,
-) -> Value<DataType> {
+) -> Value<DataType>
+where
+    DataType: Copy
+        + std::ops::Mul<Output = DataType>
+        + num_traits::identities::One
+        + num_traits::identities::Zero,
+{
     match &expr.as_ref()[index] {
+        Language::ComputeType(t) => Value::ComputeType(t.clone()),
+        &Language::Compute([compute_type_id, access_id]) => {
+            let compute_type = match interpret(expr, compute_type_id as usize, env) {
+                Value::ComputeType(t) => t,
+                _ => panic!(),
+            };
+            let access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+
+            match compute_type {
+                ComputeType::DotProduct => {
+                    let reshaped = access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            std::iter::once(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .product(),
+                            )
+                            .chain(access.tensor.shape()[access.access_axis..].iter().cloned())
+                            .collect::<Vec<_>>(),
+                        )
+                        .unwrap();
+
+                    let num_elements_per_vec: usize = access.tensor.shape()
+                        [access.access_axis + 1..]
+                        .iter()
+                        .product();
+
+                    let result = ndarray::arr1(
+                        reshaped
+                            .axis_iter(ndarray::Axis(0))
+                            .map(|t| {
+                                t.axis_iter(ndarray::Axis(0))
+                                    .fold(
+                                        ndarray::ArrayBase::ones([num_elements_per_vec]),
+                                        |acc, vec| {
+                                            let reshaped = vec
+                                                .clone()
+                                                .into_shape([num_elements_per_vec])
+                                                .unwrap();
+
+                                            ndarray::arr1(
+                                                reshaped
+                                                    .axis_iter(ndarray::Axis(0))
+                                                    .zip(acc.axis_iter(ndarray::Axis(0)))
+                                                    .map(|(a, b)| {
+                                                        *a.into_scalar() * *b.into_scalar()
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .as_slice(),
+                                            )
+                                        },
+                                    )
+                                    .sum()
+                            })
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    );
+
+                    let reshaped = result
+                        .into_shape(&access.tensor.shape()[..access.access_axis])
+                        .unwrap();
+
+                    Value::Access(Access {
+                        access_axis: reshaped.ndim(),
+                        tensor: reshaped,
+                    })
+                }
+                _ => panic!(),
+            }
+        }
         &Language::AccessCartesianProduct([a0_id, a1_id]) => {
             let (a0, a1) = match (
                 interpret(expr, a0_id as usize, env),
@@ -247,6 +330,102 @@ mod tests {
 
     fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn compute_dot_product_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute dot-product
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), &[] as &[usize]);
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    ndarray::arr0(1 * 5 * 9 + 2 * 6 * 10 + 3 * 7 * 11 + 4 * 8 * 12).into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_dot_product_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute dot-product
+              (access (access-tensor t) 1)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), &[3]);
+                assert_eq!(access_axis, 1);
+                assert_eq!(
+                    tensor,
+                    array![11, 5 * 7 + 8 * 6, 9 * 11 + 10 * 12].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_dot_product_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute dot-product
+              (access (access-tensor t) 2)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), &[3, 2]);
+                assert_eq!(access_axis, 2);
+                assert_eq!(
+                    tensor,
+                    array![[1 * 2, 3 * 4], [5 * 6, 7 * 8], [9 * 10, 11 * 12]].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]
