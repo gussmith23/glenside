@@ -642,6 +642,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn conv2d() {
+        // TODO(@gussmith) Support batch dimension
         let expr = RecExpr::<Language>::from_str(
             "
          (compute dot-product
