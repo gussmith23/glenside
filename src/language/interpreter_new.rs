@@ -23,6 +23,22 @@ pub fn interpret<DataType: Copy>(
     env: &Environment<DataType>,
 ) -> Value<DataType> {
     match &expr.as_ref()[index] {
+        &Language::Access([access_id, dim_id]) => {
+            let access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let dim = match interpret(expr, dim_id as usize, env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            Value::Access(Access {
+                tensor: access.tensor,
+                // TODO(@gussmith) Settle on vocab: "axis" or "dimension"?
+                access_axis: dim,
+            })
+        }
         &Language::AccessWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
             let tensor = match interpret(expr, tensor_id as usize, env) {
                 Value::Tensor(t) => t,
@@ -144,6 +160,24 @@ mod tests {
 
     fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
         ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    }
+
+    #[test]
+    fn access() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access (access-tensor t) 1)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1., 2.], [3., 4.]].into_dyn());
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]
