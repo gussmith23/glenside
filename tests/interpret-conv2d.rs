@@ -1,6 +1,6 @@
+use egg::RecExpr;
 use glenside::language::interpreter_new::*;
 use glenside::language::Language;
-use egg::{RecExpr};
 use ndarray_npy::ReadableElement;
 use std::str::FromStr;
 
