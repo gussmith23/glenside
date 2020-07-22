@@ -44,6 +44,48 @@ where
             };
 
             match compute_type {
+                ComputeType::ElementwiseMul => Value::Access(Access {
+                    access_axis: access.access_axis,
+                    tensor: access
+                        .tensor
+                        .axis_iter(ndarray::Axis(access.access_axis))
+                        .fold(
+                            ndarray::ArrayBase::ones(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .chain(
+                                        access.tensor.shape()[access.access_axis + 1..]
+                                            .iter()
+                                            .cloned(),
+                                    )
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            ),
+                            |acc, t| acc * t,
+                        ),
+                }),
+                ComputeType::ElementwiseAdd => Value::Access(Access {
+                    access_axis: access.access_axis,
+                    tensor: access
+                        .tensor
+                        .axis_iter(ndarray::Axis(access.access_axis))
+                        .fold(
+                            ndarray::ArrayBase::zeros(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .chain(
+                                        access.tensor.shape()[access.access_axis + 1..]
+                                            .iter()
+                                            .cloned(),
+                                    )
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            ),
+                            |acc, t| acc + t,
+                        ),
+                }),
                 ComputeType::DotProduct => {
                     let reshaped = access
                         .tensor
@@ -357,6 +399,66 @@ mod tests {
     use super::*;
     use ndarray::array;
     use std::str::FromStr;
+
+    #[test]
+    fn compute_elementwise_add_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute elementwise-add
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![[1 + -5 + -9, -2 + 6 + 10], [3 + 0 + 11, 0 + 8 + 12]].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_elementwise_mul_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute elementwise-mul
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![[1 * -5 * -9, -2 * 6 * 10], [3 * 0 * 11, 0 * 8 * 12]].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
 
     #[test]
     fn compute_reduce_sum_0() {
