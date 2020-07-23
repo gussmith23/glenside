@@ -218,7 +218,7 @@ impl Display for ComputeType {
 }
 
 /// Specifies how to pick the values we pad with.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Copy)]
 pub enum PadType {
     /// Pad with zeroes.
     ZeroPadding,
@@ -253,6 +253,7 @@ pub enum MyAnalysisData {
     // TODO(@gussmith23) Needed?
     //Tensor(TensorData),
     ComputeType(ComputeType),
+    PadType(PadType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -832,10 +833,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     usize_value: None,
                 })
             }
-            PadType(_) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                shape: None,
-                usize_value: None,
-            }),
+            PadType(t) => MyAnalysisData::PadType(*t),
             // (access-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
             &AccessWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
                 let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
@@ -1795,5 +1793,16 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn zero_padding() {
+        let program = "zero-padding".parse().unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::PadType(PadType::ZeroPadding) => (),
+            _ => panic!(),
+        };
     }
 }
