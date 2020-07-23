@@ -390,7 +390,25 @@ where
         },
         Language::Symbol(s) => Value::Tensor(env[s.as_str()].clone()),
         &Language::Usize(u) => Value::Usize(u),
-        _ => panic!(),
+
+        &Language::MoveAxis(_)
+        | &Language::CartesianProduct(_)
+        | &Language::MapDotProduct(_)
+        | &Language::Slice(_)
+        | &Language::Concatenate(_)
+        | &Language::ElementwiseAdd(_)
+        | &Language::BsgSystolicArray(_)
+        | &Language::SystolicArray(_)
+        | &Language::AccessMoveAxis(_)
+        | &Language::GetAccessShape(_)
+        | &Language::AccessReshape(_)
+        | &Language::AccessFlatten(_)
+        | &Language::AccessShape(_)
+        | &Language::AccessSlice(_)
+        | &Language::AccessConcatenate(_)
+        | &Language::AccessShiftRight(_)
+        | &Language::AccessPair(_)
+        | &Language::PadType(_) => todo!(),
     }
 }
 
