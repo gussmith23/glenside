@@ -161,6 +161,12 @@ define_language! {
         // Access a tensor literal.
         "access-tensor" = AccessTensor(Id),
 
+        // (access-pad <a>
+        //             <pad-type (PadType)>
+        //             <axis (usize)> <pad-before (usize)> <pad-after (usize)>)
+        // Pads a tensor at the given axis.
+        "access-pad" = AccessPad([Id; 5]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -310,6 +316,29 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            // (access-pad <a>
+            //             <pad-type (PadType)>
+            //             <axis (usize)> <pad-before (usize)> <pad-after (usize)>)
+            &AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
+                let mut access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
+                let _pad_type = match &egraph[pad_type_id].data {
+                    MyAnalysisData::PadType(t) => t,
+                    _ => panic!(),
+                };
+                let axis = MyAnalysis::get_usize(axis_id, egraph);
+                assert!(axis < access.shape.ndim() + access.item_shape.ndim());
+                let pad_before = MyAnalysis::get_usize(pad_before_id, egraph);
+                let pad_after = MyAnalysis::get_usize(pad_after_id, egraph);
+                if axis < access.shape.ndim() {
+                    access.shape[axis] += pad_before + pad_after;
+                } else {
+                    access.item_shape[axis - access.shape.ndim()] += pad_before + pad_after;
+                };
+                MyAnalysisData::AccessPattern(access)
+            }
             &AccessTensor(t_id) => MyAnalysisData::AccessPattern(AccessPatternData {
                 shape: match &egraph[t_id].data {
                     MyAnalysisData::Legacy(l) => l.shape.as_ref().unwrap().clone(),
@@ -1804,5 +1833,53 @@ mod tests {
             MyAnalysisData::PadType(PadType::ZeroPadding) => (),
             _ => panic!(),
         };
+    }
+
+    #[test]
+    fn access_pad_0() {
+        let program = "
+         (access-pad (access (access-tensor t-32-32) 1) zero-padding 0 1 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[35]));
+                assert_eq!(a.item_shape, IxDyn(&[32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pad_1() {
+        let program = "
+         (access-pad (access (access-tensor t-32-32) 1) zero-padding 1 3 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[37]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_pad_panic() {
+        let program = "
+         (access-pad (access (access-tensor t-32-32) 1) zero-padding 2 3 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
     }
 }

@@ -1,4 +1,4 @@
-use super::language::{ComputeType, Language};
+use super::language::{ComputeType, Language, PadType};
 use egg::RecExpr;
 use itertools::Itertools;
 use ndarray::{s, ArrayD, Dimension, IxDyn};
@@ -10,6 +10,7 @@ pub enum Value<DataType> {
     Usize(usize),
     Shape(IxDyn),
     ComputeType(ComputeType),
+    PadType(PadType),
 }
 
 pub struct Access<DataType> {
@@ -32,6 +33,7 @@ where
         + std::cmp::PartialOrd,
 {
     match &expr.as_ref()[index] {
+        Language::PadType(t) => Value::PadType(*t),
         Language::ComputeType(t) => Value::ComputeType(t.clone()),
         &Language::Compute([compute_type_id, access_id]) => {
             let compute_type = match interpret(expr, compute_type_id as usize, env) {
@@ -407,8 +409,7 @@ where
         | &Language::AccessSlice(_)
         | &Language::AccessConcatenate(_)
         | &Language::AccessShiftRight(_)
-        | &Language::AccessPair(_)
-        | &Language::PadType(_) => todo!(),
+        | &Language::AccessPair(_) => todo!(),
     }
 }
 
@@ -963,5 +964,14 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn pad_type() {
+        let expr = RecExpr::<Language>::from_str("zero-padding").unwrap();
+        match interpret::<i32>(&expr, expr.as_ref().len() - 1, &Environment::default()) {
+            Value::PadType(PadType::ZeroPadding) => (),
+            _ => panic!(),
+        };
     }
 }
