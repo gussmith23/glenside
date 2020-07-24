@@ -863,7 +863,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             PadType(t) => MyAnalysisData::PadType(*t),
-            // (access-windows <tensor> <filters> <pad-type> <x-pad> <y-pad> <x-stride> <y-stride>)
+            // TODO(@gussmith23) should take access, not a tensor.
             &AccessWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
                 let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
                 let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
