@@ -34,6 +34,51 @@ where
 {
     match &expr.as_ref()[index] {
         Language::PadType(t) => Value::PadType(*t),
+        &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
+            let access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let pad_type = match interpret(expr, pad_type_id as usize, env) {
+                Value::PadType(t) => t,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id as usize, env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let pad_before = match interpret(expr, pad_before_id as usize, env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let pad_after = match interpret(expr, pad_after_id as usize, env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            match pad_type {
+                PadType::ZeroPadding => {
+                    let mut before_shape = access.tensor.shape().to_vec();
+                    before_shape[axis] = pad_before;
+                    let mut after_shape = access.tensor.shape().to_vec();
+                    after_shape[axis] = pad_after;
+
+                    Value::Access(Access {
+                        tensor: ndarray::stack(
+                            ndarray::Axis(axis),
+                            &[
+                                // TODO(@gussmith) What's going on here...
+                                ndarray::ArrayD::zeros(before_shape).to_owned().view(),
+                                access.tensor.clone().view(),
+                                ndarray::ArrayD::zeros(after_shape).to_owned().view(),
+                            ],
+                        )
+                        .unwrap(),
+                        access_axis: access.access_axis,
+                    })
+                }
+            }
+        }
         Language::ComputeType(t) => Value::ComputeType(t.clone()),
         &Language::Compute([compute_type_id, access_id]) => {
             let compute_type = match interpret(expr, compute_type_id as usize, env) {
@@ -973,5 +1018,38 @@ mod tests {
             Value::PadType(PadType::ZeroPadding) => (),
             _ => panic!(),
         };
+    }
+
+    #[test]
+    fn access_pad() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-pad (access-tensor t) zero-padding 0 2 4)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        [0., 0.],
+                        [0., 0.],
+                        [1., 2.],
+                        [3., 4.],
+                        [0., 0.],
+                        [0., 0.],
+                        [0., 0.],
+                        [0., 0.]
+                    ]
+                    .into_dyn()
+                );
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
     }
 }
