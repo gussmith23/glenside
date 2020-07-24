@@ -1495,11 +1495,14 @@ mod tests {
         let program = "
          (access-cartesian-product
           (access (access-tensor t-8-3-3-3) 1)
-          (access-windows
-           (access (access-tensor t-3-32-32) 3)
-           (slice-shape (shape-of t-8-3-3-3) 1)
-           1
-           1
+          (access-squeeze
+           (access-windows
+            (access (access-tensor t-3-32-32) 3)
+            (slice-shape (shape-of t-8-3-3-3) 1)
+            1
+            1
+           )
+           0
           )
          )
         "
@@ -1522,11 +1525,14 @@ mod tests {
                (access (access-tensor t-8-3-3-3) 1)
               )
               (access-flatten
-               (access-windows
-                (access (access-tensor t-3-32-32) 3)
-                (slice-shape (shape-of t-8-3-3-3) 1)
-                1
-                1
+               (access-squeeze
+                (access-windows
+                 (access (access-tensor t-3-32-32) 3)
+                 (slice-shape (shape-of t-8-3-3-3) 1)
+                 1
+                 1
+                )
+                0
                )
               )
              )
@@ -1600,11 +1606,14 @@ mod tests {
          (compute dot-product
           (access-cartesian-product
            (access (access-tensor t-8-3-3-3) 1)
-           (access-windows
-            (access (access-tensor t-3-32-32) 3)
-            (slice-shape (shape-of t-8-3-3-3) 1)
-            1
-            1
+           (access-squeeze
+            (access-windows
+             (access (access-tensor t-3-32-32) 3)
+             (slice-shape (shape-of t-8-3-3-3) 1)
+             1
+             1
+            )
+            0
            )
           )
          )
@@ -1630,11 +1639,14 @@ mod tests {
              (systolic-array 900 27
               (access-flatten (access (access-tensor t-8-3-3-3) 1))
               (access-flatten
-               (access-windows
-                (access (access-tensor t-3-32-32) 3)
-                (slice-shape (shape-of t-8-3-3-3) 1)
-                1
-                1
+               (access-squeeze
+                (access-windows
+                 (access (access-tensor t-3-32-32) 3)
+                 (slice-shape (shape-of t-8-3-3-3) 1)
+                 1
+                 1
+                )
+                0
                )
               )
              )

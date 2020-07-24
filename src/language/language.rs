@@ -913,11 +913,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(filters_shape.ndim(), 3);
 
                 let new_shape: Vec<usize> = multizip((
-                    // rows, cols dimensions of tensor shape
-                    access.shape.slice().iter().skip(1),
-                    // rows, cols dimensions of filter shape
-                    filters_shape.as_array_view().iter().skip(1),
-                    &[x_stride, y_stride],
+                    // channels, rows, cols dimensions of tensor shape
+                    access.shape.slice().iter(),
+                    // channels, rows, cols dimensions of filter shape
+                    filters_shape.slice().iter(),
+                    // TODO(@gussmith23) channels stride hardcoded to 1
+                    &[1, x_stride, y_stride],
                 ))
                 .map(
                     |(&dim_len, &kernel_dim_len, &stride): (&usize, &usize, &usize)| {
@@ -999,7 +1000,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
-                assert_eq!(a.shape, IxDyn(&[30, 30]));
+                assert_eq!(a.shape, IxDyn(&[1, 30, 30]));
                 assert_eq!(a.item_shape, IxDyn(&[3, 3, 3]));
             }
             _ => panic!(),
@@ -1014,7 +1015,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
-                assert_eq!(a.shape, IxDyn(&[15, 30]));
+                assert_eq!(a.shape, IxDyn(&[1, 15, 30]));
                 assert_eq!(a.item_shape, IxDyn(&[3, 3, 3]));
             }
             _ => panic!(),
@@ -1277,11 +1278,14 @@ mod tests {
          (compute dot-product
           (access-cartesian-product
            (access (access-tensor t-8-3-3-3) 1)
-           (access-windows
-            (access (access-tensor t-3-32-32) 3)
-            (slice-shape (shape-of t-8-3-3-3) 1)
-            1
-            1
+           (access-squeeze
+            (access-windows
+             (access (access-tensor t-3-32-32) 3)
+             (slice-shape (shape-of t-8-3-3-3) 1)
+             1
+             1
+            )
+            0
            )
           )
          )
@@ -1303,11 +1307,14 @@ mod tests {
          (compute dot-product
           (access-cartesian-product
            (access (access-tensor t-8-3-3-3) 1)
-           (access-windows
-            (access (access-tensor t-3-32-32) 3)
-            (slice-shape (shape-of t-8-3-3-3) 1)
-            1
-            2
+           (access-squeeze
+            (access-windows
+             (access (access-tensor t-3-32-32) 3)
+             (slice-shape (shape-of t-8-3-3-3) 1)
+             1
+             2
+            )
+            0
            )
           )
          )

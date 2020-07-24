@@ -16,11 +16,14 @@ fn conv2d() {
          (compute dot-product
           (access-cartesian-product
            (access (access-tensor filters) 1)
-           (access-windows
-            activations
-            (slice-shape (shape-of filters) 1)
-            1
-            1
+           (access-squeeze
+            (access-windows
+             (access (access-tensor activations) 3)
+             (slice-shape (shape-of filters) 1)
+             1
+             1
+            )
+            0
            )
           )
          )

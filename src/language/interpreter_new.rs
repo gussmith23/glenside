@@ -403,31 +403,52 @@ where
             assert_eq!(filters_shape.ndim(), 3);
 
             assert_eq!(access.tensor.ndim(), filters_shape.ndim());
-            assert_eq!(access.tensor.shape()[0], filters_shape[0]);
 
             // TODO(@gussmith) Need one central place for window-gen logic
             // I'm duplicating this logic between here and language.rs. It
             // should be centralized.
-            let (tensor_x, tensor_y) = (access.tensor.shape()[1], access.tensor.shape()[2]);
-            let (filters_x, filters_y) = (filters_shape[1], filters_shape[2]);
+            let (tensor_c, tensor_x, tensor_y) = (
+                access.tensor.shape()[0],
+                access.tensor.shape()[1],
+                access.tensor.shape()[2],
+            );
+            let (filters_c, filters_x, filters_y) =
+                (filters_shape[0], filters_shape[1], filters_shape[2]);
+            // TODO(@gussmith) Channel stride is hardcoded to 1
+            let num_windows_c = ((tensor_c - (filters_c - 1)) + 1 - 1) / 1;
             let num_windows_x = ((tensor_x - (filters_x - 1)) + x_stride - 1) / x_stride;
             let num_windows_y = ((tensor_y - (filters_y - 1)) + y_stride - 1) / y_stride;
 
-            let windows = (0..num_windows_x)
-                .map(|x_window_index: usize| {
-                    let window_start_x = x_window_index * x_stride;
-                    let windows = (0..num_windows_y)
-                        .map(|y_window_index: usize| {
-                            let window_start_y = y_window_index * y_stride;
+            let windows = (0..num_windows_c)
+                .map(|c_window_index: usize| {
+                    let window_start_c = c_window_index * 1;
+                    let windows = (0..num_windows_x)
+                        .map(|x_window_index: usize| {
+                            let window_start_x = x_window_index * x_stride;
+                            let windows = (0..num_windows_y)
+                                .map(|y_window_index: usize| {
+                                    let window_start_y = y_window_index * y_stride;
 
-                            access
-                                .tensor
-                                .slice(s![
-                                    ..,
-                                    window_start_x..window_start_x + filters_x,
-                                    window_start_y..window_start_y + filters_y
-                                ])
-                                .insert_axis(ndarray::Axis(0))
+                                    access
+                                        .tensor
+                                        .slice(s![
+                                            window_start_c..window_start_c + filters_c,
+                                            window_start_x..window_start_x + filters_x,
+                                            window_start_y..window_start_y + filters_y
+                                        ])
+                                        .insert_axis(ndarray::Axis(0))
+                                })
+                                .collect::<Vec<_>>();
+                            ndarray::stack(
+                                ndarray::Axis(0),
+                                windows
+                                    .iter()
+                                    .map(|t| t.view())
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            )
+                            .unwrap()
+                            .insert_axis(ndarray::Axis(0))
                         })
                         .collect::<Vec<_>>();
                     ndarray::stack(
@@ -454,7 +475,11 @@ where
 
             Value::Access(Access {
                 tensor: out.into_dyn(),
-                access_axis: 2,
+                // TODO(@gussmith23) Hardcoded
+                // This already bit me. I forgot to update it when I changed the
+                // access-windows semantics, and it took me a bit to find the
+                // bug.
+                access_axis: 3,
             })
         }
         Language::Shape(list) => Value::Shape(IxDyn(
@@ -936,10 +961,10 @@ mod tests {
         .unwrap();
         match interpret(&expr, expr.as_ref().len() - 1, &env) {
             Value::Access(a) => {
-                assert_eq!(a.access_axis, 2);
-                assert_eq!(a.tensor.shape(), &[2, 2, 3, 2, 2]);
+                assert_eq!(a.access_axis, 3);
+                assert_eq!(a.tensor.shape(), &[1, 2, 2, 3, 2, 2]);
                 assert_eq!(
-                    a.tensor.slice(s![0, 0, .., .., ..]),
+                    a.tensor.slice(s![0, 0, 0, .., .., ..]),
                     array![
                         [[1., 2.], [4., 5.]],
                         [[10., 11.], [13., 14.]],
@@ -947,7 +972,7 @@ mod tests {
                     ]
                 );
                 assert_eq!(
-                    a.tensor.slice(s![1, 0, .., .., ..]),
+                    a.tensor.slice(s![0, 1, 0, .., .., ..]),
                     array![
                         [[4., 5.], [7., 8.]],
                         [[13., 14.], [16., 17.]],
