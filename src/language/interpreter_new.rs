@@ -356,9 +356,9 @@ where
                 access_axis: dim,
             })
         }
-        &Language::AccessWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
-            let tensor = match interpret(expr, tensor_id as usize, env) {
-                Value::Tensor(t) => t,
+        &Language::AccessWindows([access_id, filters_shape_id, x_stride_id, y_stride_id]) => {
+            let access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
                 _ => panic!(),
             };
             let filters_shape = match interpret(expr, filters_shape_id as usize, env) {
@@ -375,16 +375,17 @@ where
             };
 
             // Won't always have to be true. Just simplifying right now.
-            assert_eq!(tensor.ndim(), 3);
+            assert_eq!(access.tensor.ndim(), 3);
+            assert_eq!(access.access_axis, 3);
             assert_eq!(filters_shape.ndim(), 3);
 
-            assert_eq!(tensor.ndim(), filters_shape.ndim());
-            assert_eq!(tensor.shape()[0], filters_shape[0]);
+            assert_eq!(access.tensor.ndim(), filters_shape.ndim());
+            assert_eq!(access.tensor.shape()[0], filters_shape[0]);
 
             // TODO(@gussmith) Need one central place for window-gen logic
             // I'm duplicating this logic between here and language.rs. It
             // should be centralized.
-            let (tensor_x, tensor_y) = (tensor.shape()[1], tensor.shape()[2]);
+            let (tensor_x, tensor_y) = (access.tensor.shape()[1], access.tensor.shape()[2]);
             let (filters_x, filters_y) = (filters_shape[1], filters_shape[2]);
             let num_windows_x = ((tensor_x - (filters_x - 1)) + x_stride - 1) / x_stride;
             let num_windows_y = ((tensor_y - (filters_y - 1)) + y_stride - 1) / y_stride;
@@ -396,7 +397,7 @@ where
                         .map(|y_window_index: usize| {
                             let window_start_y = y_window_index * y_stride;
 
-                            tensor
+                            access.tensor
                                 .slice(s![
                                     ..,
                                     window_start_x..window_start_x + filters_x,
@@ -902,7 +903,7 @@ mod tests {
         let expr = RecExpr::<Language>::from_str(
             "
              (access-windows
-              t
+              (access (access-tensor t) 3)
               (shape 3 2 2)
               1
               1
