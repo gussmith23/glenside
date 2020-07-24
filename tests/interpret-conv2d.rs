@@ -9,7 +9,7 @@ fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> 
 }
 
 #[test]
-fn conv2d() {
+fn interpret_conv2d() {
     // TODO(@gussmith) Support batch dimension
     let expr = RecExpr::<Language>::from_str(
         "
