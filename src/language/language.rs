@@ -61,6 +61,8 @@ define_language! {
 
         // (access-windows <access> <filters-shape> <x-stride> <y-stride>)
         // Form the windows which will be convolved over.
+        // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
+        // AccessWindows is used in other contexts too, i.e. pooling.
         "access-windows" = AccessWindows([Id; 4]),
 
         // (shape-of <tensor>)
