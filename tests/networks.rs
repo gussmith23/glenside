@@ -126,6 +126,11 @@ fn conv2d(
     compute_dot_product_id
 }
 
+fn relu(expr: &mut Expr, data_id: u32) -> u32 {
+    compute(expr, ComputeType::ReLU, data_id)
+}
+
+/// See https://github.com/apache/incubator-tvm/blob/0a1c4c2174e1c4a04ca6e40cd90cdf7c2ef1d90a/python/tvm/relay/testing/resnet.py
 #[test]
 fn resnet50() {
     // TODO(@gussmith23) delete this comment
@@ -146,7 +151,7 @@ fn resnet50() {
     );
 
     // conv0_weights should be 3 in, 64 out, kernel size 3x3
-    let _data = conv2d(&mut expr, data, "conv0_weights", (1, 1), (1, 1));
+    let data = conv2d(&mut expr, data, "conv0_weights", (1, 1), (1, 1));
 
     #[rustfmt::skip]
     assert_eq!(
@@ -188,4 +193,15 @@ fn resnet50() {
       (slice-shape (shape-of conv0_weights) 1)
       1
       1)))");
+
+    let data = batch_norm_inference(
+        &mut expr,
+        data,
+        "bn0_gamma",
+        "bn0_beta",
+        "bn0_mean",
+        "bn0_var",
+    );
+
+    let _data = relu(&mut expr, data);
 }
