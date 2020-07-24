@@ -191,6 +191,9 @@ pub enum ComputeType {
     /// Expects item shape of `a x b1 x .. x bn`. Performs an elementwise
     /// multiplication of the `a` tensors of size `b1 x .. x bn`.
     ElementwiseMul,
+    /// Takes the max across all elements in each item. Reduces any item shape
+    /// to a scalar.
+    ReduceMax,
 }
 impl FromStr for ComputeType {
     type Err = ();
@@ -198,6 +201,7 @@ impl FromStr for ComputeType {
         match input {
             "dot-product" => Ok(ComputeType::DotProduct),
             "reduce-sum" => Ok(ComputeType::ReduceSum),
+            "reduce-max" => Ok(ComputeType::ReduceMax),
             "relu" => Ok(ComputeType::ReLU),
             "elementwise-add" => Ok(ComputeType::ElementwiseAdd),
             "elementwise-mul" => Ok(ComputeType::ElementwiseMul),
@@ -213,6 +217,7 @@ impl Display for ComputeType {
             match self {
                 ComputeType::DotProduct => "dot-product",
                 ComputeType::ReduceSum => "reduce-sum",
+                ComputeType::ReduceMax => "reduce-max",
                 ComputeType::ReLU => "relu",
                 ComputeType::ElementwiseAdd => "elementwise-add",
                 ComputeType::ElementwiseMul => "elementwise-mul",
@@ -560,7 +565,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: IxDyn(&[]),
                         })
                     }
-                    self::ComputeType::ReduceSum => {
+                    self::ComputeType::ReduceSum | self::ComputeType::ReduceMax => {
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
@@ -1891,5 +1896,41 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn compute_reduce_max_0() {
+        let program = "
+         (compute reduce-max (access (access-tensor t-3-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_1() {
+        let program = "
+         (compute reduce-max (access (access-tensor t-3-32-32) 2))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
     }
 }

@@ -30,7 +30,8 @@ where
         + std::ops::Mul<Output = DataType>
         + num_traits::identities::One
         + num_traits::identities::Zero
-        + std::cmp::PartialOrd,
+        + std::cmp::PartialOrd
+        + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
         Language::PadType(t) => Value::PadType(*t),
@@ -223,6 +224,32 @@ where
                         )
                         .unwrap()
                         .sum_axis(ndarray::Axis(access.access_axis)),
+                    access_axis: access.access_axis,
+                }),
+                ComputeType::ReduceMax => Value::Access(Access {
+                    tensor: access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            access.tensor.shape()[..access.access_axis]
+                                .iter()
+                                .cloned()
+                                .chain(std::iter::once(
+                                    access.tensor.shape()[access.access_axis..]
+                                        .iter()
+                                        .cloned()
+                                        .product(),
+                                ))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        )
+                        .unwrap()
+                        .map_axis(ndarray::Axis(access.access_axis), |t| {
+                            t.iter().fold(
+                                DataType::min_value(),
+                                |acc, v| if *v > acc { *v } else { acc },
+                            )
+                        }),
                     access_axis: access.access_axis,
                 }),
             }
@@ -1048,6 +1075,117 @@ mod tests {
                     .into_dyn()
                 );
                 assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(tensor, ndarray::arr0(12).into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 1)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 1);
+                assert_eq!(tensor, array![3, 8, 12].into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 2)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 2);
+                assert_eq!(tensor, array![[1, 3], [6, 8], [10, 12]].into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 3)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 3);
+                assert_eq!(
+                    tensor,
+                    array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+                );
             }
             _ => panic!(),
         }
