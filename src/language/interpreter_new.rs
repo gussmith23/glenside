@@ -34,6 +34,25 @@ where
         + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessSqueeze([access_id, axis_id]) => {
+            let mut access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id as usize, env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            assert_eq!(access.tensor.shape()[axis], 1);
+
+            access.tensor = access.tensor.index_axis_move(ndarray::Axis(axis), 0);
+            if axis < access.access_axis {
+                access.access_axis -= 1;
+            }
+
+            Value::Access(access)
+        }
         Language::PadType(t) => Value::PadType(*t),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match interpret(expr, access_id as usize, env) {
@@ -1188,6 +1207,63 @@ mod tests {
                     tensor,
                     array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
                 );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_squeeze_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-squeeze (access-tensor t) 0)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![1., 2.].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_squeeze_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-squeeze (access (access-tensor t) 1) 0)")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![1., 2.].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_squeeze_panic() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-squeeze (access (access-tensor t) 1) 1)")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![1., 2.].into_dyn());
+                assert_eq!(access_axis, 0);
             }
             _ => panic!(),
         }

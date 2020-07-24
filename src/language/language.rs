@@ -167,6 +167,9 @@ define_language! {
         // Pads a tensor at the given axis.
         "access-pad" = AccessPad([Id; 5]),
 
+        // (access-squeeze <a> <axis (usize)>)
+        "access-squeeze" = AccessSqueeze([Id; 2]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -321,6 +324,25 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessSqueeze([access_id, axis_id]) => {
+                let mut access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
+                let axis = MyAnalysis::get_usize(axis_id, egraph);
+                use ndarray::RemoveAxis;
+                if axis < access.shape.ndim() {
+                    assert_eq!(access.shape[axis], 1);
+                    access.shape = access.shape.remove_axis(ndarray::Axis(axis));
+                } else {
+                    assert_eq!(access.item_shape[axis - access.shape.ndim()], 1);
+                    access.item_shape = access
+                        .item_shape
+                        .remove_axis(ndarray::Axis(axis - access.shape.ndim()));
+                }
+
+                MyAnalysisData::AccessPattern(access)
+            }
             &AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
                 let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
@@ -1932,5 +1954,35 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn access_squeeze() {
+        let program = "
+         (access-squeeze (access (access-tensor t-1-2-3-4) 1) 0)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[2, 3, 4]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_squeeze_panic() {
+        let program = "
+         (access-squeeze (access (access-tensor t-1-2-3-4) 1) 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
     }
 }
