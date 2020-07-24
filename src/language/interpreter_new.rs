@@ -397,7 +397,8 @@ where
                         .map(|y_window_index: usize| {
                             let window_start_y = y_window_index * y_stride;
 
-                            access.tensor
+                            access
+                                .tensor
                                 .slice(s![
                                     ..,
                                     window_start_x..window_start_x + filters_x,
