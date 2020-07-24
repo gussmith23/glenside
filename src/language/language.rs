@@ -321,9 +321,6 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
-            // (access-pad <a>
-            //             <pad-type (PadType)>
-            //             <axis (usize)> <pad-before (usize)> <pad-after (usize)>)
             &AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
                 let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
