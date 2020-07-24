@@ -139,10 +139,10 @@ fn resnet50() {
     let data = batch_norm_inference(
         &mut expr,
         data,
-        "bn0_gamma",
-        "bn0_beta",
-        "bn0_mean",
-        "bn0_var",
+        "bndata_gamma",
+        "bndata_beta",
+        "bndata_mean",
+        "bndata_var",
     );
 
     // conv0_weights should be 3 in, 64 out, kernel size 3x3
@@ -172,10 +172,10 @@ fn resnet50() {
                           elementwise-add
                           (access-pair
                             (access (access-tensor image) 3)
-                            (access (access-tensor bn0_mean) 3)))
-                        (access (access-tensor bn0_var) 3)))
-                    (access (access-tensor bn0_gamma) 3)))
-                (access (access-tensor bn0_beta) 3)))
+                            (access (access-tensor bndata_mean) 3)))
+                        (access (access-tensor bndata_var) 3)))
+                    (access (access-tensor bndata_gamma) 3)))
+                (access (access-tensor bndata_beta) 3)))
             3)
           zero-padding
           1
