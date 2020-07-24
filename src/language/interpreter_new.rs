@@ -44,7 +44,11 @@ where
                 _ => panic!(),
             };
 
-            assert_eq!(access.tensor.shape()[axis], 1);
+            assert_eq!(
+                access.tensor.shape()[axis],
+                1,
+                "Cannot squeeze an axis which is not equal to 1"
+            );
 
             access.tensor = access.tensor.index_axis_move(ndarray::Axis(axis), 0);
             if axis < access.access_axis {
