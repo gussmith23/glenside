@@ -59,9 +59,7 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "systolic-array" = SystolicArray([Id; 4]),
 
-        // (access-windows <tensor> <filters> <x-stride> <y-stride>)
-        // TODO(@gussmith23) access-windows shouldn't take in the filters
-        // All it needs is the filters' shape.
+        // (access-windows <access> <filters-shape> <x-stride> <y-stride>)
         // Form the windows which will be convolved over.
         "access-windows" = AccessWindows([Id; 4]),
 
@@ -864,20 +862,32 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             PadType(t) => MyAnalysisData::PadType(*t),
             // TODO(@gussmith23) should take access, not a tensor.
-            &AccessWindows([tensor_id, filters_shape_id, x_stride_id, y_stride_id]) => {
+            &AccessWindows([access_id, filters_shape_id, x_stride_id, y_stride_id]) => {
                 let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
                 let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
-                let tensor_shape = MyAnalysis::get_shape(tensor_id, egraph);
+                let access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => {
+                        panic!("Expected an access pattern as the first argument to access-windows")
+                    }
+                };
                 let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, egraph);
 
                 // TODO(@gussmith23) Figure out how to generalize access-windows
                 // Should be able to generalize to other shapes.
-                assert_eq!(tensor_shape.ndim(), 3);
+                // TODO(@gussmith23) Add batch dimension
+                // TODO(@gussmith23) Change layout to NHWC
+                // This is totally hard coded right now for our # of dims AND
+                // for our layout.
+                // Scott needs batch dim and NHWC.
+                // Expect it to be (access <tensor> 3).
+                assert_eq!(access.shape.ndim(), 3);
+                assert_eq!(access.item_shape.ndim(), 0);
                 assert_eq!(filters_shape.ndim(), 3);
 
                 let new_shape: Vec<usize> = multizip((
                     // rows, cols dimensions of tensor shape
-                    tensor_shape.as_array_view().iter().skip(1),
+                    access.shape.slice().iter().skip(1),
                     // rows, cols dimensions of filter shape
                     filters_shape.as_array_view().iter().skip(1),
                     &[x_stride, y_stride],
@@ -954,7 +964,7 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (access-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 1 1)
+         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) 1 1)
          "
         .parse()
         .unwrap();
@@ -969,7 +979,7 @@ mod tests {
         }
 
         let program = "
-         (access-windows t-3-32-32 (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
+         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
          "
         .parse()
         .unwrap();
@@ -1241,7 +1251,7 @@ mod tests {
           (access-cartesian-product
            (access (access-tensor t-8-3-3-3) 1)
            (access-windows
-            t-3-32-32
+            (access (access-tensor t-3-32-32) 3)
             (slice-shape (shape-of t-8-3-3-3) 1)
             1
             1
@@ -1267,7 +1277,7 @@ mod tests {
           (access-cartesian-product
            (access (access-tensor t-8-3-3-3) 1)
            (access-windows
-            t-3-32-32
+            (access (access-tensor t-3-32-32) 3)
             (slice-shape (shape-of t-8-3-3-3) 1)
             1
             2

@@ -1443,7 +1443,7 @@ mod tests {
 
         let program = "
          (access-windows
-          t-3-32-32
+          (access (access-tensor t-3-32-32) 3)
           (slice-shape (shape-of t-8-3-3-3) 1)
           1
           2
@@ -1464,7 +1464,7 @@ mod tests {
             (access-reshape
              (access-flatten
               (access-windows
-               t-3-32-32
+               (access (access-tensor t-3-32-32) 3)
                (slice-shape (shape-of t-8-3-3-3) 1)
                1
                2
@@ -1472,7 +1472,7 @@ mod tests {
              )
              (get-access-shape
               (access-windows
-               t-3-32-32
+               (access (access-tensor t-3-32-32) 3)
                (slice-shape (shape-of t-8-3-3-3) 1)
                1
                2
@@ -1496,7 +1496,7 @@ mod tests {
          (access-cartesian-product
           (access (access-tensor t-8-3-3-3) 1)
           (access-windows
-           t-3-32-32
+           (access (access-tensor t-3-32-32) 3)
            (slice-shape (shape-of t-8-3-3-3) 1)
            1
            1
@@ -1523,7 +1523,7 @@ mod tests {
               )
               (access-flatten
                (access-windows
-                t-3-32-32
+                (access (access-tensor t-3-32-32) 3)
                 (slice-shape (shape-of t-8-3-3-3) 1)
                 1
                 1
@@ -1601,7 +1601,7 @@ mod tests {
           (access-cartesian-product
            (access (access-tensor t-8-3-3-3) 1)
            (access-windows
-            t-3-32-32
+            (access (access-tensor t-3-32-32) 3)
             (slice-shape (shape-of t-8-3-3-3) 1)
             1
             1
@@ -1631,7 +1631,7 @@ mod tests {
               (access-flatten (access (access-tensor t-8-3-3-3) 1))
               (access-flatten
                (access-windows
-                t-3-32-32
+                (access (access-tensor t-3-32-32) 3)
                 (slice-shape (shape-of t-8-3-3-3) 1)
                 1
                 1
