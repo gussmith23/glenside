@@ -34,6 +34,36 @@ where
         + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessPair([a0_id, a1_id]) => {
+            let (a0, a1) = match (
+                interpret(expr, a0_id as usize, env),
+                interpret(expr, a1_id as usize, env),
+            ) {
+                (Value::Access(a0), Value::Access(a1)) => (a0, a1),
+                _ => panic!(),
+            };
+
+            assert_eq!(a0.tensor.shape(), a1.tensor.shape());
+            // TODO(@gussmith23) Trying out some new syntax...
+            let access_axis = {
+                assert_eq!(a0.access_axis, a1.access_axis);
+                a0.access_axis
+            };
+
+            let tensor = ndarray::stack(
+                ndarray::Axis(access_axis),
+                &[
+                    a0.tensor.insert_axis(ndarray::Axis(access_axis)).view(),
+                    a1.tensor.insert_axis(ndarray::Axis(access_axis)).view(),
+                ],
+            )
+            .unwrap();
+
+            Value::Access(Access {
+                tensor: tensor,
+                access_axis: access_axis,
+            })
+        }
         &Language::AccessSqueeze([access_id, axis_id]) => {
             let mut access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -530,8 +560,7 @@ where
         | &Language::AccessShape(_)
         | &Language::AccessSlice(_)
         | &Language::AccessConcatenate(_)
-        | &Language::AccessShiftRight(_)
-        | &Language::AccessPair(_) => todo!("{:?}", &expr.as_ref()[index]),
+        | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
 
@@ -1328,6 +1357,111 @@ mod tests {
                 // Checking that output is CHW.
                 assert_eq!(tensor.shape(), [3, 1, 2]);
                 assert_eq!(tensor, array![[[6, 5]], [[6, 8]], [[2, 12]]].into_dyn(),);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pair_0() {
+        let mut env = Environment::new();
+        env.insert("a", array![[1, 2], [3, 4]].into_dyn());
+        env.insert("b", array![[5, 6], [7, 8]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-pair (access (access-tensor a) 0) (access (access-tensor b) 0))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), [2, 2, 2]);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 2], [3, 4]], [[5, 6], [7, 8]]].into_dyn()
+                );
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pair_1() {
+        let mut env = Environment::new();
+        env.insert("a", array![[1, 2], [3, 4]].into_dyn());
+        env.insert("b", array![[5, 6], [7, 8]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-pair (access (access-tensor a) 1) (access (access-tensor b) 1))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), [2, 2, 2]);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 2], [5, 6]], [[3, 4], [7, 8]]].into_dyn()
+                );
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pair_2() {
+        let mut env = Environment::new();
+        env.insert("a", array![[1, 2], [3, 4]].into_dyn());
+        env.insert("b", array![[5, 6], [7, 8]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), [2, 2, 2]);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 5], [2, 6]], [[3, 7], [4, 8]]].into_dyn()
+                );
+                assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_pair_panic() {
+        let mut env = Environment::new();
+        env.insert("a", array![[1], [3]].into_dyn());
+        env.insert("b", array![[5, 6], [7, 8]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), [2, 2, 2]);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 5], [2, 6]], [[3, 7], [4, 8]]].into_dyn()
+                );
+                assert_eq!(access_axis, 2);
             }
             _ => panic!(),
         }
