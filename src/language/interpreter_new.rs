@@ -542,7 +542,11 @@ where
             }),
             _ => panic!(),
         },
-        Language::Symbol(s) => Value::Tensor(env[s.as_str()].clone()),
+        Language::Symbol(s) => Value::Tensor(
+            env.get(s.as_str())
+                .unwrap_or_else(|| panic!("Symbol {} not in environment", s))
+                .clone(),
+        ),
         &Language::Usize(u) => Value::Usize(u),
 
         &Language::MoveAxis(_)
