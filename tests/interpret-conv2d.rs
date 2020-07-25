@@ -1,12 +1,10 @@
+mod common;
+
+use common::load_npy;
 use egg::RecExpr;
 use glenside::language::interpreter_new::*;
 use glenside::language::Language;
-use ndarray_npy::ReadableElement;
 use std::str::FromStr;
-
-fn load_npy<DataType: ReadableElement>(path: &str) -> ndarray::ArrayD<DataType> {
-    ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
-}
 
 #[test]
 fn interpret_conv2d() {
