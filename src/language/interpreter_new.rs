@@ -1325,6 +1325,7 @@ mod tests {
                 access_axis,
             }) => {
                 assert_eq!(access_axis, 3);
+                // Checking that output is CHW.
                 assert_eq!(tensor.shape(), [3, 1, 2]);
                 assert_eq!(tensor, array![[[6, 5]], [[6, 8]], [[2, 12]]].into_dyn(),);
             }
