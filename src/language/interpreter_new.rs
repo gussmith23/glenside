@@ -1297,4 +1297,37 @@ mod tests {
             _ => panic!(),
         }
     }
+
+    /// Example showing how access-windows can be used to implement max pooling
+    /// (in addition to convolution)
+    #[test]
+    fn max_pool2d() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1, -2, -4, 5], [3, 6, -8, 0]],
+                [[-5, 6, -8, -10], [0, 0, 0, 8]],
+                [[-9, -20, -15, 10], [-1, 2, 11, 12]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access-windows (access (access-tensor t) 3) (shape 1 2 2) 2 2)
+             )",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 3);
+                assert_eq!(tensor, array![[[6, 5]], [[6, 8]], [[2, 12]]].into_dyn(),);
+            }
+            _ => panic!(),
+        }
+    }
 }
