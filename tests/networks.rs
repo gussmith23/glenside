@@ -130,6 +130,79 @@ fn relu(expr: &mut Expr, data_id: u32) -> u32 {
     compute(expr, ComputeType::ReLU, data_id)
 }
 
+/// h_index/w_index: dimension index of h/w dimensions
+fn pad(
+    expr: &mut Expr,
+    data_id: u32,
+    padding: (usize, usize),
+    h_index: usize,
+    w_index: usize,
+) -> u32 {
+    let h_axis_index_id = expr.add(Language::Usize(h_index));
+    let w_axis_index_id = expr.add(Language::Usize(w_index));
+    let zero_pad_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let (usize_pad_h_id, usize_pad_w_id) = (
+        expr.add(Language::Usize(padding.0)),
+        expr.add(Language::Usize(padding.1)),
+    );
+    let pad_h_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_pad_id,
+        h_axis_index_id,
+        usize_pad_h_id,
+        usize_pad_h_id,
+    ]));
+    let pad_w_id = expr.add(Language::AccessPad([
+        pad_h_id,
+        zero_pad_id,
+        w_axis_index_id,
+        usize_pad_w_id,
+        usize_pad_w_id,
+    ]));
+
+    pad_w_id
+}
+
+fn access(expr: &mut Expr, data_id: u32, access_axis: usize) -> u32 {
+    let axis_id = expr.add(Language::Usize(access_axis));
+    expr.add(Language::Access([data_id, axis_id]))
+}
+
+fn max_pool2d(
+    expr: &mut Expr,
+    data_id: u32,
+    pool_size: (usize, usize),
+    strides: (usize, usize),
+    padding: (usize, usize),
+) -> u32 {
+    let usize_pool_size_c_id = expr.add(Language::Usize(1));
+    let usize_pool_size_h_id = expr.add(Language::Usize(pool_size.0));
+    let usize_pool_size_w_id = expr.add(Language::Usize(pool_size.1));
+    let window_shape_id = expr.add(Language::Shape(Box::new([
+        usize_pool_size_c_id,
+        usize_pool_size_h_id,
+        usize_pool_size_w_id,
+    ])));
+
+    let usize_stride_h_id = expr.add(Language::Usize(strides.0));
+    let usize_stride_w_id = expr.add(Language::Usize(strides.1));
+
+    let data_id = pad(expr, data_id, padding, 1, 2);
+    // TODO(@gussmith23) Change this when you add batch dim
+    let data_id = access(expr, data_id, 3);
+
+    let access_windows_id = expr.add(Language::AccessWindows([
+        data_id,
+        window_shape_id,
+        usize_stride_h_id,
+        usize_stride_w_id,
+    ]));
+
+    let compute_id = compute(expr, ComputeType::ReduceMax, access_windows_id);
+
+    compute_id
+}
+
 /// See https://github.com/apache/incubator-tvm/blob/0a1c4c2174e1c4a04ca6e40cd90cdf7c2ef1d90a/python/tvm/relay/testing/resnet.py
 #[test]
 fn resnet50() {
@@ -203,5 +276,7 @@ fn resnet50() {
         "bn0_var",
     );
 
-    let _data = relu(&mut expr, data);
+    let data = relu(&mut expr, data);
+
+    let data = max_pool2d(&mut expr, data, (3, 3), (2, 2), (1, 1));
 }
