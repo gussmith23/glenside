@@ -531,7 +531,7 @@ where
         | &Language::AccessSlice(_)
         | &Language::AccessConcatenate(_)
         | &Language::AccessShiftRight(_)
-        | &Language::AccessPair(_) => todo!(),
+        | &Language::AccessPair(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
 
