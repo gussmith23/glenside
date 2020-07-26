@@ -88,13 +88,16 @@ where
                 interpret(expr, a1_id as usize, env),
             ) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
-                _ => panic!(),
+                _ => panic!("Expected both arguments to access-pair to be accesses"),
             };
 
             assert_eq!(a0.tensor.shape(), a1.tensor.shape());
             // TODO(@gussmith23) Trying out some new syntax...
             let access_axis = {
-                assert_eq!(a0.access_axis, a1.access_axis);
+                assert_eq!(
+                    a0.access_axis, a1.access_axis,
+                    "Expected access axes to match in access-pair"
+                );
                 a0.access_axis
             };
 
