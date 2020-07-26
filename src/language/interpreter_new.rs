@@ -11,6 +11,7 @@ pub enum Value<DataType> {
     Shape(IxDyn),
     ComputeType(ComputeType),
     PadType(PadType),
+    AccessShape(IxDyn, usize),
 }
 
 pub struct Access<DataType> {
@@ -34,6 +35,13 @@ where
         + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
+        &Language::GetAccessShape(access_id) => {
+            let access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            Value::AccessShape(IxDyn(access.tensor.shape()), access.access_axis)
+        }
         &Language::AccessBroadcast([access_id, shape_id]) => {
             let mut access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -600,7 +608,6 @@ where
         | &Language::BsgSystolicArray(_)
         | &Language::SystolicArray(_)
         | &Language::AccessMoveAxis(_)
-        | &Language::GetAccessShape(_)
         | &Language::AccessReshape(_)
         | &Language::AccessFlatten(_)
         | &Language::AccessShape(_)
@@ -1602,6 +1609,22 @@ mod tests {
                 access_axis,
             }) => {
                 assert_eq!(tensor, array![[1, 2], [1, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn get_access_shape() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(get-access-shape (access (access-tensor t) 0))")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::AccessShape(shape, access_axis) => {
+                assert_eq!(shape.slice(), &[1, 2]);
                 assert_eq!(access_axis, 0);
             }
             _ => panic!(),
