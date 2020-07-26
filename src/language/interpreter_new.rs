@@ -443,6 +443,8 @@ where
                 _ => panic!(),
             };
 
+            assert!(dim <= access.tensor.ndim());
+
             Value::Access(Access {
                 tensor: access.tensor,
                 // TODO(@gussmith) Settle on vocab: "axis" or "dimension"?
@@ -1007,6 +1009,16 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_panic() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access (access-tensor t) 3)").unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
     }
 
     #[test]
