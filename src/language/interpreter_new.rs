@@ -48,8 +48,8 @@ where
                 _ => panic!(),
             };
             let shape = match interpret(expr, shape_id as usize, env) {
-                Value::Shape(s) => s,
-                _ => panic!(),
+                Value::AccessShape(s, _) => s,
+                _ => panic!("Expected access shape as second argument to access-broadcast"),
             };
 
             assert_eq!(access.tensor.ndim(), shape.ndim());
@@ -1575,9 +1575,10 @@ mod tests {
     fn access_broadcast() {
         let mut env = Environment::new();
         env.insert("t", array![[1, 2]].into_dyn());
+        env.insert("n", array![[1, 2], [1, 2]].into_dyn());
 
         let expr = RecExpr::<Language>::from_str(
-            "(access-broadcast (access (access-tensor t) 0) (shape 2 2))",
+            "(access-broadcast (access (access-tensor t) 0) (get-access-shape (access-tensor n)))",
         )
         .unwrap();
         match interpret(&expr, expr.as_ref().len() - 1, &env) {
