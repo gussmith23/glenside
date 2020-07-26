@@ -170,6 +170,9 @@ define_language! {
         // (access-squeeze <a> <axis (usize)>)
         "access-squeeze" = AccessSqueeze([Id; 2]),
 
+        // (access-insert-axis <a> <axis (usize)>)
+        "access-insert-axis" = AccessInsertAxis([Id; 2]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -324,6 +327,40 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessInsertAxis([access_id, axis_id]) => {
+                let mut access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
+                let axis = MyAnalysis::get_usize(axis_id, egraph);
+
+                assert!(axis <= access.shape.ndim() + access.item_shape.ndim());
+
+                if axis <= access.shape.ndim() {
+                    access.shape = IxDyn(
+                        access.shape.slice()[..axis]
+                            .iter()
+                            .cloned()
+                            .chain(std::iter::once(1))
+                            .chain(access.shape.slice()[axis..].iter().cloned())
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    );
+                } else {
+                    let n = access.shape.ndim();
+                    access.item_shape = IxDyn(
+                        access.item_shape.slice()[..axis - n]
+                            .iter()
+                            .cloned()
+                            .chain(std::iter::once(1))
+                            .chain(access.item_shape.slice()[axis - n..].iter().cloned())
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    );
+                }
+
+                MyAnalysisData::AccessPattern(access)
+            }
             &AccessSqueeze([access_id, axis_id]) => {
                 let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
@@ -1986,6 +2023,37 @@ mod tests {
     fn access_squeeze_panic() {
         let program = "
          (access-squeeze (access (access-tensor t-1-2-3-4) 1) 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn access_insert_axis() {
+        let program = "
+         (access-insert-axis (access (access-tensor t-1-2-3-4) 1) 0)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1]));
+                assert_eq!(a.item_shape, IxDyn(&[2, 3, 4]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    // TODO(@gussmith) More access-insert-axis tests
+    fn access_insert_axis_panic() {
+        let program = "
+         (access-squeeze (access (access-tensor t-1-2-3-4) 1) 5)
          "
         .parse()
         .unwrap();

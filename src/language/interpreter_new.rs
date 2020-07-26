@@ -34,6 +34,25 @@ where
         + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessInsertAxis([access_id, axis_id]) => {
+            let mut access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id as usize, env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            assert!(axis <= access.tensor.ndim());
+
+            access.tensor = access.tensor.insert_axis(ndarray::Axis(axis));
+            if axis <= access.access_axis {
+                access.access_axis += 1;
+            }
+
+            Value::Access(access)
+        }
         &Language::AccessPair([a0_id, a1_id]) => {
             let (a0, a1) = match (
                 interpret(expr, a0_id as usize, env),
@@ -1466,6 +1485,47 @@ mod tests {
                     array![[[1, 5], [2, 6]], [[3, 7], [4, 8]]].into_dyn()
                 );
                 assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_insert_axis_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![1, 2].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-insert-axis (access (access-tensor t) 0) 0)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2]].into_dyn());
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    // TODO(@gussmith) More access-insert-axis tests
+    fn access_insert_axis_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![1, 2].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-insert-axis (access (access-tensor t) 0) 1)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1], [2]].into_dyn());
+                assert_eq!(access_axis, 0);
             }
             _ => panic!(),
         }
