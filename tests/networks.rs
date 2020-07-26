@@ -1,5 +1,11 @@
+mod common;
+
+use common::load_npy;
 use egg::RecExpr;
-use glenside::language::{ComputeType, Language, PadType};
+use glenside::language::{
+    interpreter::interpret, interpreter::Environment, interpreter::Value, ComputeType, Language,
+    PadType,
+};
 
 type Expr = RecExpr<Language>;
 
@@ -28,6 +34,21 @@ fn compute_pair(expr: &mut Expr, compute_type: ComputeType, a_id: u32, b_id: u32
     compute(expr, compute_type, pair_id)
 }
 
+fn access_insert_axis(expr: &mut Expr, access_id: u32, axis: usize) -> u32 {
+    let usize_id = expr.add(Language::Usize(axis));
+    let insert_axis_id = expr.add(Language::AccessInsertAxis([access_id, usize_id]));
+    insert_axis_id
+}
+
+fn get_access_shape(expr: &mut Expr, access_id: u32) -> u32 {
+    let get_access_shape_id = expr.add(Language::GetAccessShape(access_id));
+    get_access_shape_id
+}
+
+fn access_broadcast(expr: &mut Expr, access_id: u32, shape_id: u32) -> u32 {
+    expr.add(Language::AccessBroadcast([access_id, shape_id]))
+}
+
 /// Inference-time batch normalization. Adds in mean and multiplies by variance.
 /// This means that the mean should be negated beforehand and the reciprocal of
 /// the sqrt of the variance (times epsilon) should be taken.
@@ -48,14 +69,32 @@ fn batch_norm_inference(
     // determine axis based on the situation. I'm not sure what a good default
     // axis is.
 
+    let shape_of_data = get_access_shape(expr, data_id);
+
     // <gamma tensor>
-    let gamma_id = access_tensor_literal(expr, gamma_name, 3);
+    let gamma_id = access_tensor_literal(expr, gamma_name, 1);
+    let gamma_id = access_insert_axis(expr, gamma_id, 0);
+    let gamma_id = access_insert_axis(expr, gamma_id, 2);
+    let gamma_id = access_insert_axis(expr, gamma_id, 3);
+    let gamma_id = access_broadcast(expr, gamma_id, shape_of_data);
     // <beta tensor>
-    let beta_id = access_tensor_literal(expr, beta_name, 3);
+    let beta_id = access_tensor_literal(expr, beta_name, 1);
+    let beta_id = access_insert_axis(expr, beta_id, 0);
+    let beta_id = access_insert_axis(expr, beta_id, 2);
+    let beta_id = access_insert_axis(expr, beta_id, 3);
+    let beta_id = access_broadcast(expr, beta_id, shape_of_data);
     // <mean tensor>
-    let mean_id = access_tensor_literal(expr, mean_name, 3);
+    let mean_id = access_tensor_literal(expr, mean_name, 1);
+    let mean_id = access_insert_axis(expr, mean_id, 0);
+    let mean_id = access_insert_axis(expr, mean_id, 2);
+    let mean_id = access_insert_axis(expr, mean_id, 3);
+    let mean_id = access_broadcast(expr, mean_id, shape_of_data);
     // <var tensor>
-    let var_id = access_tensor_literal(expr, var_name, 3);
+    let var_id = access_tensor_literal(expr, var_name, 1);
+    let var_id = access_insert_axis(expr, var_id, 0);
+    let var_id = access_insert_axis(expr, var_id, 2);
+    let var_id = access_insert_axis(expr, var_id, 3);
+    let var_id = access_broadcast(expr, var_id, shape_of_data);
 
     let data_id = compute_pair(expr, ComputeType::ElementwiseAdd, data_id, mean_id);
     let data_id = compute_pair(expr, ComputeType::ElementwiseMul, data_id, var_id);
@@ -212,19 +251,42 @@ fn resnet50() {
     let mut expr = RecExpr::default();
 
     // layout: C x H x W
-    let data = access_tensor_literal(&mut expr, "image", 3);
+    let data = access_tensor_literal(&mut expr, "image", 4);
 
     let data = batch_norm_inference(
         &mut expr,
         data,
-        "bndata_gamma",
-        "bndata_beta",
-        "bndata_mean",
-        "bndata_var",
+        "bn_data_gamma",
+        "bn_data_beta",
+        "bn_data_moving_mean",
+        "bn_data_moving_var",
     );
 
-    // conv0_weights should be 3 in, 64 out, kernel size 3x3
-    let data = conv2d(&mut expr, data, "conv0_weights", (1, 1), (1, 1));
+    println!("{}", expr.pretty(80));
+    let mut env = Environment::<f32>::default();
+    env.insert("image", load_npy("data/resnet/image.npy"));
+    for var in &[
+        "image",
+        "result",
+        "bn_data_moving_mean",
+        "bn_data_moving_var",
+        "bn_data_gamma",
+        "bn_data_beta",
+    ] {
+        env.insert(var, load_npy(&format!("data/resnet/{}.npy", var)));
+    }
+    let result = match interpret(&expr, data as usize, &env) {
+        Value::Access(a) => a,
+        _ => panic!(),
+    };
+    use approx::AbsDiffEq;
+    let true_result = load_npy::<f32>("data/resnet/result.npy");
+    assert_eq!(result.tensor.shape(), true_result.shape());
+    assert!(result.tensor.abs_diff_eq(&true_result, 2e-5));
+    return;
+
+    // conv0_weight should be 3 in, 64 out, kernel size 3x3
+    let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
 
     #[rustfmt::skip]
     assert_eq!(
@@ -232,7 +294,7 @@ fn resnet50() {
 "(compute
   dot-product
   (access-cartesian-product
-    (access (access-tensor conv0_weights) 1)
+    (access (access-tensor conv0_weight) 1)
     (access-windows
       (access-pad
         (access-pad
@@ -250,7 +312,7 @@ fn resnet50() {
                           elementwise-add
                           (access-pair
                             (access (access-tensor image) 3)
-                            (access (access-tensor bndata_mean) 3)))
+                            (access (access-tensor bn_data_moving_mean) 3)))
                         (access (access-tensor bndata_var) 3)))
                     (access (access-tensor bndata_gamma) 3)))
                 (access (access-tensor bndata_beta) 3)))
@@ -263,7 +325,7 @@ fn resnet50() {
         2
         1
         1)
-      (slice-shape (shape-of conv0_weights) 1)
+      (slice-shape (shape-of conv0_weight) 1)
       1
       1)))");
 
