@@ -173,6 +173,12 @@ define_language! {
         // (access-insert-axis <a> <axis (usize)>)
         "access-insert-axis" = AccessInsertAxis([Id; 2]),
 
+        // (access-broadcast <a> <shape: shape>)
+        // Simple broadcasting. <a> and <shape> must have the same total number
+        // of dimensions. All dimensions in <a> must either match the
+        // corresponding dimension in <shape> or be 1.
+        "access-broadcast" = AccessBroadcast([Id; 2]),
+
         Usize(usize),
 
         // pad-type: zero-padding
@@ -327,6 +333,33 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessBroadcast([access_id, shape_id]) => {
+                let access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+                let shape = match &egraph[shape_id].data {
+                    MyAnalysisData::Shape(s) => s,
+                    _ => panic!("Expected shape as second argument of access-broadcast"),
+                };
+
+                let new_shape = access
+                    .shape
+                    .slice()
+                    .iter()
+                    .chain(access.item_shape.slice().iter())
+                    .zip(shape.shape.slice().iter())
+                    .map(|(broadcast_from_dim, broadcast_to_dim): (&usize, &usize)| {
+                        assert!(*broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim);
+                        *broadcast_to_dim
+                    })
+                    .collect::<Vec<_>>();
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&new_shape[..access.shape.ndim()]),
+                    item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
+                })
+            }
             &AccessInsertAxis([access_id, axis_id]) => {
                 let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
@@ -2059,5 +2092,24 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
         egraph.add_expr(&program);
+    }
+
+    #[test]
+    // TODO(@gussmith) More access-broadcast tests
+    fn access_broadcast() {
+        let program = "
+         (access-broadcast (access (access-tensor t-1-2-3-4) 1) (shape 2 2 3 4))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[2]));
+                assert_eq!(a.item_shape, IxDyn(&[2, 3, 4]));
+            }
+            _ => panic!(),
+        }
     }
 }

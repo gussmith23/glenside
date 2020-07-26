@@ -34,6 +34,27 @@ where
         + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessBroadcast([access_id, shape_id]) => {
+            let mut access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let shape = match interpret(expr, shape_id as usize, env) {
+                Value::Shape(s) => s,
+                _ => panic!(),
+            };
+
+            assert_eq!(access.tensor.ndim(), shape.ndim());
+            for (broadcast_from_dim, broadcast_to_dim) in
+                access.tensor.shape().iter().zip(shape.slice().iter())
+            {
+                assert!(*broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim);
+            }
+
+            access.tensor = access.tensor.broadcast(shape).unwrap().to_owned();
+
+            Value::Access(access)
+        }
         &Language::AccessInsertAxis([access_id, axis_id]) => {
             let mut access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -1525,6 +1546,50 @@ mod tests {
                 access_axis,
             }) => {
                 assert_eq!(tensor, array![[1], [2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_broadcast() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-broadcast (access (access-tensor t) 0) (shape 2 2))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2], [1, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    // TODO(@gussmith23) More access-broadcast tests
+    fn access_broadcast_panic() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-broadcast (access (access-tensor t) 0) (shape 2 2 2))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2], [1, 2]].into_dyn());
                 assert_eq!(access_axis, 0);
             }
             _ => panic!(),
