@@ -18,8 +18,7 @@ fn interpret_conv2d() {
             (access-windows
              (access (access-tensor activations) 3)
              (slice-shape (shape-of filters) 1)
-             1
-             1
+             (shape 1 1 1)
             )
             0
            )

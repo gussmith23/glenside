@@ -59,11 +59,11 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "systolic-array" = SystolicArray([Id; 4]),
 
-        // (access-windows <access> <filters-shape> <x-stride> <y-stride>)
+        // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
         // AccessWindows is used in other contexts too, i.e. pooling.
-        "access-windows" = AccessWindows([Id; 4]),
+        "access-windows" = AccessWindows([Id; 3]),
 
         // (shape-of <tensor>)
         // Returns the shape of the tensor.
@@ -288,6 +288,30 @@ pub struct ShapeData {
 pub struct AccessPatternData {
     pub shape: IxDyn,
     pub item_shape: IxDyn,
+}
+
+pub fn access_windows_resulting_shape(
+    access_shape: &IxDyn,
+    filters_shape: &IxDyn,
+    stride_shape: &IxDyn,
+) -> Vec<usize> {
+    assert_eq!(access_shape.ndim(), stride_shape.ndim());
+    assert_eq!(filters_shape.ndim(), stride_shape.ndim());
+
+    multizip((
+        access_shape.slice().iter(),
+        filters_shape.slice().iter(),
+        stride_shape.slice().iter(),
+    ))
+    .map(
+        |(&dim_len, &kernel_dim_len, &stride): (&usize, &usize, &usize)| {
+            let total_dim_len = dim_len;
+            assert!(total_dim_len >= kernel_dim_len);
+            let num_spots = total_dim_len - (kernel_dim_len - 1);
+            (num_spots + stride - 1) / stride
+        },
+    )
+    .collect()
 }
 
 // #[derive(Debug, Clone, PartialEq)]
@@ -958,10 +982,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             PadType(t) => MyAnalysisData::PadType(*t),
-            // TODO(@gussmith23) should take access, not a tensor.
-            &AccessWindows([access_id, filters_shape_id, x_stride_id, y_stride_id]) => {
-                let x_stride = MyAnalysis::get_usize(x_stride_id, egraph);
-                let y_stride = MyAnalysis::get_usize(y_stride_id, egraph);
+            &AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
                 let access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => {
@@ -969,39 +990,21 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                 };
                 let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, egraph);
+                let stride_shape = MyAnalysis::get_shape_of_value(stride_shape_id, egraph);
 
-                // TODO(@gussmith23) Figure out how to generalize access-windows
-                // Should be able to generalize to other shapes.
-                // TODO(@gussmith23) Add batch dimension
-                // TODO(@gussmith23) Change layout to NHWC
-                // This is totally hard coded right now for our # of dims AND
-                // for our layout.
-                // Scott needs batch dim and NHWC.
-                // Expect it to be (access <tensor> 3).
-                assert_eq!(access.shape.ndim(), 3);
+                // TODO(@gussmith23) Generalize AccessWindows to other accesses
+                // Right now we expect item shape to be a scalar.
                 assert_eq!(access.item_shape.ndim(), 0);
-                assert_eq!(filters_shape.ndim(), 3);
-
-                let new_shape: Vec<usize> = multizip((
-                    // channels, rows, cols dimensions of tensor shape
-                    access.shape.slice().iter(),
-                    // channels, rows, cols dimensions of filter shape
-                    filters_shape.slice().iter(),
-                    // TODO(@gussmith23) channels stride hardcoded to 1
-                    &[1, x_stride, y_stride],
-                ))
-                .map(
-                    |(&dim_len, &kernel_dim_len, &stride): (&usize, &usize, &usize)| {
-                        let total_dim_len = dim_len;
-                        assert!(total_dim_len >= kernel_dim_len);
-                        let num_spots = total_dim_len - (kernel_dim_len - 1);
-                        (num_spots + stride - 1) / stride
-                    },
-                )
-                .collect();
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: IxDyn(new_shape.clone().as_slice()),
+                    shape: IxDyn(
+                        access_windows_resulting_shape(
+                            &access.shape,
+                            &filters_shape,
+                            &stride_shape,
+                        )
+                        .as_slice(),
+                    ),
                     item_shape: filters_shape.clone(),
                 })
             }
@@ -1062,7 +1065,7 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) 1 1)
+         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 1 1))
          "
         .parse()
         .unwrap();
@@ -1077,7 +1080,7 @@ mod tests {
         }
 
         let program = "
-         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) 2 1)
+         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 2 1))
          "
         .parse()
         .unwrap();
@@ -1352,8 +1355,7 @@ mod tests {
             (access-windows
              (access (access-tensor t-3-32-32) 3)
              (slice-shape (shape-of t-8-3-3-3) 1)
-             1
-             1
+             (shape 1 1 1)
             )
             0
            )
@@ -1381,8 +1383,7 @@ mod tests {
             (access-windows
              (access (access-tensor t-3-32-32) 3)
              (slice-shape (shape-of t-8-3-3-3) 1)
-             1
-             2
+             (shape 1 1 2)
             )
             0
            )

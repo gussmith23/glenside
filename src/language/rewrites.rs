@@ -1445,8 +1445,7 @@ mod tests {
          (access-windows
           (access (access-tensor t-3-32-32) 3)
           (slice-shape (shape-of t-8-3-3-3) 1)
-          1
-          2
+          (shape 1 1 2)
          )
          "
         .parse()
@@ -1466,16 +1465,14 @@ mod tests {
               (access-windows
                (access (access-tensor t-3-32-32) 3)
                (slice-shape (shape-of t-8-3-3-3) 1)
-               1
-               2
+               (shape 1 1 2)
               )
              )
              (get-access-shape
               (access-windows
                (access (access-tensor t-3-32-32) 3)
                (slice-shape (shape-of t-8-3-3-3) 1)
-               1
-               2
+               (shape 1 1 2)
               )
              )
             )
@@ -1499,8 +1496,7 @@ mod tests {
            (access-windows
             (access (access-tensor t-3-32-32) 3)
             (slice-shape (shape-of t-8-3-3-3) 1)
-            1
-            1
+            (shape 1 1 1)
            )
            0
           )
@@ -1529,8 +1525,7 @@ mod tests {
                 (access-windows
                  (access (access-tensor t-3-32-32) 3)
                  (slice-shape (shape-of t-8-3-3-3) 1)
-                 1
-                 1
+                 (shape 1 1 1)
                 )
                 0
                )
@@ -1610,8 +1605,7 @@ mod tests {
             (access-windows
              (access (access-tensor t-3-32-32) 3)
              (slice-shape (shape-of t-8-3-3-3) 1)
-             1
-             1
+             (shape 1 1 1)
             )
             0
            )
@@ -1643,8 +1637,7 @@ mod tests {
                 (access-windows
                  (access (access-tensor t-3-32-32) 3)
                  (slice-shape (shape-of t-8-3-3-3) 1)
-                 1
-                 1
+                 (shape 1 1 1)
                 )
                 0
                )

@@ -1,8 +1,9 @@
 use super::language::{ComputeType, Language, PadType};
 use egg::RecExpr;
 use itertools::Itertools;
-use ndarray::{s, ArrayD, Dimension, IxDyn};
+use ndarray::{s, Array, ArrayD, Dimension, IxDyn, Zip};
 use std::collections::hash_map::HashMap;
+use std::iter::FromIterator;
 
 pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
@@ -462,7 +463,7 @@ where
                 access_axis: dim,
             })
         }
-        &Language::AccessWindows([access_id, filters_shape_id, x_stride_id, y_stride_id]) => {
+        &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
                 _ => panic!(),
@@ -471,93 +472,86 @@ where
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
-            let x_stride = match interpret(expr, x_stride_id as usize, env) {
-                Value::Usize(u) => u,
-                _ => panic!(),
-            };
-            let y_stride = match interpret(expr, y_stride_id as usize, env) {
-                Value::Usize(u) => u,
+            let stride_shape = match interpret(expr, stride_shape_id as usize, env) {
+                Value::Shape(s) => s,
                 _ => panic!(),
             };
 
-            // Won't always have to be true. Just simplifying right now.
-            assert_eq!(access.tensor.ndim(), 3, "access-windows access should have 3 dimensions");
-            assert_eq!(access.access_axis, 3,  "access-windows access should be accessed at dimension 3");
-            assert_eq!(filters_shape.ndim(), 3, "access-windows filters shape should have 3 dimensions");
-
-            assert_eq!(access.tensor.ndim(), filters_shape.ndim(), "access-windows access and filters should have the same number of dimensions");
-
-            // TODO(@gussmith) Need one central place for window-gen logic
-            // I'm duplicating this logic between here and language.rs. It
-            // should be centralized.
-            let (tensor_c, tensor_x, tensor_y) = (
-                access.tensor.shape()[0],
-                access.tensor.shape()[1],
-                access.tensor.shape()[2],
+            assert_eq!(
+                access.access_axis,
+                access.tensor.ndim(),
+                "access-windows access should be accessed at its last dimension"
             );
-            let (filters_c, filters_x, filters_y) =
-                (filters_shape[0], filters_shape[1], filters_shape[2]);
-            // TODO(@gussmith) Channel stride is hardcoded to 1
-            let num_windows_c = ((tensor_c - (filters_c - 1)) + 1 - 1) / 1;
-            let num_windows_x = ((tensor_x - (filters_x - 1)) + x_stride - 1) / x_stride;
-            let num_windows_y = ((tensor_y - (filters_y - 1)) + y_stride - 1) / y_stride;
+            assert_eq!(
+                access.tensor.ndim(),
+                stride_shape.ndim(),
+                "access-windows access ndims should match stride ndims"
+            );
+            assert_eq!(
+                filters_shape.ndim(),
+                stride_shape.ndim(),
+                "access-windows filters ndims should match stride ndims"
+            );
 
-            let windows = (0..num_windows_c)
-                .map(|c_window_index: usize| {
-                    let window_start_c = c_window_index * 1;
-                    let windows = (0..num_windows_x)
-                        .map(|x_window_index: usize| {
-                            let window_start_x = x_window_index * x_stride;
-                            let windows = (0..num_windows_y)
-                                .map(|y_window_index: usize| {
-                                    let window_start_y = y_window_index * y_stride;
+            let out_shape = super::access_windows_resulting_shape(
+                &IxDyn(access.tensor.shape()),
+                &filters_shape,
+                // Ignore striding for now; we will stride after we get the result
+                // TODO(@gussmith23) More efficient striding?
+                &IxDyn(
+                    std::iter::repeat(1)
+                        .take(filters_shape.ndim())
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ),
+            );
+            println!("{:?}", out_shape);
 
-                                    access
-                                        .tensor
-                                        .slice(s![
-                                            window_start_c..window_start_c + filters_c,
-                                            window_start_x..window_start_x + filters_x,
-                                            window_start_y..window_start_y + filters_y
-                                        ])
-                                        .insert_axis(ndarray::Axis(0))
-                                })
-                                .collect::<Vec<_>>();
-                            ndarray::stack(
-                                ndarray::Axis(0),
-                                windows
-                                    .iter()
-                                    .map(|t| t.view())
-                                    .collect::<Vec<_>>()
-                                    .as_slice(),
-                            )
-                            .unwrap()
-                            .insert_axis(ndarray::Axis(0))
-                        })
-                        .collect::<Vec<_>>();
-                    ndarray::stack(
-                        ndarray::Axis(0),
-                        windows
-                            .iter()
-                            .map(|t| t.view())
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    )
-                    .unwrap()
-                    .insert_axis(ndarray::Axis(0))
-                })
-                .collect::<Vec<_>>();
-            let out = ndarray::stack(
-                ndarray::Axis(0),
-                windows
+            let mut result = ArrayD::<DataType>::zeros(
+                out_shape
                     .iter()
-                    .map(|t| t.view())
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            )
-            .unwrap();
+                    .cloned()
+                    .chain(std::iter::once(filters_shape.slice().iter().product()))
+                    .collect::<Vec<_>>(),
+            );
+            println!("{:?}", result.shape());
+
+            Zip::from(result.genrows_mut())
+                .and(access.tensor.windows(filters_shape.clone()))
+                .apply(|mut result, windows| {
+                    result.assign(&Array::from_iter(windows.iter().cloned()))
+                });
+
+            let mut result = result
+                .into_shape(
+                    out_shape
+                        .iter()
+                        .cloned()
+                        .chain(filters_shape.slice().iter().cloned())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+
+            for (axis, &stride) in (0..stride_shape.ndim()).zip(stride_shape.slice().iter()) {
+                // TODO(@gussmith23) Interpreter window striding is inefficient
+                // I wish we could do this in the windows() method of ndarray,
+                // but they don't seem to support it.
+                result = ndarray::stack(
+                    ndarray::Axis(axis),
+                    result
+                        .axis_iter(ndarray::Axis(axis))
+                        .step_by(stride)
+                        // TODO(@gussmith23) This seems dumb
+                        // Can we do an axis_iter that doesn't remove the axis?
+                        .map(|t| t.insert_axis(ndarray::Axis(axis)))
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                )
+                .unwrap();
+            }
 
             Value::Access(Access {
-                tensor: out.into_dyn(),
+                tensor: result,
                 // TODO(@gussmith23) Hardcoded
                 // This already bit me. I forgot to update it when I changed the
                 // access-windows semantics, and it took me a bit to find the
@@ -1049,8 +1043,7 @@ mod tests {
              (access-windows
               (access (access-tensor t) 3)
               (shape 3 2 2)
-              1
-              1
+              (shape 1 1 1)
              )",
         )
         .unwrap();
@@ -1410,7 +1403,7 @@ mod tests {
 
         let expr = RecExpr::<Language>::from_str(
             "(compute reduce-max
-              (access-windows (access (access-tensor t) 3) (shape 1 2 2) 2 2)
+              (access-windows (access (access-tensor t) 3) (shape 1 2 2) (shape 1 2 2))
              )",
         )
         .unwrap();

@@ -146,11 +146,15 @@ fn conv2d(
         usize_pad_w,
     ]));
 
+    let stride_shape_id = expr.add(Language::Shape(Box::new([
+        usize_stride_h,
+        usize_stride_w,
+        usize_1_id,
+    ])));
     let access_windows_id = expr.add(Language::AccessWindows([
         pad_w_id,
         slice_shape_id,
-        usize_stride_h,
-        usize_stride_w,
+        stride_shape_id,
     ]));
 
     let access_weights_id = access_tensor_literal(expr, weights_name, 1);
@@ -215,6 +219,7 @@ fn max_pool2d(
     strides: (usize, usize),
     padding: (usize, usize),
 ) -> u32 {
+    let usize_1_id = expr.add(Language::Usize(1));
     let usize_pool_size_c_id = expr.add(Language::Usize(1));
     let usize_pool_size_h_id = expr.add(Language::Usize(pool_size.0));
     let usize_pool_size_w_id = expr.add(Language::Usize(pool_size.1));
@@ -231,11 +236,16 @@ fn max_pool2d(
     // TODO(@gussmith23) Change this when you add batch dim
     let data_id = access(expr, data_id, 3);
 
+    // TODO(@gussmith23) Hardcoded to CHW.
+    let stride_shape_id = expr.add(Language::Shape(Box::new([
+        usize_1_id,
+        usize_stride_h_id,
+        usize_stride_w_id,
+    ])));
     let access_windows_id = expr.add(Language::AccessWindows([
         data_id,
         window_shape_id,
-        usize_stride_h_id,
-        usize_stride_w_id,
+        stride_shape_id,
     ]));
 
     let compute_id = compute(expr, ComputeType::ReduceMax, access_windows_id);
