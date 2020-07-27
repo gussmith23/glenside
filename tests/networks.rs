@@ -1,5 +1,6 @@
 mod common;
 
+use approx::AbsDiffEq;
 use common::load_npy;
 use egg::RecExpr;
 use glenside::language::{
@@ -51,7 +52,7 @@ fn access_broadcast(expr: &mut Expr, access_id: u32, shape_id: u32) -> u32 {
 
 /// Inference-time batch normalization. Adds in mean and multiplies by variance.
 /// This means that the mean should be negated beforehand and the reciprocal of
-/// the sqrt of the variance (times epsilon) should be taken.
+/// the sqrt of the variance (plus epsilon) should be taken.
 fn batch_norm_inference(
     expr: &mut Expr,
     data_id: u32,
@@ -258,8 +259,8 @@ fn resnet50() {
         data,
         "bn_data_gamma",
         "bn_data_beta",
-        "bn_data_moving_mean",
-        "bn_data_moving_var",
+        "bn_data_moving_mean_negated",
+        "bn_data_moving_var_reciprocal_sqrt_plus_epsilon",
     );
 
     println!("{}", expr.pretty(80));
@@ -268,8 +269,8 @@ fn resnet50() {
     for var in &[
         "image",
         "result",
-        "bn_data_moving_mean",
-        "bn_data_moving_var",
+        "bn_data_moving_mean_negated",
+        "bn_data_moving_var_reciprocal_sqrt_plus_epsilon",
         "bn_data_gamma",
         "bn_data_beta",
     ] {
@@ -279,55 +280,12 @@ fn resnet50() {
         Value::Access(a) => a,
         _ => panic!(),
     };
-    use approx::AbsDiffEq;
     let true_result = load_npy::<f32>("data/resnet/result.npy");
     assert_eq!(result.tensor.shape(), true_result.shape());
-    assert!(result.tensor.abs_diff_eq(&true_result, 2e-5));
-    return;
+    assert!(result.tensor.abs_diff_eq(&true_result, 1e-60));
 
     // conv0_weight should be 3 in, 64 out, kernel size 3x3
     let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
-
-    #[rustfmt::skip]
-    assert_eq!(
-        expr.pretty(80),
-"(compute
-  dot-product
-  (access-cartesian-product
-    (access (access-tensor conv0_weight) 1)
-    (access-windows
-      (access-pad
-        (access-pad
-          (access
-            (compute
-              elementwise-add
-              (access-pair
-                (compute
-                  elementwise-mul
-                  (access-pair
-                    (compute
-                      elementwise-mul
-                      (access-pair
-                        (compute
-                          elementwise-add
-                          (access-pair
-                            (access (access-tensor image) 3)
-                            (access (access-tensor bn_data_moving_mean) 3)))
-                        (access (access-tensor bndata_var) 3)))
-                    (access (access-tensor bndata_gamma) 3)))
-                (access (access-tensor bndata_beta) 3)))
-            3)
-          zero-padding
-          1
-          1
-          1)
-        zero-padding
-        2
-        1
-        1)
-      (slice-shape (shape-of conv0_weight) 1)
-      1
-      1)))");
 
     let data = batch_norm_inference(
         &mut expr,
@@ -340,5 +298,5 @@ fn resnet50() {
 
     let data = relu(&mut expr, data);
 
-    let data = max_pool2d(&mut expr, data, (3, 3), (2, 2), (1, 1));
+    let _data = max_pool2d(&mut expr, data, (3, 3), (2, 2), (1, 1));
 }
