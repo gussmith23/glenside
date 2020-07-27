@@ -245,7 +245,7 @@ fn max_pool2d(
 
 /// See https://github.com/apache/incubator-tvm/blob/0a1c4c2174e1c4a04ca6e40cd90cdf7c2ef1d90a/python/tvm/relay/testing/resnet.py
 #[test]
-fn resnet50() {
+fn resnet50_3_224_224() {
     // TODO(@gussmith23) delete this comment
     //             filter_list = [64, 256, 512, 1024, 2048]
 
