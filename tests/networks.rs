@@ -263,6 +263,9 @@ fn resnet50_3_224_224() {
         "bn_data_moving_var_reciprocal_sqrt_plus_epsilon",
     );
 
+    // conv0_weight should be 3 in, 64 out, kernel size 7x7
+    let data = conv2d(&mut expr, data, "conv0_weight", (2, 2), (3, 3));
+
     println!("{}", expr.pretty(80));
     let mut env = Environment::<f32>::default();
     env.insert("image", load_npy("data/resnet/image.npy"));
@@ -273,6 +276,7 @@ fn resnet50_3_224_224() {
         "bn_data_moving_var_reciprocal_sqrt_plus_epsilon",
         "bn_data_gamma",
         "bn_data_beta",
+        "conv0_weight",
     ] {
         env.insert(var, load_npy(&format!("data/resnet/{}.npy", var)));
     }
@@ -283,9 +287,6 @@ fn resnet50_3_224_224() {
     let true_result = load_npy::<f32>("data/resnet/result.npy");
     assert_eq!(result.tensor.shape(), true_result.shape());
     assert!(result.tensor.abs_diff_eq(&true_result, 1e-60));
-
-    // conv0_weight should be 3 in, 64 out, kernel size 3x3
-    let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
 
     let data = batch_norm_inference(
         &mut expr,
