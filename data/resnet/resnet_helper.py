@@ -39,7 +39,7 @@ for variance_var in [
         np.save(file, val)
 
 for var in [
-        #'conv0_weight',
+        'conv0_weight',
         'bn_data_gamma',
         'bn_data_beta',
 ]:
