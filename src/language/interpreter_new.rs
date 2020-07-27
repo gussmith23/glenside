@@ -481,11 +481,11 @@ where
             };
 
             // Won't always have to be true. Just simplifying right now.
-            assert_eq!(access.tensor.ndim(), 3);
-            assert_eq!(access.access_axis, 3);
-            assert_eq!(filters_shape.ndim(), 3);
+            assert_eq!(access.tensor.ndim(), 3, "access-windows access should have 3 dimensions");
+            assert_eq!(access.access_axis, 3,  "access-windows access should be accessed at dimension 3");
+            assert_eq!(filters_shape.ndim(), 3, "access-windows filters shape should have 3 dimensions");
 
-            assert_eq!(access.tensor.ndim(), filters_shape.ndim());
+            assert_eq!(access.tensor.ndim(), filters_shape.ndim(), "access-windows access and filters should have the same number of dimensions");
 
             // TODO(@gussmith) Need one central place for window-gen logic
             // I'm duplicating this logic between here and language.rs. It
