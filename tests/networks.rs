@@ -206,7 +206,11 @@ fn conv2d(
 
     // TODO(@gussmith23) Layout assumption
     // Move old output/new input channels dimension to the back.
-    let data_id = expr.add(Language::AccessMoveAxis([compute_dot_product_id, usize_0_id, usize_3_id]));
+    let data_id = expr.add(Language::AccessMoveAxis([
+        compute_dot_product_id,
+        usize_0_id,
+        usize_3_id,
+    ]));
 
     data_id
 }
@@ -297,7 +301,6 @@ fn max_pool2d(
 /// See https://github.com/apache/incubator-tvm/blob/0a1c4c2174e1c4a04ca6e40cd90cdf7c2ef1d90a/python/tvm/relay/testing/resnet.py
 #[test]
 fn resnet50_cifar10_nhwc_hwio() {
-
     let mut expr = RecExpr::default();
 
     let data = access_tensor_literal(&mut expr, "image", 4);
