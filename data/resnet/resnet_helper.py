@@ -3,7 +3,7 @@ from tvm import relay
 from tvm.relay.testing import resnet
 import numpy as np
 
-image_shape = (3, 224, 224)
+image_shape = (3, 32, 32)
 
 epsilon = 2e-5
 

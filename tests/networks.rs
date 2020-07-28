@@ -255,13 +255,10 @@ fn max_pool2d(
 
 /// See https://github.com/apache/incubator-tvm/blob/0a1c4c2174e1c4a04ca6e40cd90cdf7c2ef1d90a/python/tvm/relay/testing/resnet.py
 #[test]
-fn resnet50_3_224_224() {
-    // TODO(@gussmith23) delete this comment
-    //             filter_list = [64, 256, 512, 1024, 2048]
+fn resnet50_cifar10_nhwc_hwio() {
 
     let mut expr = RecExpr::default();
 
-    // layout: C x H x W
     let data = access_tensor_literal(&mut expr, "image", 4);
 
     let data = batch_norm_inference(
@@ -272,9 +269,6 @@ fn resnet50_3_224_224() {
         "bn_data_moving_mean_negated",
         "bn_data_moving_var_reciprocal_sqrt_plus_epsilon",
     );
-
-    // conv0_weight should be 3 in, 64 out, kernel size 7x7
-    let data = conv2d(&mut expr, data, "conv0_weight", (2, 2), (3, 3));
 
     println!("{}", expr.pretty(80));
     let mut env = Environment::<f32>::default();
@@ -297,6 +291,8 @@ fn resnet50_3_224_224() {
     let true_result = load_npy::<f32>("data/resnet/result.npy");
     assert_eq!(result.tensor.shape(), true_result.shape());
     assert!(result.tensor.abs_diff_eq(&true_result, 1e-60));
+
+    let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
 
     let data = batch_norm_inference(
         &mut expr,
