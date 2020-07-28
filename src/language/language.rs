@@ -81,6 +81,10 @@ define_language! {
         // Inserts an axis with value 1.
         "shape-insert-axis" = ShapeInsertAxis([Id; 2]),
 
+        // (shape-remove-axis <shape: Shape> <axis: usize>)
+        // Removes axis from shape.
+        "shape-remove-axis" = ShapeRemoveAxis([Id; 2]),
+
         // (access <tensor> <dim>)
         // The most basic access pattern.
         // Let <tensor> have dims d0, .., dn.
@@ -763,6 +767,26 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                 })
             }
+            &ShapeRemoveAxis([shape_id, dim_id]) => {
+                let shape = MyAnalysis::get_shape_of_value(shape_id, egraph);
+                let dim = MyAnalysis::get_usize(dim_id, egraph);
+                assert!(
+                    dim < shape.ndim(),
+                    "Invalid dimension {} for shape {:?}",
+                    dim,
+                    shape
+                );
+                MyAnalysisData::Shape(ShapeData {
+                    shape: IxDyn(
+                        shape.slice()[..dim]
+                            .iter()
+                            .chain(shape.slice()[dim + 1..].iter())
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    ),
+                })
+            }
             &Access([tensor_or_access_id, dim_id]) => {
                 // TODO(@gussmith23) How to access tensor literals?
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
@@ -1241,6 +1265,54 @@ mod tests {
             MyAnalysis::get_shape_of_value(id, &egraph),
             &IxDyn(&[1, 2, 3, 1])
         );
+    }
+
+    #[test]
+    fn shape_remove_axis_0() {
+        let program = "
+         (shape-remove-axis (shape 1 2 3) 0)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape_of_value(id, &egraph), &IxDyn(&[2, 3]));
+    }
+
+    #[test]
+    fn shape_remove_axis_1() {
+        let program = "
+         (shape-remove-axis (shape 1 2 3) 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape_of_value(id, &egraph), &IxDyn(&[1, 3]));
+    }
+
+    #[test]
+    fn shape_remove_axis_2() {
+        let program = "
+         (shape-remove-axis (shape 1 2 3) 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let id = egraph.add_expr(&program);
+        assert_eq!(MyAnalysis::get_shape_of_value(id, &egraph), &IxDyn(&[1, 2]));
+    }
+
+    #[test]
+    #[should_panic]
+    fn shape_remove_axis_panic() {
+        let program = "
+         (shape-remove-axis (shape 1 2 3) 3)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        egraph.add_expr(&program);
     }
 
     #[test]
