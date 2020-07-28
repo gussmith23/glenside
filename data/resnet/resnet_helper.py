@@ -17,7 +17,6 @@ image = np.random.rand(1, *image_shape).astype('float32')
 with open('image.npy', 'wb') as file:
     np.save(file, image)
 
-
 # Preprocess mean
 for mean_var in [
         'bn_data_moving_mean',
@@ -34,8 +33,10 @@ for variance_var in [
     val = params[variance_var].asnumpy()
     val = val + epsilon
     val = np.sqrt(val)
-    val = 1/val
-    with open(variance_var + '_reciprocal_sqrt_plus_epsilon' + '.npy', 'wb') as file:
+    val = 1 / val
+    with open(variance_var + '_reciprocal_sqrt_plus_epsilon' + '.npy',
+              'wb') as file:
+        np.save(file, val)
         np.save(file, val)
 
 for var in [
