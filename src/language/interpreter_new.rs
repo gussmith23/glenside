@@ -577,6 +577,24 @@ where
             }
             _ => panic!(),
         },
+        &Language::ShapeInsertAxis([shape_id, axis_id]) => match (
+            interpret(expr, shape_id as usize, env),
+            interpret(expr, axis_id as usize, env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                assert!(u <= s.ndim());
+                Value::Shape(IxDyn(
+                    s.slice()[..u]
+                        .iter()
+                        .chain(std::iter::once(&1))
+                        .chain(s.slice()[u..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ))
+            }
+            _ => panic!(),
+        },
         &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id as usize, env) {
             Value::Tensor(t) => Value::Shape(IxDyn(t.shape())),
             _ => panic!(),
@@ -1119,6 +1137,56 @@ mod tests {
             Value::Shape(s) => assert_eq!(s, IxDyn(&[])),
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn shape_insert_axis_0() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 0)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_insert_axis_1() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 1)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 1, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_insert_axis_2() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 2)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3, 1])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn shape_insert_axis_panic() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 3)").unwrap();
+        interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        );
     }
 
     #[test]
