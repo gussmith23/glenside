@@ -36,6 +36,7 @@ fn interpret_conv2d() {
         )
         .as_str(),
     );
+    assert_eq!(filters.shape(), &[8, 4, 3, 3]);
     let activations = load_npy::<f32>(
         format!(
             "{}/{}",
@@ -44,6 +45,7 @@ fn interpret_conv2d() {
         )
         .as_str(),
     );
+    assert_eq!(activations.shape(), &[4, 32, 32]);
     let result = load_npy::<f32>(
         format!(
             "{}/{}",
@@ -52,6 +54,7 @@ fn interpret_conv2d() {
         )
         .as_str(),
     );
+    assert_eq!(result.shape(), &[8, 30, 30]);
 
     let mut env = Environment::new();
     env.insert("filters", filters);
