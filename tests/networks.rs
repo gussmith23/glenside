@@ -102,6 +102,12 @@ fn batch_norm_inference(
     let data_id = compute_pair(expr, ComputeType::ElementwiseMul, data_id, gamma_id);
     let data_id = compute_pair(expr, ComputeType::ElementwiseAdd, data_id, beta_id);
 
+    // TODO(@gussmith23) Layout assumption
+    // Convert from the result (NCHW) to NHWC
+    let usize_1_id = expr.add(Language::Usize(1));
+    let usize_3_id = expr.add(Language::Usize(3));
+    let data_id = expr.add(Language::AccessMoveAxis([data_id, usize_1_id, usize_3_id]));
+
     data_id
 }
 
@@ -112,9 +118,11 @@ fn conv2d(
     (stride_h, stride_w): (usize, usize),
     (pad_h, pad_w): (usize, usize),
 ) -> u32 {
+    let usize_0_id = expr.add(Language::Usize(0));
     let usize_1_id = expr.add(Language::Usize(1));
     let usize_2_id = expr.add(Language::Usize(2));
     let usize_3_id = expr.add(Language::Usize(3));
+    let usize_4_id = expr.add(Language::Usize(4));
     let (usize_stride_h, usize_stride_w) = (
         expr.add(Language::Usize(stride_h)),
         expr.add(Language::Usize(stride_w)),
@@ -127,10 +135,16 @@ fn conv2d(
     let zero_pad_id = expr.add(Language::PadType(PadType::ZeroPadding));
 
     let weights_id = expr.add(Language::Symbol(weights_name.to_string()));
-    let shape_of_id = expr.add(Language::ShapeOf([weights_id]));
-    let slice_shape_id = expr.add(Language::SliceShape([shape_of_id, usize_1_id]));
+    let weights_shape_id = expr.add(Language::ShapeOf([weights_id]));
+    // TODO(@gussmith23) Assuming output channels is the last dimension
+    let weights_shape_id = expr.add(Language::ShapeRemoveAxis([weights_shape_id, usize_3_id]));
+    // TODO(@gussmith23) Assuming batch is the first dimension
+    let weights_shape_id = expr.add(Language::ShapeInsertAxis([weights_shape_id, usize_0_id]));
 
-    let data_id = expr.add(Language::Access([data_id, usize_3_id]));
+    // Access data at last location, assuming 4 dimensions.
+    // TODO(@gussmith23) Assuming 4 dimensions
+    let data_id = expr.add(Language::Access([data_id, usize_4_id]));
+    // TODO(@gussmith23) Layout assumption
     let pad_h_id = expr.add(Language::AccessPad([
         data_id,
         zero_pad_id,
@@ -138,6 +152,7 @@ fn conv2d(
         usize_pad_h,
         usize_pad_h,
     ]));
+    // TODO(@gussmith23) Layout assumption
     let pad_w_id = expr.add(Language::AccessPad([
         pad_h_id,
         zero_pad_id,
@@ -146,18 +161,40 @@ fn conv2d(
         usize_pad_w,
     ]));
 
+    // TODO(@gussmith23) Layout assumption
     let stride_shape_id = expr.add(Language::Shape(Box::new([
+        // N
+        usize_1_id,
+        // H
         usize_stride_h,
+        // W
         usize_stride_w,
+        // C
         usize_1_id,
     ])));
     let access_windows_id = expr.add(Language::AccessWindows([
         pad_w_id,
-        slice_shape_id,
+        weights_shape_id,
         stride_shape_id,
     ]));
+    // TODO(@gussmith23) Layout assumption
+    // Squeeze both the (now collapsed to 1) input channels dimension and the
+    // batch dimension of the filters.
+    let access_windows_id = expr.add(Language::AccessSqueeze([access_windows_id, usize_3_id]));
+    let access_windows_id = expr.add(Language::AccessSqueeze([access_windows_id, usize_3_id]));
+    // Access at the start of the filters.
+    let access_windows_id = expr.add(Language::Access([access_windows_id, usize_3_id]));
 
-    let access_weights_id = access_tensor_literal(expr, weights_name, 1);
+    // Access at H.
+    // TODO(@gussmith23) Layout assumption
+    let access_weights_id = access_tensor_literal(expr, weights_name, 0);
+    // Weights are in HWIO. Move O to first to get access pat [O] [H, W, I]
+    // TODO(@gussmith23) Layout assumption
+    let access_weights_id = expr.add(Language::AccessMoveAxis([
+        access_weights_id,
+        usize_3_id,
+        usize_0_id,
+    ]));
 
     let access_cartesian_product_id = expr.add(Language::AccessCartesianProduct([
         access_weights_id,
@@ -167,7 +204,11 @@ fn conv2d(
     let compute_dot_product_id =
         compute(expr, ComputeType::DotProduct, access_cartesian_product_id);
 
-    compute_dot_product_id
+    // TODO(@gussmith23) Layout assumption
+    // Move old output/new input channels dimension to the back.
+    let data_id = expr.add(Language::AccessMoveAxis([compute_dot_product_id, usize_0_id, usize_3_id]));
+
+    data_id
 }
 
 fn relu(expr: &mut Expr, data_id: u32) -> u32 {
@@ -270,6 +311,8 @@ fn resnet50_cifar10_nhwc_hwio() {
         "bn_data_moving_var_reciprocal_sqrt_plus_epsilon",
     );
 
+    let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
+
     println!("{}", expr.pretty(80));
     let mut env = Environment::<f32>::default();
     env.insert("image", load_npy("data/resnet/image.npy"));
@@ -290,9 +333,7 @@ fn resnet50_cifar10_nhwc_hwio() {
     };
     let true_result = load_npy::<f32>("data/resnet/result.npy");
     assert_eq!(result.tensor.shape(), true_result.shape());
-    assert!(result.tensor.abs_diff_eq(&true_result, 1e-60));
-
-    let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
+    assert!(result.tensor.abs_diff_eq(&true_result, 5e-7));
 
     let data = batch_norm_inference(
         &mut expr,

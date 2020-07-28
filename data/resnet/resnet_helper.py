@@ -37,19 +37,30 @@ for variance_var in [
     with open(variance_var + '_reciprocal_sqrt_plus_epsilon' + '.npy',
               'wb') as file:
         np.save(file, val)
+
+# preprocess convolution weights
+for conv_var in [
+        #        'conv0_weight',
+]:
+    val = params[conv_var].asnumpy()
+    # convert from OIHW to HWIO
+    val = np.moveaxis(val, 0, 3)
+    val = np.moveaxis(val, 0, 2)
+    with open(conv_var + '.npy', 'wb') as file:
         np.save(file, val)
 
 for var in [
-        'conv0_weight',
         'bn_data_gamma',
         'bn_data_beta',
 ]:
     with open(var + '.npy', 'wb') as file:
         np.save(file, params[var].asnumpy())
 
-
 ex = relay.create_executor(mod=model)
 result = ex.evaluate()(image, **params)
 
+# preprocess result:  convert to NHWC
+result = result.asnumpy()
+result = np.moveaxis(result, 1, 3)
 with open('result.npy', 'wb') as file:
-    np.save(file, result.asnumpy())
+    np.save(file, result)
