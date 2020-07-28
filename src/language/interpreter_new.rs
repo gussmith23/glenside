@@ -554,6 +554,7 @@ where
                 // This already bit me. I forgot to update it when I changed the
                 // access-windows semantics, and it took me a bit to find the
                 // bug.
+                // Actually, at this point, I'm pretty sure this is just wrong.
                 access_axis: 3,
             })
         }
