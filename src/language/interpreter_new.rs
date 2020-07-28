@@ -505,7 +505,6 @@ where
                         .as_slice(),
                 ),
             );
-            println!("{:?}", out_shape);
 
             let mut result = ArrayD::<DataType>::zeros(
                 out_shape
@@ -514,7 +513,6 @@ where
                     .chain(std::iter::once(filters_shape.slice().iter().product()))
                     .collect::<Vec<_>>(),
             );
-            println!("{:?}", result.shape());
 
             Zip::from(result.genrows_mut())
                 .and(access.tensor.windows(filters_shape.clone()))
