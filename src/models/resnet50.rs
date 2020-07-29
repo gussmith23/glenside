@@ -1,8 +1,5 @@
+use crate::language::{ComputeType, Language, PadType};
 use egg::RecExpr;
-use crate::language::{
-    ComputeType, Language,
-    PadType,
-};
 
 type Expr = RecExpr<Language>;
 
