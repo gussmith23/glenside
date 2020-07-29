@@ -417,7 +417,8 @@ where
 
             assert_eq!(
                 a0.tensor.shape()[a0.access_axis..],
-                a1.tensor.shape()[a1.access_axis..]
+                a1.tensor.shape()[a1.access_axis..],
+                "Expected item shapes to match"
             );
 
             let reshaped_0 = a0
