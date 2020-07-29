@@ -375,8 +375,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
                 let shape = match &egraph[shape_id].data {
-                    MyAnalysisData::Shape(s) => s,
-                    _ => panic!("Expected shape as second argument of access-broadcast"),
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(
+                        "Expected access shape as second argument of access-broadcast, got {:?}",
+                        egraph[shape_id]
+                    ),
                 };
 
                 let new_shape = access
@@ -384,7 +387,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .slice()
                     .iter()
                     .chain(access.item_shape.slice().iter())
-                    .zip(shape.shape.slice().iter())
+                    .zip(
+                        shape
+                            .shape
+                            .slice()
+                            .iter()
+                            .chain(shape.item_shape.slice().iter()),
+                    )
                     .map(|(broadcast_from_dim, broadcast_to_dim): (&usize, &usize)| {
                         assert!(*broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim);
                         *broadcast_to_dim
@@ -2247,11 +2256,14 @@ mod tests {
     // TODO(@gussmith) More access-broadcast tests
     fn access_broadcast() {
         let program = "
-         (access-broadcast (access (access-tensor t-1-2-3-4) 1) (shape 2 2 3 4))
+         (access-broadcast (access (access-tensor t-1-2-3-4) 1) (get-access-shape (access (access-tensor t) 1)))
          "
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![2, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
