@@ -171,19 +171,20 @@ where
             )
             .unwrap();
 
-            access.access_axis = if access.access_axis < src_axis && access.access_axis < dst_axis {
-                access.access_axis
-            } else if access.access_axis == src_axis {
-                dst_axis
-            } else if access.access_axis > src_axis && access.access_axis <= dst_axis {
-                access.access_axis - 1
-            } else if access.access_axis >= dst_axis && access.access_axis < src_axis {
-                access.access_axis + 1
-            } else if access.access_axis > src_axis && access.access_axis > dst_axis {
-                access.access_axis
-            } else {
-                unreachable!()
-            };
+            // Changing the semantics: access axis doesn't change.
+            // access.access_axis = if access.access_axis < src_axis && access.access_axis < dst_axis {
+            //     access.access_axis
+            // } else if access.access_axis == src_axis {
+            //     dst_axis
+            // } else if access.access_axis > src_axis && access.access_axis <= dst_axis {
+            //     access.access_axis - 1
+            // } else if access.access_axis >= dst_axis && access.access_axis < src_axis {
+            //     access.access_axis + 1
+            // } else if access.access_axis > src_axis && access.access_axis > dst_axis {
+            //     access.access_axis
+            // } else {
+            //     unreachable!()
+            // };
 
             Value::Access(access)
         }
@@ -1823,7 +1824,7 @@ mod tests {
                 access_axis,
             }) => {
                 assert_eq!(tensor, array![[1], [2]].into_dyn());
-                assert_eq!(access_axis, 1);
+                assert_eq!(access_axis, 0);
             }
             _ => panic!(),
         }
@@ -1843,7 +1844,7 @@ mod tests {
                 access_axis,
             }) => {
                 assert_eq!(tensor, array![[1], [2]].into_dyn());
-                assert_eq!(access_axis, 1);
+                assert_eq!(access_axis, 0);
             }
             _ => panic!(),
         }

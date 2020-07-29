@@ -261,13 +261,15 @@ fn conv2d(
     // Access at H.
     // TODO(@gussmith23) Layout assumption
     let access_weights_id = access_tensor_literal(expr, weights_name, 0);
-    // Weights are in HWIO. Move O to first to get access pat [O] [H, W, I]
+    // Weights are in HWIO. Move O to first position.
     // TODO(@gussmith23) Layout assumption
     let access_weights_id = expr.add(Language::AccessMoveAxis([
         access_weights_id,
         usize_3_id,
         usize_0_id,
     ]));
+    // Re-access to get [O] [HWI]
+    let access_weights_id = access(expr, access_weights_id, 1);
 
     let access_cartesian_product_id = expr.add(Language::AccessCartesianProduct([
         access_weights_id,

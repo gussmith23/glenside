@@ -95,6 +95,10 @@ define_language! {
 
         // (access-move-axis <access> <axis (usize)> <dest (usize)>)
         // Move <axis> so it is now <dest>, shifting other axes as needed.
+        // TODO(@gussmith23) Nail down access-move-axis semantics
+        // Specifically, how does the access axis move based on the moved axes?
+        // I think the easiest thing to do is to is the dumbest: don't move the
+        // access axis.
         "access-move-axis" = AccessMoveAxis([Id; 3]),
 
         // (access-cartesian-product <access1> <access2>)
