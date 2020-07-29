@@ -398,9 +398,6 @@ fn resnet50_cifar10_nhwc_hwio() {
 
     let data = conv2d(&mut expr, data, "conv0_weight", (1, 1), (1, 1));
 
-    let data = residual_unit(&mut expr, data, (1, 1), false, true, "stage1_unit1");
-
-    //println!("{}", expr.pretty(80));
     let mut env = Environment::<f32>::default();
     env.insert("image", load_npy("data/resnet/image.npy"));
     for var in &[
@@ -417,7 +414,6 @@ fn resnet50_cifar10_nhwc_hwio() {
     ] {
         env.insert(var, load_npy(&format!("data/resnet/{}.npy", var)));
     }
-    return;
     let result = match interpret(&expr, data as usize, &env) {
         Value::Access(a) => a,
         _ => panic!(),
@@ -425,4 +421,6 @@ fn resnet50_cifar10_nhwc_hwio() {
     let true_result = load_npy::<f32>("data/resnet/result.npy");
     assert_eq!(result.tensor.shape(), true_result.shape());
     assert!(result.tensor.abs_diff_eq(&true_result, 5e-7));
+
+    let _data = residual_unit(&mut expr, data, (1, 1), false, true, "stage1_unit1");
 }
