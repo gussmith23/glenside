@@ -17,8 +17,8 @@ pub fn residual_unit(
             data_id,
             format!("{}_bn1_gamma", name).as_str(),
             format!("{}_bn1_beta", name).as_str(),
-            format!("{}_bn1_moving_mean", name).as_str(),
-            format!("{}_bn1_moving_var", name).as_str(),
+            format!("{}_bn1_moving_mean_negated", name).as_str(),
+            format!("{}_bn1_moving_var_reciprocal_sqrt_plus_epsilon", name).as_str(),
         );
         let act1_id = relu(expr, bn1_id);
         let conv1_id = conv2d(
@@ -33,8 +33,8 @@ pub fn residual_unit(
             conv1_id,
             format!("{}_bn2_gamma", name).as_str(),
             format!("{}_bn2_beta", name).as_str(),
-            format!("{}_bn2_moving_mean", name).as_str(),
-            format!("{}_bn2_moving_var", name).as_str(),
+            format!("{}_bn2_moving_mean_negated", name).as_str(),
+            format!("{}_bn2_moving_var_reciprocal_sqrt_plus_epsilon", name).as_str(),
         );
         let act2_id = relu(expr, bn2_id);
         let conv2_id = conv2d(
@@ -49,8 +49,8 @@ pub fn residual_unit(
             conv2_id,
             format!("{}_bn3_gamma", name).as_str(),
             format!("{}_bn3_beta", name).as_str(),
-            format!("{}_bn3_moving_mean", name).as_str(),
-            format!("{}_bn3_moving_var", name).as_str(),
+            format!("{}_bn3_moving_mean_negated", name).as_str(),
+            format!("{}_bn3_moving_var_reciprocal_sqrt_plus_epsilon", name).as_str(),
         );
         let act3_id = relu(expr, bn3_id);
         let conv3_id = conv2d(
