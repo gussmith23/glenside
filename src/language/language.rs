@@ -452,7 +452,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let axis = MyAnalysis::get_usize(axis_id, egraph);
                 use ndarray::RemoveAxis;
                 if axis < access.shape.ndim() {
-                    assert_eq!(access.shape[axis], 1);
+                    assert_eq!(
+                        access.shape[axis], 1,
+                        "Expected axis {} of {:?} to be 1",
+                        axis, access.shape
+                    );
                     access.shape = access.shape.remove_axis(ndarray::Axis(axis));
                 } else {
                     assert_eq!(access.item_shape[axis - access.shape.ndim()], 1);
