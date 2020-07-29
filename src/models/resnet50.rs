@@ -3,7 +3,7 @@ use egg::RecExpr;
 
 type Expr = RecExpr<Language>;
 
-fn residual_unit(
+pub fn residual_unit(
     expr: &mut Expr,
     data_id: u32,
     stride: (usize, usize),
@@ -85,7 +85,7 @@ fn residual_unit(
     }
 }
 
-fn access_tensor_literal(expr: &mut Expr, name: &str, access_axis: usize) -> u32 {
+pub fn access_tensor_literal(expr: &mut Expr, name: &str, access_axis: usize) -> u32 {
     // <usize>
     let usize_literal_id = expr.add(Language::Usize(access_axis));
     // <tensor>
@@ -128,7 +128,7 @@ fn access_broadcast(expr: &mut Expr, access_id: u32, shape_id: u32) -> u32 {
 /// Inference-time batch normalization. Adds in mean and multiplies by variance.
 /// This means that the mean should be negated beforehand and the reciprocal of
 /// the sqrt of the variance (plus epsilon) should be taken.
-fn batch_norm_inference(
+pub fn batch_norm_inference(
     expr: &mut Expr,
     data_id: u32,
     gamma_name: &str,
@@ -184,7 +184,7 @@ fn batch_norm_inference(
     data_id
 }
 
-fn conv2d(
+pub fn conv2d(
     expr: &mut Expr,
     data_id: u32,
     weights_name: &str,
