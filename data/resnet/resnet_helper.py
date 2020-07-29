@@ -40,7 +40,10 @@ for variance_var in [
 
 # preprocess convolution weights
 for conv_var in [
-        #        'conv0_weight',
+        'conv0_weight',
+        'stage1_unit1_conv1_weight',
+        'stage1_unit1_conv2_weight',
+        'stage1_unit1_conv3_weight',
 ]:
     val = params[conv_var].asnumpy()
     # convert from OIHW to HWIO
