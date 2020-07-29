@@ -396,7 +396,8 @@ pub fn resnet50_cifar10_nhwc_hwio() -> (RecExpr<Language>, u32) {
 
 #[cfg(test)]
 mod tests {
-    use crate::language::MyAnalysis;
+    use crate::language::{MyAnalysis, MyAnalysisData};
+    use ndarray::Dimension;
     use std::collections::HashMap;
     #[test]
     fn incomplete_resnet50_cifar10_nhwc_hwio_in_egraph() {
@@ -440,7 +441,21 @@ mod tests {
         map.insert("stage1_unit1_bn3_gamma".to_string(), vec![64]);
         map.insert("stage1_unit1_bn3_beta".to_string(), vec![64]);
 
-        egg::EGraph::new(MyAnalysis { name_to_shape: map })
-            .add_expr(&super::resnet50_cifar10_nhwc_hwio().0);
+        let mut egraph = egg::EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&super::resnet50_cifar10_nhwc_hwio().0);
+
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                let shape = a
+                    .shape
+                    .slice()
+                    .iter()
+                    .chain(a.item_shape.slice().iter())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                assert_eq!(shape, vec![1, 32, 32, 256]);
+            }
+            _ => panic!(),
+        }
     }
 }
