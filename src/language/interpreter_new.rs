@@ -22,6 +22,9 @@ pub struct Access<DataType> {
 
 pub type Environment<'a, DataType> = HashMap<&'a str, ArrayD<DataType>>;
 
+// TODO(@gussmith23) Interpreter stack overflows on large programs
+// If I want to interpret something like a full resnet, then I will have to
+// figure out a way around the stack overflows.
 pub fn interpret<DataType>(
     expr: &RecExpr<Language>,
     index: usize,
