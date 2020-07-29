@@ -1332,9 +1332,9 @@ mod tests {
             super::collapse_nested_slices(),
         ];
 
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1383,9 +1383,9 @@ mod tests {
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
 
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1402,9 +1402,9 @@ mod tests {
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
 
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1421,9 +1421,9 @@ mod tests {
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
 
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1452,9 +1452,9 @@ mod tests {
         .unwrap();
 
         let rws = vec![super::flatten_unflatten_any_access()];
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1508,9 +1508,9 @@ mod tests {
             super::flatten_unflatten_any_access(),
             super::bubble_reshape_through_cartesian_product(),
         ];
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1566,9 +1566,9 @@ mod tests {
         .parse()
         .unwrap();
         let rws = vec![super::bubble_reshape_through_compute_dot_product()];
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1614,7 +1614,7 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
 
         let rws = vec![
@@ -1624,7 +1624,7 @@ mod tests {
             super::systolic_array(),
         ];
 
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1665,9 +1665,9 @@ mod tests {
             super::collapse_nested_access_slices(),
         ];
 
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1715,10 +1715,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1738,10 +1738,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1761,10 +1761,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1783,10 +1783,10 @@ mod tests {
             "(access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) 1 0 2)"
                 .parse()
                 .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1804,10 +1804,10 @@ mod tests {
         let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0) 0 2)"
             .parse()
             .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1825,10 +1825,10 @@ mod tests {
         let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1) 0 2)"
             .parse()
             .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1846,10 +1846,10 @@ mod tests {
         let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 2) 0 1)"
             .parse()
             .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1867,10 +1867,10 @@ mod tests {
         let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1) 2 0)"
             .parse()
             .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1892,12 +1892,12 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
         ];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1929,12 +1929,12 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
         ];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -1966,12 +1966,12 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
         ];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2003,12 +2003,12 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
         ];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2043,11 +2043,11 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws =
             vec![super::bubble_access_concatenate_through_compute_dot_product_not_item_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2077,10 +2077,10 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_compute_dot_product_item_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2111,10 +2111,10 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_compute_dot_product_item_axis()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2146,10 +2146,10 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2186,10 +2186,10 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_slice()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2214,10 +2214,10 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_slice()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2242,10 +2242,10 @@ mod tests {
              )"
         .parse()
         .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_concatenate_through_access_slice()];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
@@ -2271,13 +2271,13 @@ mod tests {
     #[test]
     fn slice_concatenate_tensor_accesses() {
         let program = "(access-tensor t-32-32)".parse().unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         let rws = vec![
             super::slice_concatenate_tensor_accesses(0, 1),
             super::slice_concatenate_tensor_accesses(1, 1),
         ];
-        let runner = Runner::<_, _, ()>::new(MyAnalysis)
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 

@@ -82,7 +82,7 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph = EGraph::new(MyAnalysis);
+        let mut egraph = EGraph::new(MyAnalysis::default());
         egraph.add_expr(&program);
         egraph.rebuild();
 
@@ -108,7 +108,7 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph = EGraph::new(MyAnalysis);
+        let mut egraph = EGraph::new(MyAnalysis::default());
         egraph.add_expr(&program);
         egraph.rebuild();
 
@@ -137,7 +137,7 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph = EGraph::new(MyAnalysis);
+        let mut egraph = EGraph::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
@@ -168,7 +168,7 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph = EGraph::new(MyAnalysis);
+        let mut egraph = EGraph::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 

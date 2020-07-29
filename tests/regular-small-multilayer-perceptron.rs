@@ -38,9 +38,9 @@ fn regular_small_multilayer_perceptron() {
     ];
 
     // Run the rewrites over the egraph.
-    let mut egraph = EGraph::new(MyAnalysis);
+    let mut egraph = EGraph::new(MyAnalysis::default());
     let id = egraph.add_expr(&program);
-    let runner = Runner::<_, _, ()>::new(MyAnalysis)
+    let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
         .run(&rws);
     println!(
