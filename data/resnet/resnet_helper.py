@@ -14,8 +14,11 @@ model, params = resnet.get_workload(batch_size=1,
                                     dtype='float32')
 
 image = np.random.rand(1, *image_shape).astype('float32')
+
 with open('image.npy', 'wb') as file:
-    np.save(file, image)
+    # Preprocess image: convert to NHWC
+    image_nhwc = np.moveaxis(image, 1, 3)
+    np.save(file, image_nhwc)
 
 # Preprocess mean
 for mean_var in [
@@ -41,9 +44,9 @@ for variance_var in [
 # preprocess convolution weights
 for conv_var in [
         'conv0_weight',
-        'stage1_unit1_conv1_weight',
-        'stage1_unit1_conv2_weight',
-        'stage1_unit1_conv3_weight',
+        # 'stage1_unit1_conv1_weight',
+        # 'stage1_unit1_conv2_weight',
+        # 'stage1_unit1_conv3_weight',
 ]:
     val = params[conv_var].asnumpy()
     # convert from OIHW to HWIO
