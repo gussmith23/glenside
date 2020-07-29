@@ -148,24 +148,28 @@ fn batch_norm_inference(
     let shape_of_data = get_access_shape(expr, data_id);
 
     // <gamma tensor>
+    // TODO(@gussmith23) Layout assumption
     let gamma_id = access_tensor_literal(expr, gamma_name, 1);
     let gamma_id = access_insert_axis(expr, gamma_id, 0);
     let gamma_id = access_insert_axis(expr, gamma_id, 0);
     let gamma_id = access_insert_axis(expr, gamma_id, 0);
     let gamma_id = access_broadcast(expr, gamma_id, shape_of_data);
     // <beta tensor>
+    // TODO(@gussmith23) Layout assumption
     let beta_id = access_tensor_literal(expr, beta_name, 1);
     let beta_id = access_insert_axis(expr, beta_id, 0);
     let beta_id = access_insert_axis(expr, beta_id, 0);
     let beta_id = access_insert_axis(expr, beta_id, 0);
     let beta_id = access_broadcast(expr, beta_id, shape_of_data);
     // <mean tensor>
+    // TODO(@gussmith23) Layout assumption
     let mean_id = access_tensor_literal(expr, mean_name, 1);
     let mean_id = access_insert_axis(expr, mean_id, 0);
     let mean_id = access_insert_axis(expr, mean_id, 0);
     let mean_id = access_insert_axis(expr, mean_id, 0);
     let mean_id = access_broadcast(expr, mean_id, shape_of_data);
     // <var tensor>
+    // TODO(@gussmith23) Layout assumption
     let var_id = access_tensor_literal(expr, var_name, 1);
     let var_id = access_insert_axis(expr, var_id, 0);
     let var_id = access_insert_axis(expr, var_id, 0);
