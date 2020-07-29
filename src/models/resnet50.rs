@@ -181,12 +181,6 @@ fn batch_norm_inference(
     let data_id = compute_pair(expr, ComputeType::ElementwiseMul, data_id, gamma_id);
     let data_id = compute_pair(expr, ComputeType::ElementwiseAdd, data_id, beta_id);
 
-    // TODO(@gussmith23) Layout assumption
-    // Convert from the result (NCHW) to NHWC
-    let usize_1_id = expr.add(Language::Usize(1));
-    let usize_3_id = expr.add(Language::Usize(3));
-    let data_id = expr.add(Language::AccessMoveAxis([data_id, usize_1_id, usize_3_id]));
-
     data_id
 }
 
