@@ -395,7 +395,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .chain(shape.item_shape.slice().iter()),
                     )
                     .map(|(broadcast_from_dim, broadcast_to_dim): (&usize, &usize)| {
-                        assert!(*broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim);
+                        assert!(
+                            *broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim,
+                            "Expected broadcast_from_dim to be 1 or {}, got {}",
+                            *broadcast_to_dim,
+                            *broadcast_from_dim
+                        );
                         *broadcast_to_dim
                     })
                     .collect::<Vec<_>>();
