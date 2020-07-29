@@ -393,3 +393,54 @@ pub fn resnet50_cifar10_nhwc_hwio() -> (RecExpr<Language>, u32) {
 
     (expr, data)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::language::MyAnalysis;
+    use std::collections::HashMap;
+    #[test]
+    fn incomplete_resnet50_cifar10_nhwc_hwio_in_egraph() {
+        let mut map = HashMap::default();
+        map.insert("conv0_weight".to_string(), vec![3, 3, 3, 64]);
+        map.insert("stage1_unit1_conv1_weight".to_string(), vec![1, 1, 64, 64]);
+        map.insert("stage1_unit1_conv2_weight".to_string(), vec![3, 3, 64, 64]);
+        map.insert("stage1_unit1_conv3_weight".to_string(), vec![1, 1, 64, 256]);
+        map.insert("stage1_unit1_sc_weight".to_string(), vec![1, 1, 64, 256]);
+        map.insert("image".to_string(), vec![1, 32, 32, 3]);
+
+        map.insert("bn_data_moving_mean_negated".to_string(), vec![3]);
+        map.insert(
+            "bn_data_moving_var_reciprocal_sqrt_plus_epsilon".to_string(),
+            vec![3],
+        );
+        map.insert("bn_data_gamma".to_string(), vec![3]);
+        map.insert("bn_data_beta".to_string(), vec![3]);
+
+        map.insert("stage1_unit1_bn1_moving_mean_negated".to_string(), vec![64]);
+        map.insert(
+            "stage1_unit1_bn1_moving_var_reciprocal_sqrt_plus_epsilon".to_string(),
+            vec![64],
+        );
+        map.insert("stage1_unit1_bn1_gamma".to_string(), vec![64]);
+        map.insert("stage1_unit1_bn1_beta".to_string(), vec![64]);
+
+        map.insert("stage1_unit1_bn2_moving_mean_negated".to_string(), vec![64]);
+        map.insert(
+            "stage1_unit1_bn2_moving_var_reciprocal_sqrt_plus_epsilon".to_string(),
+            vec![64],
+        );
+        map.insert("stage1_unit1_bn2_gamma".to_string(), vec![64]);
+        map.insert("stage1_unit1_bn2_beta".to_string(), vec![64]);
+
+        map.insert("stage1_unit1_bn3_moving_mean_negated".to_string(), vec![64]);
+        map.insert(
+            "stage1_unit1_bn3_moving_var_reciprocal_sqrt_plus_epsilon".to_string(),
+            vec![64],
+        );
+        map.insert("stage1_unit1_bn3_gamma".to_string(), vec![64]);
+        map.insert("stage1_unit1_bn3_beta".to_string(), vec![64]);
+
+        egg::EGraph::new(MyAnalysis { name_to_shape: map })
+            .add_expr(&super::resnet50_cifar10_nhwc_hwio().0);
+    }
+}
