@@ -150,26 +150,26 @@ fn batch_norm_inference(
     // <gamma tensor>
     let gamma_id = access_tensor_literal(expr, gamma_name, 1);
     let gamma_id = access_insert_axis(expr, gamma_id, 0);
-    let gamma_id = access_insert_axis(expr, gamma_id, 2);
-    let gamma_id = access_insert_axis(expr, gamma_id, 3);
+    let gamma_id = access_insert_axis(expr, gamma_id, 0);
+    let gamma_id = access_insert_axis(expr, gamma_id, 0);
     let gamma_id = access_broadcast(expr, gamma_id, shape_of_data);
     // <beta tensor>
     let beta_id = access_tensor_literal(expr, beta_name, 1);
     let beta_id = access_insert_axis(expr, beta_id, 0);
-    let beta_id = access_insert_axis(expr, beta_id, 2);
-    let beta_id = access_insert_axis(expr, beta_id, 3);
+    let beta_id = access_insert_axis(expr, beta_id, 0);
+    let beta_id = access_insert_axis(expr, beta_id, 0);
     let beta_id = access_broadcast(expr, beta_id, shape_of_data);
     // <mean tensor>
     let mean_id = access_tensor_literal(expr, mean_name, 1);
     let mean_id = access_insert_axis(expr, mean_id, 0);
-    let mean_id = access_insert_axis(expr, mean_id, 2);
-    let mean_id = access_insert_axis(expr, mean_id, 3);
+    let mean_id = access_insert_axis(expr, mean_id, 0);
+    let mean_id = access_insert_axis(expr, mean_id, 0);
     let mean_id = access_broadcast(expr, mean_id, shape_of_data);
     // <var tensor>
     let var_id = access_tensor_literal(expr, var_name, 1);
     let var_id = access_insert_axis(expr, var_id, 0);
-    let var_id = access_insert_axis(expr, var_id, 2);
-    let var_id = access_insert_axis(expr, var_id, 3);
+    let var_id = access_insert_axis(expr, var_id, 0);
+    let var_id = access_insert_axis(expr, var_id, 0);
     let var_id = access_broadcast(expr, var_id, shape_of_data);
 
     let data_id = compute_pair(expr, ComputeType::ElementwiseAdd, data_id, mean_id);
