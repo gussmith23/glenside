@@ -23,6 +23,9 @@ with open('image.npy', 'wb') as file:
 # Preprocess mean
 for mean_var in [
         'bn_data_moving_mean',
+        # 'stage1_unit1_bn1_moving_mean',
+        # 'stage1_unit1_bn2_moving_mean',
+        # 'stage1_unit1_bn3_moving_mean',
 ]:
     val = params[mean_var].asnumpy()
     val = -val
@@ -47,6 +50,7 @@ for conv_var in [
         # 'stage1_unit1_conv1_weight',
         # 'stage1_unit1_conv2_weight',
         # 'stage1_unit1_conv3_weight',
+        # 'stage1_unit1_sc_weight',
 ]:
     val = params[conv_var].asnumpy()
     # convert from OIHW to HWIO
