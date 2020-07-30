@@ -59,11 +59,60 @@ impl CostFunction<Language> for MonolithicCostFunction<'_> {
     }
 }
 
+/// This cost function applies the bare minimum amount of logic to produce a
+/// valid hardware/software program. Most importantly, it blocks Compute nodes
+/// from being extracted, as these nodes should be replaced by hardware atoms
+/// (or, perhaps in the future, kernel calls). It also filters out old Glenside
+/// constructs.
+pub struct SimpleCostFunction;
+impl CostFunction<Language> for SimpleCostFunction {
+    type Cost = usize;
+
+    fn cost<C>(&mut self, enode: &Language, mut costs: C) -> Self::Cost
+    where
+        C: FnMut(Id) -> Self::Cost,
+    {
+        use crate::language::Language::*;
+        let base_cost = match enode {
+            // Cannot extract compute: compute must be lowered to an atom.
+            Compute(_) => std::usize::MAX,
+            // Extracting hardware atoms is encouraged.
+            SystolicArray(_) => 1,
+            // Extracting various access patterns is essential.
+            AccessWindows(_)
+            | Access(_)
+            | AccessMoveAxis(_)
+            | AccessCartesianProduct(_)
+            | AccessReshape(_)
+            | AccessFlatten(_)
+            | AccessSlice(_)
+            | AccessConcatenate(_)
+            | AccessPair(_)
+            | AccessShiftRight(_)
+            | AccessTensor(_)
+            | AccessSqueeze(_)
+            | AccessPad(_)
+            | AccessInsertAxis(_)
+            | AccessBroadcast(_) => 1,
+            // Other glenside constructs that are necessary.
+            Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
+            | GetAccessShape(_) | AccessShape(_) | Usize(_) | PadType(_) | ComputeType(_)
+            | Symbol(_) => 1,
+            // Old constructs that are no longer used
+            MoveAxis(_) | CartesianProduct(_) | MapDotProduct(_) | Slice(_) | Concatenate(_)
+            | ElementwiseAdd(_) | BsgSystolicArray(_) => std::usize::MAX,
+        };
+
+        enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::language::MyAnalysis;
     use super::*;
     use egg::{EGraph, Extractor};
+    use std::collections::HashMap;
 
     #[test]
     fn find_systolic_array_configs() {
@@ -195,6 +244,68 @@ mod tests {
            t-32-32
            t-32-64
           )
+         )
+         "
+            .parse()
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn simple_cost_function_0() {
+        let mut map = HashMap::default();
+        map.insert("input".to_string(), vec![32]);
+        map.insert("weight0".to_string(), vec![32, 64]);
+        map.insert("weight1".to_string(), vec![64, 128]);
+        map.insert("weight2".to_string(), vec![128, 16]);
+        let program = "
+         (systolic-array 16 128
+          (access
+           (systolic-array 128 64
+            (access
+             (systolic-array 64 32
+              (access (access-tensor input) 0)
+              (access (access-move-axis (access-tensor weight0) 0 1) 1)
+             )
+             0
+            )
+            (access (access-move-axis (access-tensor weight1) 0 1) 1)
+           )
+           0
+          )
+          (access (access-move-axis (access-tensor weight2) 0 1) 1)
+         )
+         "
+        .parse()
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        egraph.rebuild();
+
+        let mut ex = Extractor::new(&egraph, SimpleCostFunction);
+
+        let (cost, best) = ex.find_best(id);
+        assert!(cost < usize::MAX);
+
+        assert_eq!(
+            best,
+            "
+         (systolic-array 16 128
+          (access
+           (systolic-array 128 64
+            (access
+             (systolic-array 64 32
+              (access (access-tensor input) 0)
+              (access (access-move-axis (access-tensor weight0) 0 1) 1)
+             )
+             0
+            )
+            (access (access-move-axis (access-tensor weight1) 0 1) 1)
+           )
+           0
+          )
+          (access (access-move-axis (access-tensor weight2) 0 1) 1)
          )
          "
             .parse()
