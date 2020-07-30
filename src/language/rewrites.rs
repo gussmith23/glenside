@@ -762,20 +762,24 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
             assert_eq!(a.item_shape.ndim(), 1);
             assert_eq!(b.shape.ndim(), 1);
             assert_eq!(b.item_shape.ndim(), 1);
-            let rows: usize = b.shape.as_array_view()[0];
-            let cols: usize = b.item_shape.as_array_view()[0];
+            let rows: usize = b.item_shape.slice()[0];
+            let cols: usize = b.shape.slice()[0];
 
-            let pattern: Pattern<Language> =
-                format!("(systolic-array {} {} ?access-1 ?access-2)", rows, cols)
-                    .parse()
-                    .unwrap();
+            let pattern: Pattern<Language> = format!(
+                "(systolic-array {} {}
+                          ?access-1
+                          (access (access-transpose ?access-2 (list 1 0)) 0)
+                         )",
+                rows, cols
+            )
+            .parse()
+            .unwrap();
 
             pattern.apply_one(egraph, eclass, subst)
         }
     }
 
     rewrite!("systolic-array";
-             // TODO(@gussmith23) should check that ?a is a vector.
              "(compute dot-product
                (access-cartesian-product
                 ?access-1
@@ -784,8 +788,10 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
               )
              " =>
              { ApplierImpl{a: "?access-1".parse().unwrap(), b: "?access-2".parse().unwrap(),}}
-             if constrain_access("?access-1".parse().unwrap(), |a| a.shape.ndim() <= 1 && a.item_shape.ndim() == 1)
-             if constrain_access("?access-2".parse().unwrap(), |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
+             if constrain_access("?access-1".parse().unwrap(),
+                                 |a| a.shape.ndim() <= 1 && a.item_shape.ndim() == 1)
+             if constrain_access("?access-2".parse().unwrap(),
+                                 |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
 }
 
 pub fn slice_concatenate_accesses(
@@ -1630,17 +1636,23 @@ mod tests {
 
         let matches = "
             (access-reshape
-             (systolic-array 900 27
+             (systolic-array 27 900
               (access-flatten (access (access-tensor t-8-3-3-3) 1))
-              (access-flatten
-               (access-squeeze
-                (access-windows
-                 (access (access-tensor t-3-32-32) 3)
-                 (slice-shape (shape-of t-8-3-3-3) 1)
-                 (shape 1 1 1)
+              (access
+               (access-transpose
+                (access-flatten
+                 (access-squeeze
+                  (access-windows
+                   (access (access-tensor t-3-32-32) 3)
+                   (slice-shape (shape-of t-8-3-3-3) 1)
+                   (shape 1 1 1)
+                  )
+                  0
+                 )
                 )
-                0
+                (list 1 0)
                )
+               0
               )
              )
              ?shape

@@ -96,21 +96,39 @@ fn regular_multilayer_perceptron() {
     );
 
     // Find the monolithic program.
-    "(systolic-array 16 128
+    "(systolic-array 128 16
       (access
-       (systolic-array 128 64
+       (systolic-array 64 128
         (access
-         (systolic-array 64 32
+         (systolic-array 32 64
           (access (access-tensor v-32) 0)
-          (access-move-axis (access (access-tensor t-32-64) 1) 1 0)
+          (access
+           (access-transpose
+            (access-move-axis (access (access-tensor t-32-64) 1) 1 0)
+            (list 1 0)
+           )
+           0
+          )
          )
          0
         )
-        (access-move-axis (access (access-tensor t-64-128) 1) 1 0)
+        (access
+         (access-transpose
+          (access-move-axis (access (access-tensor t-64-128) 1) 1 0)
+          (list 1 0)
+         )
+         0
+        )
        )
        0
       )
-      (access-move-axis (access (access-tensor t-128-16) 1) 1 0)
+      (access
+       (access-transpose
+        (access-move-axis (access (access-tensor t-128-16) 1) 1 0)
+        (list 1 0)
+       )
+       0
+      )
      )
      "
     .parse::<Pattern<_>>()

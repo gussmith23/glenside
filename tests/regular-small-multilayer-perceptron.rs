@@ -59,43 +59,61 @@ fn regular_small_multilayer_perceptron() {
       (access-pair
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 0 16
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 0 16
+            )
+            1 0 16
+           )
+           1 0
           )
-          1 0 16
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 16 32
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 16 32
+            )
+            1 0 16
+           )
+           1 0
           )
-          1 0 16
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
       )
      )
      0
     )
-    (access-move-axis
-     (access-slice
-      (access-slice
-       (access (access-tensor t-32-32) 1)
-       0 0 16
+    (access
+     (access-transpose
+      (access-move-axis
+       (access-slice
+        (access-slice
+         (access (access-tensor t-32-32) 1)
+         0 0 16
+        )
+        1 0 16
+       )
+       1 0
       )
-      1 0 16
+      (list 1 0)
      )
-     1 0
+     0
     )
    )
    (systolic-array 16 16
@@ -104,43 +122,61 @@ fn regular_small_multilayer_perceptron() {
       (access-pair
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 0 16
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 0 16
+            )
+            1 16 32
+           )
+           1 0
           )
-          1 16 32
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 16 32
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 16 32
+            )
+            1 16 32
+           )
+           1 0
           )
-          1 16 32
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
       )
      )
      0
     )
-    (access-move-axis
-     (access-slice
-      (access-slice
-       (access (access-tensor t-32-32) 1)
-       0 16 32
+    (access
+     (access-transpose
+      (access-move-axis
+       (access-slice
+        (access-slice
+         (access (access-tensor t-32-32) 1)
+         0 16 32
+        )
+        1 0 16
+       )
+       1 0
       )
-      1 0 16
+      (list 1 0)
      )
-     1 0
+     0
     )
    )
   )
@@ -153,43 +189,61 @@ fn regular_small_multilayer_perceptron() {
       (access-pair
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 0 16
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 0 16
+            )
+            1 0 16
+           )
+           1 0
           )
-          1 0 16
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 16 32
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 16 32
+            )
+            1 0 16
+           )
+           1 0
           )
-          1 0 16
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
       )
      )
      0
     )
-    (access-move-axis
-     (access-slice
-      (access-slice
-       (access (access-tensor t-32-32) 1)
-       0 0 16
+    (access
+     (access-transpose
+      (access-move-axis
+       (access-slice
+        (access-slice
+         (access (access-tensor t-32-32) 1)
+         0 0 16
+        )
+        1 16 32
+       )
+       1 0
       )
-      1 16 32
+      (list 1 0)
      )
-     1 0
+     0
     )
    )
    (systolic-array 16 16
@@ -198,43 +252,61 @@ fn regular_small_multilayer_perceptron() {
       (access-pair
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 0 16
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 0 16
+            )
+            1 16 32
+           )
+           1 0
           )
-          1 16 32
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
        (systolic-array 16 16
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
-        (access-move-axis
-         (access-slice
-          (access-slice
-           (access (access-tensor t-32-32) 1)
-           0 16 32
+        (access
+         (access-transpose
+          (access-move-axis
+           (access-slice
+            (access-slice
+             (access (access-tensor t-32-32) 1)
+             0 16 32
+            )
+            1 16 32
+           )
+           1 0
           )
-          1 16 32
+          (list 1 0)
          )
-         1 0
+         0
         )
        )
       )
      )
      0
     )
-    (access-move-axis
-     (access-slice
-      (access-slice
-       (access (access-tensor t-32-32) 1)
-       0 16 32
+    (access
+     (access-transpose
+      (access-move-axis
+       (access-slice
+        (access-slice
+         (access (access-tensor t-32-32) 1)
+         0 16 32
+        )
+        1 16 32
+       )
+       1 0
       )
-      1 16 32
+      (list 1 0)
      )
-     1 0
+     0
     )
    )
   )
