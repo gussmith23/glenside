@@ -13,6 +13,7 @@ pub enum Value<DataType> {
     ComputeType(ComputeType),
     PadType(PadType),
     AccessShape(IxDyn, usize),
+    List(Vec<usize>),
 }
 
 pub struct Access<DataType> {
@@ -39,6 +40,27 @@ where
         + num_traits::Bounded,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessTranspose([access_id, list_id]) => {
+            let mut access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let list = match interpret(expr, list_id as usize, env) {
+                Value::List(l) => l,
+                _ => panic!(),
+            };
+
+            access.tensor = access.tensor.permuted_axes(list);
+            Value::Access(access)
+        }
+        Language::List(list) => Value::List(
+            list.iter()
+                .map(|id: &u32| match interpret(expr, *id as usize, env) {
+                    Value::Usize(u) => u,
+                    _ => panic!(),
+                })
+                .collect::<Vec<_>>(),
+        ),
         &Language::GetAccessShape(access_id) => {
             let access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -1849,5 +1871,52 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn access_transpose() {
+        let mut env = Environment::new();
+        env.insert("t", array![[2, 3], [1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor t) 0) (list 1 0))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[2, 1], [3, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_transpose_panic_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[2, 3], [1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor t) 0) (list 1 0 2))",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_transpose_panic_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[2, 3], [1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor t) 0) (list 1 1))",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
     }
 }

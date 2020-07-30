@@ -113,6 +113,11 @@ define_language! {
         // access axis.
         "access-move-axis" = AccessMoveAxis([Id; 3]),
 
+        // (access-transpose <a: access> <new-order: list>)
+        // Uses numpy.transpose() semantics. Reorders axes in an access.
+        // Does not change the access dimension.
+        "access-transpose" = AccessTranspose([Id; 2]),
+
         // (access-cartesian-product <access1> <access2>)
         // Cartesian product access pattern.
         // Assume <access1> has shape
@@ -153,6 +158,10 @@ define_language! {
         // (shape <usize>...)
         // Shape literal.
         "shape" = Shape(Box<[Id]>),
+
+        // (list <usize>...)
+        // List literal
+        "list" = List(Box<[Id]>),
 
         // (access-shape <shape: shape> <item-shape: shape>)
         // Access shape literal.
@@ -302,6 +311,7 @@ pub enum MyAnalysisData {
     //Tensor(TensorData),
     ComputeType(ComputeType),
     PadType(PadType),
+    List(Vec<usize>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -385,6 +395,38 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessTranspose([access_id, list_id]) => {
+                let access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+                let list = match &egraph[list_id].data {
+                    MyAnalysisData::List(l) => l,
+                    _ => panic!(),
+                };
+
+                assert_eq!(access.shape.ndim() + access.item_shape.ndim(), list.len());
+                let mut tmp = access
+                    .shape
+                    .slice()
+                    .iter()
+                    .chain(access.item_shape.slice().iter())
+                    .zip(list.iter())
+                    .collect::<Vec<_>>();
+                tmp.sort_by(|a, b| a.1.cmp(b.1));
+                let new_shape = tmp.iter().map(|tuple| tuple.0).cloned().collect::<Vec<_>>();
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&new_shape[..access.shape.ndim()]),
+                    item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
+                })
+            }
+            List(list) => {
+                let list = list
+                    .iter()
+                    .map(|id| MyAnalysis::get_usize(*id, egraph))
+                    .collect::<Vec<_>>();
+                MyAnalysisData::List(list)
+            }
             &AccessBroadcast([access_id, shape_id]) => {
                 let access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
@@ -2355,6 +2397,72 @@ mod tests {
          "
         .parse()
         .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn list() {
+        let program = "
+         (list 1 2 3 4)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::List(l) => assert_eq!(l, &vec![1, 2, 3, 4]),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose() {
+        let program = "
+         (access-transpose (access (access-tensor a) 1) (list 2 0 1))
+         "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 5, 6]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[5]));
+                assert_eq!(a.item_shape, IxDyn(&[6, 4]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_transpose_panic_0() {
+        let program = "
+         (access-transpose (access (access-tensor a) 1) (list 0 1))
+         "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 5, 6]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        egraph.add_expr(&program);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_transpose_panic_1() {
+        let program = "
+         (access-transpose (access (access-tensor a) 1) (list 2 1 1))
+         "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 6]);
         let mut egraph =
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         egraph.add_expr(&program);

@@ -81,6 +81,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             // Extracting various access patterns is essential.
             AccessWindows(_)
             | Access(_)
+            | AccessTranspose(_)
             | AccessMoveAxis(_)
             | AccessCartesianProduct(_)
             | AccessReshape(_)
@@ -96,8 +97,8 @@ impl CostFunction<Language> for SimpleCostFunction {
             | AccessBroadcast(_) => 1,
             // Other glenside constructs that are necessary.
             Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
-            | GetAccessShape(_) | AccessShape(_) | Usize(_) | PadType(_) | ComputeType(_)
-            | Symbol(_) => 1,
+            | List(_) | GetAccessShape(_) | AccessShape(_) | Usize(_) | PadType(_)
+            | ComputeType(_) | Symbol(_) => 1,
             // Old constructs that are no longer used
             MoveAxis(_) | CartesianProduct(_) | MapDotProduct(_) | Slice(_) | Concatenate(_)
             | ElementwiseAdd(_) | BsgSystolicArray(_) => std::usize::MAX,
