@@ -259,21 +259,21 @@ mod tests {
         map.insert("weight1".to_string(), vec![64, 128]);
         map.insert("weight2".to_string(), vec![128, 16]);
         let program = "
-         (systolic-array 16 128
+         (systolic-array 128 16
           (access
-           (systolic-array 128 64
+           (systolic-array 64 128
             (access
-             (systolic-array 64 32
+             (systolic-array 32 64
               (access (access-tensor input) 0)
-              (access (access-move-axis (access-tensor weight0) 0 1) 1)
+              (access (access-tensor weight0) 0)
              )
              0
             )
-            (access (access-move-axis (access-tensor weight1) 0 1) 1)
+            (access (access-tensor weight1) 0)
            )
            0
           )
-          (access (access-move-axis (access-tensor weight2) 0 1) 1)
+          (access (access-tensor weight2) 0)
          )
          "
         .parse()
@@ -291,21 +291,21 @@ mod tests {
         assert_eq!(
             best,
             "
-         (systolic-array 16 128
+         (systolic-array 128 16
           (access
-           (systolic-array 128 64
+           (systolic-array 64 128
             (access
-             (systolic-array 64 32
+             (systolic-array 32 64
               (access (access-tensor input) 0)
-              (access (access-move-axis (access-tensor weight0) 0 1) 1)
+              (access (access-tensor weight0) 0)
              )
              0
             )
-            (access (access-move-axis (access-tensor weight1) 0 1) 1)
+            (access (access-tensor weight1) 0)
            )
            0
           )
-          (access (access-move-axis (access-tensor weight2) 0 1) 1)
+          (access (access-tensor weight2) 0)
          )
          "
             .parse()

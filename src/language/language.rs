@@ -56,6 +56,18 @@ define_language! {
         // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
         // Represents a systolic array of size rows X cols, fed with two
         // accesses.
+        // This is Scott's weight-stationary systolic array design. It reads in
+        // two matrices: first matrix is in the layout [M, N] and second is in
+        // the layout [N, O]. The systolic array computes the matrix
+        // multiplication, leading to a matrix with layout [M, O].
+        // The systolic array expects exactly one shape for the second argument:
+        // [N, O]. These correspond directly to the rows/cols parameters of the
+        // systolic array. The first argument is partially constrained: its
+        // second dimension must be N, but its first dimension may be any
+        // length.
+        // In terms of Glenside accesses, we expect <access-0> to have shape [M]
+        // [N], and <access-1> to have shape [] [N, O].
+        // TODO(@gussmith23) How to make the M argument "programmable"?
         // TODO(@gussmith23) do we need to specify rows and cols? You can infer these
         // from the size of the input, but it's also useful for searching.
         "systolic-array" = SystolicArray([Id; 4]),
@@ -940,9 +952,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             &SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
-                // Check that the rows and cols are usizes.
-                let _unused = Self::get_usize(rows_id, egraph);
-                let _unused = Self::get_usize(cols_id, egraph);
+                let rows = Self::get_usize(rows_id, egraph);
+                let cols = Self::get_usize(cols_id, egraph);
 
                 let (a0, a1) = match (&egraph[a0_id].data, &egraph[a1_id].data) {
                     (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => {
@@ -951,17 +962,17 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
 
-                assert!(a0.shape.ndim() <= 1);
-                assert_eq!(a0.item_shape.ndim(), 1);
-                assert_eq!(a1.shape.ndim(), 1);
-                assert_eq!(a1.item_shape.ndim(), 1);
+                assert_eq!(a1.shape, IxDyn(&[]));
+                assert_eq!(a1.item_shape, IxDyn(&[rows, cols]));
+                assert!(a0.shape.ndim() == 0 || a0.shape.ndim() == 1);
+                assert_eq!(a0.item_shape, IxDyn(&[rows]));
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(
                         a0.shape
                             .as_array_view()
                             .iter()
-                            .chain(a1.shape.as_array_view().iter())
+                            .chain(std::iter::once(&cols))
                             .cloned()
                             .collect::<Vec<_>>()
                             .as_slice(),
@@ -2285,5 +2296,67 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn systolic_array() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        let program = "
+         (systolic-array 64 32
+          (access (access-tensor a) 1)
+          (access (access-move-axis (access-tensor a) 0 1) 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn systolic_array_panic_0() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        // Because the second argument is not the right shape.
+        let program = "
+         (systolic-array 64 32
+          (access (access-tensor a) 1)
+          (access (access-tensor a) 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        egraph.add_expr(&program);
+    }
+
+    #[test]
+    #[should_panic]
+    fn systolic_array_panic_1() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        // Because the second argument is not accessed at the right axis.
+        let program = "
+         (systolic-array 64 32
+          (access (access-tensor a) 1)
+          (access (move-axis (access-tensor a) 0 1) 1)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        egraph.add_expr(&program);
     }
 }
