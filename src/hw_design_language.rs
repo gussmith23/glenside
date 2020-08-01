@@ -29,6 +29,7 @@ pub enum AtomConfig {
 
 pub struct Atom {
     pub name: String,
+    pub id: usize,
     pub config: AtomConfig,
 }
 
@@ -62,6 +63,7 @@ pub fn atom_to_json(atom: &Atom) -> Value {
         }
     });
     map.insert("name".to_string(), json!(atom.name));
+    map.insert("id".to_string(), json!(atom.id));
 
     Value::Object(map)
 }
@@ -76,6 +78,7 @@ mod tests {
             atoms: vec![
                 Atom {
                     name: "multiplier1".to_string(),
+                    id: 1,
                     config: AtomConfig::SystolicArrayWeightStationary(
                         SystolicArrayWeightStationaryParams {
                             dtype: DType::Int8,
@@ -86,6 +89,7 @@ mod tests {
                 },
                 Atom {
                     name: "multiplier2".to_string(),
+                    id: 2,
                     config: AtomConfig::SystolicArrayWeightStationary(
                         SystolicArrayWeightStationaryParams {
                             dtype: DType::Int8,
@@ -96,6 +100,7 @@ mod tests {
                 },
                 Atom {
                     name: "multiplier3".to_string(),
+                    id: 3,
                     config: AtomConfig::SystolicArrayWeightStationary(
                         SystolicArrayWeightStationaryParams {
                             dtype: DType::Int8,
@@ -113,18 +118,21 @@ mod tests {
                 [
                     { "name" : "multiplier1",
                        "atom" : "bsg_systolic_array_weight_stationary",
+                       "id" : 1,
                        "dtype" : "int8",
                        "cols" : 16,
                        "rows" : 16,
                     },
                     { "name" : "multiplier2",
                        "atom" : "bsg_systolic_array_weight_stationary",
+                       "id" : 2,
                        "dtype" : "int8",
                        "cols" : 16,
                        "rows" : 16,
                     },
                     { "name" : "multiplier3",
                        "atom" : "bsg_systolic_array_weight_stationary",
+                       "id" : 3,
                        "dtype" : "int8",
                        "cols" : 16,
                        "rows" : 16,
