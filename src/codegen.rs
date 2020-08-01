@@ -1,3 +1,4 @@
+use crate::hw_design_language::*;
 use crate::language::Language;
 use crate::language::MyAnalysis;
 use crate::language::MyAnalysisData;
@@ -6,8 +7,59 @@ use egg::Id;
 use itertools::Itertools;
 use ndarray::Dimension;
 use ndarray::IxDyn;
+use std::collections::HashMap;
 
 type Expr = EGraph<Language, MyAnalysis>;
+
+/// Create a hardware design from an expression, creating a unique atom for each
+/// unique node (eclass or  id).
+pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Vec<Atom>) {
+    let mut hw_id = 0;
+    let mut map = HashMap::new();
+    let mut atoms = Vec::new();
+
+    for eclass in expr.classes() {
+        assert_eq!(eclass.nodes.len(), 1);
+        match &eclass.nodes[0] {
+            &Language::SystolicArray([row_id, col_id, _, _]) => {
+                hw_id += 1;
+                let hw_id = hw_id - 1;
+
+                let row = match {
+                    assert_eq!(expr[row_id].nodes.len(), 1);
+                    &expr[row_id].nodes[0]
+                } {
+                    Language::Usize(u) => u,
+                    _ => panic!(),
+                };
+                let col = match {
+                    assert_eq!(expr[col_id].nodes.len(), 1);
+                    &expr[col_id].nodes[0]
+                } {
+                    Language::Usize(u) => u,
+                    _ => panic!(),
+                };
+
+                map.insert(eclass.id, hw_id);
+                atoms.push(Atom {
+                    name: format!("multiplier{}", hw_id),
+                    id: hw_id,
+                    config: AtomConfig::SystolicArrayWeightStationary(
+                        SystolicArrayWeightStationaryParams {
+                            // TODO(@gussmith23) hardcoded datatype
+                            dtype: DType::Fp32,
+                            rows: *row,
+                            cols: *col,
+                        },
+                    ),
+                });
+            }
+            _ => (),
+        }
+    }
+
+    (map, atoms)
+}
 
 /// Finds all symbols in a program, and return their names.
 pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
@@ -85,7 +137,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
 }
 
 /// Returns signature and code.
-pub fn codegen(expr: &Expr, id: Id) -> (String, String) {
+pub fn codegen(expr: &Expr, id: Id, hw_map: &HashMap<Id, usize>) -> (String, String) {
     let mut out = String::default();
 
     let mut signature = "void mlp(".to_string();
@@ -107,7 +159,7 @@ pub fn codegen(expr: &Expr, id: Id) -> (String, String) {
     out.push_str("\n");
 
     let mut body = String::default();
-    codegen_recursive_helper(expr, id, &mut body).as_str();
+    codegen_recursive_helper(expr, id, &mut body, hw_map).as_str();
     out.push_str(body.as_str());
 
     out.push_str("}");
@@ -116,20 +168,25 @@ pub fn codegen(expr: &Expr, id: Id) -> (String, String) {
     (signature, out)
 }
 
-fn codegen_recursive_helper(expr: &Expr, id: Id, code: &mut String) -> String {
+fn codegen_recursive_helper(
+    expr: &Expr,
+    id: Id,
+    code: &mut String,
+    hw_map: &HashMap<Id, usize>,
+) -> String {
     match {
         assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
     } {
         Language::Symbol(s) => s.clone(),
         &Language::AccessTensor(symbol_id) => {
-            let symbol = codegen_recursive_helper(expr, symbol_id, code);
+            let symbol = codegen_recursive_helper(expr, symbol_id, code, hw_map);
             symbol
         }
         &Language::Access([access_tensor_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
             assert_eq!(axis, 0);
-            codegen_recursive_helper(expr, access_tensor_id, code)
+            codegen_recursive_helper(expr, access_tensor_id, code, hw_map)
         }
         &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
             let rows = MyAnalysis::get_usize(rows_id, expr);
@@ -152,8 +209,8 @@ fn codegen_recursive_helper(expr: &Expr, id: Id, code: &mut String) -> String {
             assert_eq!(this_access.shape.ndim(), 1);
             assert_eq!(this_access.item_shape.ndim(), 0);
 
-            let s0 = codegen_recursive_helper(expr, a0_id, code);
-            let s1 = codegen_recursive_helper(expr, a1_id, code);
+            let s0 = codegen_recursive_helper(expr, a0_id, code, hw_map);
+            let s1 = codegen_recursive_helper(expr, a1_id, code, hw_map);
 
             // TODO(@gussmith23) How to generate output buffer?
             // This seems like it might not be legal, just declaring it.
@@ -161,8 +218,17 @@ fn codegen_recursive_helper(expr: &Expr, id: Id, code: &mut String) -> String {
 
             code.push_str(
                 format!(
-                    "rtml_systolic_array_weight_stationary({}, {}, {}, {}, {}, {});\n",
-                    "&out[0]", s0, rows, s1, rows, cols
+                    "rtml_systolic_array_weight_stationary(
+                       // Hardware ID
+                       {},
+                       {}, {}, {}, {}, {}, {});\n",
+                    hw_map.get(&id).unwrap(),
+                    "&out[0]",
+                    s0,
+                    rows,
+                    s1,
+                    rows,
+                    cols
                 )
                 .as_str(),
             );
@@ -259,7 +325,10 @@ mod tests {
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let (signature, program) = codegen(&egraph, id);
+        // Get hardware design
+        let (hw_map, _atoms) = create_hardware_design_no_sharing(&egraph);
+
+        let (signature, program) = codegen(&egraph, id, &hw_map);
         println!("{}", program);
 
         let mut file = File::create(LIBRARY_FILENAME_C).unwrap();
