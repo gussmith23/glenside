@@ -1,40 +1,48 @@
 use crate::language::Language;
-use egg::RecExpr;
+use crate::language::MyAnalysis;
+use crate::language::MyAnalysisData;
+use egg::EGraph;
+use egg::Id;
 use itertools::Itertools;
+use ndarray::Dimension;
+use ndarray::IxDyn;
 
-type Expr = RecExpr<Language>;
+type Expr = EGraph<Language, MyAnalysis>;
 
 /// Finds all symbols in a program, and return their names.
-pub fn find_vars(expr: &Expr, id: usize) -> Vec<String> {
-    fn find_vars_recursive_helper(vec: &mut Vec<String>, expr: &Expr, id: usize) {
-        match &expr.as_ref()[id] {
+pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
+    fn find_vars_recursive_helper(vec: &mut Vec<String>, expr: &Expr, id: Id) {
+        match {
+            assert_eq!(expr[id].nodes.len(), 1);
+            &expr[id].nodes[0]
+        } {
             Language::Symbol(s) => vec.push(s.to_string()),
             // Id
             &Language::AccessTensor(id) => {
-                find_vars_recursive_helper(vec, expr, id as usize);
+                find_vars_recursive_helper(vec, expr, id);
             }
             // Box<[Id]>
             Language::List(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id as usize);
+                    find_vars_recursive_helper(vec, expr, *id);
                 }
             }
             // [Id; 2]
             &Language::Access(ids) | &Language::AccessTranspose(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id as usize);
+                    find_vars_recursive_helper(vec, expr, *id);
                 }
             }
             // [Id; 3]
             &Language::AccessMoveAxis(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id as usize);
+                    find_vars_recursive_helper(vec, expr, *id);
                 }
             }
             // [Id; 4]
             &Language::SystolicArray(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id as usize);
+                    find_vars_recursive_helper(vec, expr, *id);
                 }
             }
             &Language::Usize(_) => (),
@@ -66,20 +74,18 @@ pub fn find_vars(expr: &Expr, id: usize) -> Vec<String> {
             | &Language::AccessShape(_)
             | &Language::AccessSlice(_)
             | &Language::AccessConcatenate(_)
-            | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr.as_ref()[id]),
+            | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
         }
     }
 
     let mut vec = Vec::default();
     find_vars_recursive_helper(&mut vec, expr, id);
 
-    todo!("Actually generate the code");
-
     vec
 }
 
 /// Returns signature and code.
-pub fn codegen(expr: &Expr, id: usize) -> (String, String) {
+pub fn codegen(expr: &Expr, id: Id) -> (String, String) {
     let mut out = String::default();
 
     let mut signature = "void mlp(".to_string();
@@ -100,15 +106,112 @@ pub fn codegen(expr: &Expr, id: usize) -> (String, String) {
     out.push_str("{");
     out.push_str("\n");
 
+    let mut body = String::default();
+    codegen_recursive_helper(expr, id, &mut body).as_str();
+    out.push_str(body.as_str());
+
     out.push_str("}");
     out.push_str("\n");
 
     (signature, out)
 }
 
+fn codegen_recursive_helper(expr: &Expr, id: Id, code: &mut String) -> String {
+    match {
+        assert_eq!(expr[id].nodes.len(), 1);
+        &expr[id].nodes[0]
+    } {
+        Language::Symbol(s) => s.clone(),
+        &Language::AccessTensor(symbol_id) => {
+            let symbol = codegen_recursive_helper(expr, symbol_id, code);
+            symbol
+        }
+        &Language::Access([access_tensor_id, axis_id]) => {
+            let axis = MyAnalysis::get_usize(axis_id, expr);
+            assert_eq!(axis, 0);
+            codegen_recursive_helper(expr, access_tensor_id, code)
+        }
+        &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
+            let rows = MyAnalysis::get_usize(rows_id, expr);
+            let cols = MyAnalysis::get_usize(cols_id, expr);
+
+            let (a0, a1) = match (&expr[a0_id].data, &expr[a1_id].data) {
+                (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => (a0, a1),
+                _ => panic!(),
+            };
+
+            assert_eq!(a1.shape, IxDyn(&[]));
+            assert_eq!(a1.item_shape, IxDyn(&[rows, cols]));
+            assert!(a0.shape.ndim() == 0 || a0.shape.ndim() == 1);
+            assert_eq!(a0.item_shape, IxDyn(&[rows]));
+
+            let this_access = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            assert_eq!(this_access.shape.ndim(), 1);
+            assert_eq!(this_access.item_shape.ndim(), 0);
+
+            let s0 = codegen_recursive_helper(expr, a0_id, code);
+            let s1 = codegen_recursive_helper(expr, a1_id, code);
+
+            // TODO(@gussmith23) How to generate output buffer?
+            // This seems like it might not be legal, just declaring it.
+            code.push_str(format!("float out[{}];\n", this_access.shape.slice()[0]).as_str());
+
+            code.push_str(
+                format!(
+                    "rtml_systolic_array_weight_stationary({}, {}, {}, {}, {}, {});\n",
+                    "&out[0]", s0, rows, s1, rows, cols
+                )
+                .as_str(),
+            );
+
+            "out".to_string()
+        }
+        &Language::Usize(u) => format!("{}", u),
+        &Language::GetAccessShape(_)
+        | &Language::AccessTranspose(_)
+        | &Language::AccessMoveAxis(_)
+        | Language::List(_)
+        | &Language::AccessBroadcast(_)
+        | &Language::AccessInsertAxis(_)
+        | &Language::AccessPair(_)
+        | &Language::AccessSqueeze(_)
+        | Language::PadType(_)
+        | &Language::AccessPad(_)
+        | Language::ComputeType(_)
+        | &Language::Compute(_)
+        | &Language::AccessCartesianProduct(_)
+        | &Language::AccessWindows(_)
+        | Language::Shape(_)
+        | &Language::SliceShape(_)
+        | &Language::ShapeInsertAxis(_)
+        | &Language::ShapeRemoveAxis(_)
+        | &Language::ShapeOf(_)
+        | &Language::MoveAxis(_)
+        | &Language::CartesianProduct(_)
+        | &Language::MapDotProduct(_)
+        | &Language::Slice(_)
+        | &Language::Concatenate(_)
+        | &Language::ElementwiseAdd(_)
+        | &Language::BsgSystolicArray(_)
+        | &Language::AccessReshape(_)
+        | &Language::AccessFlatten(_)
+        | &Language::AccessShape(_)
+        | &Language::AccessSlice(_)
+        | &Language::AccessConcatenate(_)
+        | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::language::MyAnalysis;
+    use egg::EGraph;
+    use egg::RecExpr;
+    use std::collections::HashMap;
     use std::fs::File;
     use std::io::prelude::*;
     use std::process::Command;
@@ -120,45 +223,43 @@ mod tests {
         const LIBRARY_FILENAME_O: &str = "mlp.o";
         const MAIN_FILENAME: &str = "main.c";
 
+        // This is a simplified version of what's produced in the
+        // regular-multilayer-perceptron test. It's simplified in that the
+        // accesses are collapsed (transpose, move-axis) which are things that
+        // we can achieve with rewrites.
+        // TODO(@gussmith23) Rewrite to collapse move axis and transpose
+        // TODO(@gussmith23) Change to just using transpose?
         let program = "
-     (systolic-array 128 16
+     (systolic-array 6 2
       (access
-       (systolic-array 64 128
+       (systolic-array 4 6
         (access
-         (systolic-array 32 64
-          (access (access-tensor in) 0)
-          (access
-           (access-transpose
-            (access-move-axis (access (access-tensor weight0) 1) 1 0)
-            (list 1 0)
-           )
-           0
-          )
+         (systolic-array 2 4
+          (access (access-tensor input) 0)
+          (access (access-tensor weight0) 0)
          )
          0
         )
-        (access
-         (access-transpose
-          (access-move-axis (access (access-tensor weight1) 1) 1 0)
-          (list 1 0)
-         )
-         0
-        )
+        (access (access-tensor weight1) 0)
        )
        0
       )
-      (access
-       (access-transpose
-        (access-move-axis (access (access-tensor weight2) 1) 1 0)
-        (list 1 0)
-       )
-       0
-      )
-    )
+      (access (access-tensor weight2) 0)
+     )
      ";
 
+        let mut map = HashMap::default();
+        map.insert("input".to_string(), vec![2]);
+        map.insert("weight0".to_string(), vec![2, 4]);
+        map.insert("weight1".to_string(), vec![4, 6]);
+        map.insert("weight2".to_string(), vec![6, 2]);
+
         let expr = RecExpr::from_str(program).unwrap();
-        let (signature, program) = codegen(&expr, expr.as_ref().len() - 1);
+        // Check that it "type checks"
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let (signature, program) = codegen(&egraph, id);
         println!("{}", program);
 
         let mut file = File::create(LIBRARY_FILENAME_C).unwrap();
