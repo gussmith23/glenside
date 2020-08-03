@@ -10,6 +10,7 @@ use std::str::FromStr;
 
 #[test]
 fn mlp() {
+    // TODO(@gussmith23) This test should use temporary files
     const LIBRARY_FILENAME_C: &str = "mlp.c";
     const LIBRARY_FILENAME_O: &str = "mlp.o";
     const MAIN_FILENAME: &str = "main.c";
