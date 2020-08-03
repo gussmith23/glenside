@@ -65,7 +65,7 @@ fn mlp() {
         .arg(LIBRARY_FILENAME_C)
         .arg("-O0")
         .arg("-Werror")
-        .arg(format!("-o {}", LIBRARY_FILENAME_O))
+        .arg(format!("-o{}", LIBRARY_FILENAME_O))
         .output()
         .expect("Failed to compile with gcc");
     assert!(
