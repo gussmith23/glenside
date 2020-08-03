@@ -11,6 +11,17 @@ use std::collections::HashMap;
 
 type Expr = EGraph<Language, MyAnalysis>;
 
+static SYSTOLIC_ARRAY_SIGNATURE: &str = "
+void rtml_systolic_array_weight_stationary(
+  int hardware_id,
+  float * out,
+  float * activations,
+  int activations_width,
+  float * weights,
+  int weights_width,
+  int weights_height);
+";
+
 /// Create a hardware design from an expression, creating a unique atom for each
 /// unique node (eclass or  id).
 pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Vec<Atom>) {
@@ -137,10 +148,22 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
 }
 
 /// Returns signature and code.
-pub fn codegen(expr: &Expr, id: Id, hw_map: &HashMap<Id, usize>) -> (String, String) {
+pub fn codegen(
+    expr: &Expr,
+    id: Id,
+    hw_map: &HashMap<Id, usize>,
+    function_name: &str,
+) -> (String, String) {
     let mut out = String::default();
 
-    let mut signature = "void mlp(".to_string();
+    let mut declarations = String::default();
+    let mut code = String::default();
+    codegen_recursive_helper(expr, id, id, &mut declarations, &mut code, hw_map).as_str();
+
+    out.push_str(declarations.as_str());
+    out.push_str("\n");
+
+    let mut signature = format!("void {}(", function_name);
     signature.push_str("float * out, ");
     signature.push_str(
         find_vars(expr, id)
@@ -152,15 +175,16 @@ pub fn codegen(expr: &Expr, id: Id, hw_map: &HashMap<Id, usize>) -> (String, Str
             .as_str(),
     );
 
+    out.push_str(SYSTOLIC_ARRAY_SIGNATURE);
+    out.push_str("\n");
+
     out.push_str(signature.as_str());
 
     out.push_str("\n");
     out.push_str("{");
     out.push_str("\n");
 
-    let mut body = String::default();
-    codegen_recursive_helper(expr, id, &mut body, hw_map).as_str();
-    out.push_str(body.as_str());
+    out.push_str(code.as_str());
 
     out.push_str("}");
     out.push_str("\n");
@@ -171,6 +195,8 @@ pub fn codegen(expr: &Expr, id: Id, hw_map: &HashMap<Id, usize>) -> (String, Str
 fn codegen_recursive_helper(
     expr: &Expr,
     id: Id,
+    top_level_id: Id,
+    declarations: &mut String,
     code: &mut String,
     hw_map: &HashMap<Id, usize>,
 ) -> String {
@@ -180,13 +206,21 @@ fn codegen_recursive_helper(
     } {
         Language::Symbol(s) => s.clone(),
         &Language::AccessTensor(symbol_id) => {
-            let symbol = codegen_recursive_helper(expr, symbol_id, code, hw_map);
+            let symbol =
+                codegen_recursive_helper(expr, symbol_id, top_level_id, declarations, code, hw_map);
             symbol
         }
         &Language::Access([access_tensor_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
             assert_eq!(axis, 0);
-            codegen_recursive_helper(expr, access_tensor_id, code, hw_map)
+            codegen_recursive_helper(
+                expr,
+                access_tensor_id,
+                top_level_id,
+                declarations,
+                code,
+                hw_map,
+            )
         }
         &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
             let rows = MyAnalysis::get_usize(rows_id, expr);
@@ -209,12 +243,34 @@ fn codegen_recursive_helper(
             assert_eq!(this_access.shape.ndim(), 1);
             assert_eq!(this_access.item_shape.ndim(), 0);
 
-            let s0 = codegen_recursive_helper(expr, a0_id, code, hw_map);
-            let s1 = codegen_recursive_helper(expr, a1_id, code, hw_map);
+            let s0 =
+                codegen_recursive_helper(expr, a0_id, top_level_id, declarations, code, hw_map);
+            let s1 =
+                codegen_recursive_helper(expr, a1_id, top_level_id, declarations, code, hw_map);
 
-            // TODO(@gussmith23) How to generate output buffer?
-            // This seems like it might not be legal, just declaring it.
-            code.push_str(format!("float out[{}];\n", this_access.shape.slice()[0]).as_str());
+            let out_var_name = if id == top_level_id {
+                "out".to_string()
+            } else {
+                let out_var_name = format!(
+                    "systolic_array_{}_eclass_{}_out",
+                    hw_map.get(&id).unwrap(),
+                    id,
+                );
+
+                // TODO(@gussmith23) How to generate output buffer?
+                // This seems like it might not be legal, just declaring it.
+                // TODO(@gussmith23) how to assign unique names to each usage?
+                declarations.push_str(
+                    format!(
+                        "float {}[{}];\n",
+                        out_var_name,
+                        this_access.shape.slice()[0]
+                    )
+                    .as_str(),
+                );
+
+                out_var_name
+            };
 
             code.push_str(
                 format!(
@@ -223,17 +279,17 @@ fn codegen_recursive_helper(
                        {},
                        {}, {}, {}, {}, {}, {});\n",
                     hw_map.get(&id).unwrap(),
-                    "&out[0]",
-                    s0,
+                    format!("&{}[0]", out_var_name,),
+                    format!("&{}[0]", s0,),
                     rows,
-                    s1,
+                    format!("&{}[0]", s1,),
                     rows,
                     cols
                 )
                 .as_str(),
             );
 
-            "out".to_string()
+            out_var_name
         }
         &Language::Usize(u) => format!("{}", u),
         &Language::GetAccessShape(_)
@@ -328,7 +384,7 @@ mod tests {
         // Get hardware design
         let (hw_map, _atoms) = create_hardware_design_no_sharing(&egraph);
 
-        let (signature, program) = codegen(&egraph, id, &hw_map);
+        let (signature, program) = codegen(&egraph, id, &hw_map, "mlp");
         println!("{}", program);
 
         let mut file = File::create(LIBRARY_FILENAME_C).unwrap();
@@ -338,6 +394,7 @@ mod tests {
             .arg("-c")
             .arg(LIBRARY_FILENAME_C)
             .arg("-O0")
+            .arg("-Werror")
             .arg(format!("-o {}", LIBRARY_FILENAME_O))
             .output()
             .expect("Failed to compile with gcc");
@@ -371,6 +428,7 @@ int main() {{
             .expect("Couldn't write main file");
 
         let output = Command::new("gcc")
+            .arg("-Werror")
             .arg(MAIN_FILENAME)
             .arg(LIBRARY_FILENAME_O)
             .output()
