@@ -12,7 +12,7 @@ use std::collections::HashMap;
 type Expr = EGraph<Language, MyAnalysis>;
 
 static SYSTOLIC_ARRAY_SIGNATURE: &str = "
-void rtml_systolic_array_weight_stationary(
+extern void rtml_systolic_array_weight_stationary(
   int hardware_id,
   float * out,
   float * activations,
@@ -409,16 +409,38 @@ mod tests {
             .expect("Couldn't create main file")
             .write_all(
                 format! {"
+#include <assert.h>
+#include <stdio.h>
+#include <math.h>
+
 extern {};
 
-float in  [2]    = {{1,2}};
-float a   [2][2] = {{ {{1,2}}, {{3,4}} }};
-float b   [2][2] = {{ {{1,2}}, {{3,4}} }};
-float c   [2][2] = {{ {{1,2}}, {{3,4}} }};
-float out [2][2] = {{ {{1,2}}, {{3,4}} }};
+// Generated with mlp_c_gen_helper.py
+float input[2] = {{ 0.07359921, 0.77422889 }};
+float weights_0[2][4] = {{ {{ 0.8101289 , 0.6391721 , 0.38471687, 0.43476797 }},
+ {{ 0.19664564, 0.67206388, 0.23291401, 0.59172156 }} }};
+float weights_1[4][6] = {{ {{ 0.98278998, 0.61484222, 0.67881745, 0.93680619, 0.86837485, 0.42437781 }},
+ {{ 0.45952102, 0.15076425, 0.52289059, 0.45032712, 0.80552555, 0.3883881  }},
+ {{ 0.08942791, 0.76285151, 0.6280041 , 0.31396817, 0.80541261, 0.86247733 }},
+ {{ 0.28771746, 0.1725068 , 0.18405514, 0.33522804, 0.59388266, 0.53529322 }} }};
+float weights_2[6][2] = {{ {{ 0.5403619 , 0.34246081 }},
+ {{ 0.96203926, 0.50463116 }},
+ {{ 0.21667461, 0.7079291  }},
+ {{ 0.04013655, 0.3549699  }},
+ {{ 0.4628509 , 0.52579893 }},
+ {{ 0.28693871, 0.41747579 }} }};
+float out[2] = {{ 0., 0. }};
+float expected_out[2] = {{ 1.67773846, 2.05100039 }};
 
 int main() {{
-  mlp(&out[0][0], &in[0], &a[0][0], &b[0][0], &c[0][0]);
+  mlp(&out[0], &input[0], &weights_0[0][0], &weights_1[0][0], &weights_2[0][0]);
+
+  // Ensure result is what we expect.
+  for (int dim_0 = 0; dim_0 < 2; ++dim_0) {{
+    fprintf(stderr, \"%f ?= %f\\n\", out[dim_0],expected_out[dim_0]);
+    assert(fabs(out[dim_0] - expected_out[dim_0]) < 0.00001);
+  }}
+
   return 0;
 }}
 ",
@@ -431,6 +453,7 @@ int main() {{
             .arg("-Werror")
             .arg(MAIN_FILENAME)
             .arg(LIBRARY_FILENAME_O)
+            .arg("rtml_systolic_array_weight_stationary.c")
             .output()
             .expect("Failed to compile main file with gcc");
         assert!(
@@ -445,8 +468,8 @@ int main() {{
             .expect("Failed to run result");
         assert!(
             output.status.success(),
-            "Main binary failed with code {}. stderr:\n{}",
-            output.status.code().unwrap(),
+            "Main binary failed with code {:?}. stderr:\n{}",
+            output.status.code(),
             std::str::from_utf8(output.stderr.as_slice())
                 .expect("Could not convert stderr to UTF8")
         );
