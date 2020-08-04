@@ -148,6 +148,8 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
 }
 
 /// Returns signature and code.
+// TODO(@gussmith23) Does not reason about ordering on hardware.
+// TODO(@gussmith23) Hardcoded to float32
 pub fn codegen(
     expr: &Expr,
     id: Id,
@@ -260,6 +262,7 @@ fn codegen_recursive_helper(
                 // TODO(@gussmith23) How to generate output buffer?
                 // This seems like it might not be legal, just declaring it.
                 // TODO(@gussmith23) how to assign unique names to each usage?
+                // TODO(@gussmith23) Allocations should not be done ad-hoc
                 declarations.push_str(
                     format!(
                         "float {}[{}];\n",
