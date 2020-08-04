@@ -22,6 +22,23 @@ extern void rtml_systolic_array_weight_stationary(
   int weights_height);
 ";
 
+/// Creates a representation (currently just a string with a C declaration) of
+/// an allocation, given the name, shape, dtype, and any prefix.
+pub fn create_allocation_str(prefix: &str, name: &str, shape: &[usize], dtype: DType) -> String {
+    let dtype_str = match dtype {
+        DType::Fp32 => "float",
+        _ => panic!(),
+    };
+
+    format!(
+        "{} {} {}{};",
+        prefix,
+        dtype_str,
+        name,
+        itertools::join(shape.iter().map(|dim: &usize| format!("[{}]", *dim)), "")
+    )
+}
+
 /// Create a hardware design from an expression, creating a unique atom for each
 /// unique node (eclass or  id).
 pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Vec<Atom>) {
@@ -160,7 +177,7 @@ pub fn codegen(
 
     let mut declarations = String::default();
     let mut code = String::default();
-    codegen_recursive_helper(expr, id, id, &mut declarations, &mut code, hw_map).as_str();
+    codegen_recursive_helper(expr, id, id, "", &mut declarations, &mut code, hw_map).as_str();
 
     out.push_str(declarations.as_str());
     out.push_str("\n");
@@ -194,10 +211,12 @@ pub fn codegen(
     (signature, out)
 }
 
+/// allocations_prefix: string to prefix all allocations/declarations with
 fn codegen_recursive_helper(
     expr: &Expr,
     id: Id,
     top_level_id: Id,
+    allocations_prefix: &str,
     declarations: &mut String,
     code: &mut String,
     hw_map: &HashMap<Id, usize>,
@@ -208,8 +227,15 @@ fn codegen_recursive_helper(
     } {
         Language::Symbol(s) => s.clone(),
         &Language::AccessTensor(symbol_id) => {
-            let symbol =
-                codegen_recursive_helper(expr, symbol_id, top_level_id, declarations, code, hw_map);
+            let symbol = codegen_recursive_helper(
+                expr,
+                symbol_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
             symbol
         }
         &Language::Access([access_tensor_id, axis_id]) => {
@@ -219,6 +245,7 @@ fn codegen_recursive_helper(
                 expr,
                 access_tensor_id,
                 top_level_id,
+                allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -245,10 +272,24 @@ fn codegen_recursive_helper(
             assert_eq!(this_access.shape.ndim(), 1);
             assert_eq!(this_access.item_shape.ndim(), 0);
 
-            let s0 =
-                codegen_recursive_helper(expr, a0_id, top_level_id, declarations, code, hw_map);
-            let s1 =
-                codegen_recursive_helper(expr, a1_id, top_level_id, declarations, code, hw_map);
+            let s0 = codegen_recursive_helper(
+                expr,
+                a0_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+            let s1 = codegen_recursive_helper(
+                expr,
+                a1_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
 
             let out_var_name = if id == top_level_id {
                 "out".to_string()
@@ -264,10 +305,18 @@ fn codegen_recursive_helper(
                 // TODO(@gussmith23) how to assign unique names to each usage?
                 // TODO(@gussmith23) Allocations should not be done ad-hoc
                 declarations.push_str(
-                    format!(
-                        "float {}[{}];\n",
-                        out_var_name,
-                        this_access.shape.slice()[0]
+                    create_allocation_str(
+                        allocations_prefix,
+                        out_var_name.as_str(),
+                        this_access
+                            .shape
+                            .slice()
+                            .iter()
+                            .chain(this_access.item_shape.slice().iter())
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        DType::Fp32,
                     )
                     .as_str(),
                 );
