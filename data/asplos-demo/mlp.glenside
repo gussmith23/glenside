@@ -1,0 +1,22 @@
+(compute dot-product
+ (access-cartesian-product
+  (access
+   (compute dot-product
+    (access-cartesian-product
+     (access
+      (compute dot-product
+       (access-cartesian-product
+        (access (access-tensor input) 0)
+        (access-transpose (access (access-tensor weight0) 1) (list 1 0))
+       )
+      )
+      0
+     )
+     (access-transpose (access (access-tensor weight1) 1) (list 1 0))
+    )
+   )
+   0
+  )
+  (access-transpose (access (access-tensor weight2) 1) (list 1 0))
+ )
+)
