@@ -70,7 +70,7 @@ pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Ve
 
                 map.insert(eclass.id, hw_id);
                 atoms.push(Atom {
-                    name: format!("multiplier{}", hw_id),
+                    name: format!("systolic_array_{}", hw_id),
                     id: hw_id,
                     config: AtomConfig::SystolicArrayWeightStationary(
                         SystolicArrayWeightStationaryParams {
