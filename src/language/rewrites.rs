@@ -809,7 +809,14 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
 pub enum SliceConcatenateStrategy {
     /// Divides the axis by `divisor`; does not divide anything less than or
     /// equal to `limit`.
-    DivideBy { divisor: usize, limit: usize },
+    DivideBy {
+        divisor: usize,
+        limit: usize,
+    },
+    DivideInto {
+        segment_size: usize,
+        limit: usize,
+    },
 }
 
 pub fn slice_concatenate_accesses(
@@ -908,6 +915,63 @@ pub fn slice_concatenate_accesses(
             vec![top_concat_id]
         }
     }
+
+    // TODO(@gussmith23) This could be combined with the applier above.
+    // Their implementations are nearly identical.
+    struct DivideIntoApplier {
+        axis: usize,
+        segment_size: usize,
+    }
+    impl Applier<Language, MyAnalysis> for DivideIntoApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            _subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let shape = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            assert!(self.axis < shape.shape.ndim() + shape.item_shape.ndim());
+            let dim_value = if self.axis < shape.shape.ndim() {
+                shape.shape[self.axis]
+            } else {
+                shape.item_shape[self.axis - shape.shape.ndim()]
+            };
+            assert_eq!(dim_value % self.segment_size, 0);
+
+            let axis_id = egraph.add(Language::Usize(self.axis));
+
+            let top_concat_id = (0..(dim_value / self.segment_size))
+                .map(|segment_index| {
+                    let low_bound = segment_index * self.segment_size;
+                    let high_bound = low_bound + self.segment_size;
+                    let low_bound_id = egraph.add(Language::Usize(low_bound));
+                    let high_bound_id = egraph.add(Language::Usize(high_bound));
+                    egraph.add(Language::AccessSlice([
+                        id,
+                        axis_id,
+                        low_bound_id,
+                        high_bound_id,
+                    ]))
+                })
+                .collect::<Vec<_>>()
+                .iter()
+                .fold(None, |prev_concat_id, this_slice_id| match prev_concat_id {
+                    None => Some(*this_slice_id),
+                    Some(prev_concat_id) => Some(egraph.add(Language::AccessConcatenate([
+                        prev_concat_id,
+                        *this_slice_id,
+                        axis_id,
+                    ]))),
+                })
+                .unwrap();
+
+            vec![top_concat_id]
+        }
+    }
+
     match strategy {
         SliceConcatenateStrategy::DivideBy { divisor, limit } => {
             rewrite!(format!("slice-concatenate-access-axis-{}-divide-by-{}-limit-{}", axis, divisor, limit);
@@ -925,6 +989,17 @@ pub fn slice_concatenate_accesses(
                      if is_access()
                      if access_has_axis(axis)
                      if access_dimension_divisible_by(axis, divisor)
+                     if access_dimension_greater_than(axis, limit))
+        }
+        SliceConcatenateStrategy::DivideInto {
+            segment_size,
+            limit,
+        } => {
+            rewrite!(format!("slice-concatenate-access-axis-{}-divide-into-{}-limit-{}", axis, segment_size, limit);
+                     "?a" => { DivideIntoApplier {axis: axis, segment_size:segment_size} }
+                     if is_access()
+                     if access_has_axis(axis)
+                     if access_dimension_divisible_by(axis, segment_size)
                      if access_dimension_greater_than(axis, limit))
         }
     }
@@ -1762,6 +1837,50 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn slice_concatenate_accesses_divide_into_0() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "(access (access-tensor t-32-32) 1)".parse().unwrap();
+
+        let rws = vec![
+            super::slice_concatenate_accesses(
+                0,
+                SliceConcatenateStrategy::DivideInto {
+                    segment_size: 8,
+                    limit: 8,
+                },
+            ),
+            super::slice_concatenate_accesses(
+                1,
+                SliceConcatenateStrategy::DivideInto {
+                    segment_size: 8,
+                    limit: 8,
+                },
+            ),
+            super::collapse_nested_access_slices(),
+        ];
+
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        for dim0 in &[0, 8, 16, 24] {
+            for dim1 in &[0, 8, 16, 24] {
+                assert_eq!(
+                    format!("(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 {} {}) 0 {} {})", dim1, dim1+8, dim0, dim0+8)
+                        .parse::<Pattern<_>>()
+                        .unwrap()
+                        .search(&runner.egraph)
+                        .len(),
+                    1
+                );
+            }
+        }
     }
 
     #[test]
