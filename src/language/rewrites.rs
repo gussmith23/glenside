@@ -1379,6 +1379,11 @@ pub fn remove_trivial_transpose() -> Rewrite<Language, MyAnalysis> {
     )
 }
 
+pub fn collapse_nested_accesses() -> Rewrite<Language, MyAnalysis> {
+    rewrite!("collapse-nested-accesses";
+             "(access (access ?a ?unused) ?new)" => "(access ?a ?new)")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2463,6 +2468,25 @@ mod tests {
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&program);
         let rws = vec![super::remove_trivial_transpose()];
+        let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
+
+        let matches = "(access (access-tensor t) 1)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn collapse_nested_accesses() {
+        let program = "(access (access (access-tensor t) 0) 1)".parse().unwrap();
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::collapse_nested_accesses()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
         let matches = "(access (access-tensor t) 1)"
