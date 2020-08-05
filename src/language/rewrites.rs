@@ -855,43 +855,63 @@ pub fn slice_concatenate_accesses(
         }
     }
 
-    struct DivideByTwoApplier {
+    struct DivideByApplier {
         axis: usize,
+        divisor: usize,
     }
-    impl Applier<Language, MyAnalysis> for DivideByTwoApplier {
+    impl Applier<Language, MyAnalysis> for DivideByApplier {
         fn apply_one(
             &self,
             egraph: &mut EG,
             id: egg::Id,
-            subst: &egg::Subst,
+            _subst: &egg::Subst,
         ) -> std::vec::Vec<egg::Id> {
             let shape = match &egraph[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
             };
             assert!(self.axis < shape.shape.ndim() + shape.item_shape.ndim());
-            let low_bound = 0;
-            let high_bound = if self.axis < shape.shape.ndim() {
+            let dim_value = if self.axis < shape.shape.ndim() {
                 shape.shape[self.axis]
             } else {
                 shape.item_shape[self.axis - shape.shape.ndim()]
             };
-            assert_eq!(high_bound % 2, 0);
-            let middle_bound = high_bound / 2;
+            assert_eq!(dim_value % self.divisor, 0);
 
-            format!(
-                "(access-concatenate (access-slice ?a {} {} {}) (access-slice ?a {} {} {}) {})",
-                self.axis, low_bound, middle_bound, self.axis, middle_bound, high_bound, self.axis
-            )
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .apply_one(egraph, id, subst)
+            let axis_id = egraph.add(Language::Usize(self.axis));
+
+            let top_concat_id = (0..self.divisor)
+                .map(|segment_index| {
+                    let low_bound = segment_index * (dim_value / self.divisor);
+                    let high_bound = low_bound + (dim_value / self.divisor);
+                    let low_bound_id = egraph.add(Language::Usize(low_bound));
+                    let high_bound_id = egraph.add(Language::Usize(high_bound));
+                    egraph.add(Language::AccessSlice([
+                        id,
+                        axis_id,
+                        low_bound_id,
+                        high_bound_id,
+                    ]))
+                })
+                .collect::<Vec<_>>()
+                .iter()
+                .fold(None, |prev_concat_id, this_slice_id| match prev_concat_id {
+                    None => Some(*this_slice_id),
+                    Some(prev_concat_id) => Some(egraph.add(Language::AccessConcatenate([
+                        prev_concat_id,
+                        *this_slice_id,
+                        axis_id,
+                    ]))),
+                })
+                .unwrap();
+
+            vec![top_concat_id]
         }
     }
     match strategy {
-        SliceConcatenateStrategy::DivideBy { divisor: 2, limit } => {
-            rewrite!(format!("slice-concatenate-access-axis-{}-divide-by-{}", axis, 2);
-                     "?a" => { DivideByTwoApplier {axis: axis} }
+        SliceConcatenateStrategy::DivideBy { divisor, limit } => {
+            rewrite!(format!("slice-concatenate-access-axis-{}-divide-by-{}-limit-{}", axis, divisor, limit);
+                     "?a" => { DivideByApplier {axis: axis, divisor: divisor} }
                      // TODO(@gussmith) Wouldn't need this if we had "access" op
                      // We could have an access op that takes the access type,
                      // the access config, and then a number of arguments. I.e.
@@ -907,10 +927,6 @@ pub fn slice_concatenate_accesses(
                      if access_dimension_divisible_by(axis, 2)
                      if access_dimension_greater_than(axis, limit))
         }
-        SliceConcatenateStrategy::DivideBy {
-            divisor: _,
-            limit: _,
-        } => todo!(),
     }
 }
 
