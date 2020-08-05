@@ -406,15 +406,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 assert_eq!(access.shape.ndim() + access.item_shape.ndim(), list.len());
-                let mut tmp = access
+                let tmp = access
                     .shape
                     .slice()
                     .iter()
                     .chain(access.item_shape.slice().iter())
-                    .zip(list.iter())
                     .collect::<Vec<_>>();
-                tmp.sort_by(|a, b| a.1.cmp(b.1));
-                let new_shape = tmp.iter().map(|tuple| tuple.0).cloned().collect::<Vec<_>>();
+                let new_shape = list.iter().map(|i| *tmp[*i]).collect::<Vec<_>>();
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&new_shape[..access.shape.ndim()]),
                     item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
@@ -2431,8 +2429,58 @@ mod tests {
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
-                assert_eq!(a.shape, IxDyn(&[5]));
-                assert_eq!(a.item_shape, IxDyn(&[6, 4]));
+                assert_eq!(a.shape, IxDyn(&[6]));
+                assert_eq!(a.item_shape, IxDyn(&[4, 5]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose_1() {
+        let program = "
+             (access-transpose
+              (access-transpose
+               (access (access-tensor t) 1)
+               (list 1 3 2 0)
+              )
+              (list 3 2 1 0)
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::new();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 4, 2]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose_2() {
+        let program = "
+              (access-transpose
+               (access (access-tensor t) 1)
+               (list 1 3 2 0)
+              )
+             "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::new();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[2]));
+                assert_eq!(a.item_shape, IxDyn(&[4, 3, 1]));
             }
             _ => panic!(),
         }
