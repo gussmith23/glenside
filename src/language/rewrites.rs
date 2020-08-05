@@ -806,9 +806,15 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
                                  |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
 }
 
+pub enum SliceConcatenateStrategy {
+    /// Divides the axis by `divisor`; does not divide anything less than or
+    /// equal to `limit`.
+    DivideBy { divisor: usize, limit: usize },
+}
+
 pub fn slice_concatenate_accesses(
     axis: usize,
-    dimension_greater_than: usize,
+    strategy: SliceConcatenateStrategy,
 ) -> Rewrite<Language, MyAnalysis> {
     fn access_has_axis(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, id, _subst| match &egraph[id].data {
@@ -833,23 +839,26 @@ pub fn slice_concatenate_accesses(
         }
     }
 
-    fn access_dimension_is_even(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    fn access_dimension_divisible_by(
+        axis: usize,
+        divisor: usize,
+    ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, id, _subst| match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
                 if axis < a.shape.ndim() {
                     a.shape[axis] % 2 == 0
                 } else {
-                    a.item_shape[axis - a.shape.ndim()] % 2 == 0
+                    a.item_shape[axis - a.shape.ndim()] % divisor == 0
                 }
             }
             _ => panic!(),
         }
     }
 
-    struct ApplierImpl {
+    struct DivideByTwoApplier {
         axis: usize,
     }
-    impl Applier<Language, MyAnalysis> for ApplierImpl {
+    impl Applier<Language, MyAnalysis> for DivideByTwoApplier {
         fn apply_one(
             &self,
             egraph: &mut EG,
@@ -879,22 +888,30 @@ pub fn slice_concatenate_accesses(
             .apply_one(egraph, id, subst)
         }
     }
-    rewrite!(format!("slice-concatenate-access-axis-{}", axis);
-             "?a" => { ApplierImpl {axis: axis} }
-             // TODO(@gussmith) Wouldn't need this if we had an "access" op
-             // We could have an access op that takes the access type, the
-             // access config, and then a number of arguments. I.e. access-1
-             // would take 1, access-2 would take 2, etc. Then we wouldn't need
-             // this check.
-             // TODO(@gussmith) Need to limit what gets sliced
-             // I used to do this with the old split() rewrite. It's a little
-             // trickier now with accesses, because you have to match only on
-             // accesses to tensor literals. Not impossible, obviously. I'm just
-             // being lazy right now.
-             if is_access()
-             if access_has_axis(axis)
-             if access_dimension_is_even(axis)
-             if access_dimension_greater_than(axis, dimension_greater_than))
+    match strategy {
+        SliceConcatenateStrategy::DivideBy { divisor: 2, limit } => {
+            rewrite!(format!("slice-concatenate-access-axis-{}-divide-by-{}", axis, 2);
+                     "?a" => { DivideByTwoApplier {axis: axis} }
+                     // TODO(@gussmith) Wouldn't need this if we had "access" op
+                     // We could have an access op that takes the access type,
+                     // the access config, and then a number of arguments. I.e.
+                     // access-1 would take 1, access-2 would take 2, etc. Then
+                     // we wouldn't need this check.
+                     // TODO(@gussmith) Need to limit what gets sliced
+                     // I used to do this with the old split() rewrite. It's a
+                     // little trickier now with accesses, because you have to
+                     // match only on accesses to tensor literals. Not
+                     // impossible, obviously. I'm just being lazy right now.
+                     if is_access()
+                     if access_has_axis(axis)
+                     if access_dimension_divisible_by(axis, 2)
+                     if access_dimension_greater_than(axis, limit))
+        }
+        SliceConcatenateStrategy::DivideBy {
+            divisor: _,
+            limit: _,
+        } => todo!(),
+    }
 }
 
 pub fn slice_concatenate_tensor_accesses(
@@ -1738,8 +1755,20 @@ mod tests {
         let program = "(access (access-tensor t-32-32) 1)".parse().unwrap();
 
         let rws = vec![
-            super::slice_concatenate_accesses(0, 16),
-            super::slice_concatenate_accesses(1, 16),
+            super::slice_concatenate_accesses(
+                0,
+                SliceConcatenateStrategy::DivideBy {
+                    divisor: 2,
+                    limit: 16,
+                },
+            ),
+            super::slice_concatenate_accesses(
+                1,
+                SliceConcatenateStrategy::DivideBy {
+                    divisor: 2,
+                    limit: 16,
+                },
+            ),
             super::collapse_nested_access_slices(),
         ];
 

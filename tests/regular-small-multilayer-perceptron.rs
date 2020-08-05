@@ -23,8 +23,20 @@ fn regular_small_multilayer_perceptron() {
     .unwrap();
 
     let rws = vec![
-        rewrites::slice_concatenate_accesses(0, 16),
-        rewrites::slice_concatenate_accesses(1, 16),
+        rewrites::slice_concatenate_accesses(
+            0,
+            rewrites::SliceConcatenateStrategy::DivideBy {
+                divisor: 2,
+                limit: 16,
+            },
+        ),
+        rewrites::slice_concatenate_accesses(
+            1,
+            rewrites::SliceConcatenateStrategy::DivideBy {
+                divisor: 2,
+                limit: 16,
+            },
+        ),
         rewrites::collapse_nested_access_slices(),
         rewrites::bubble_access_concatenate_through_access(),
         rewrites::bubble_access_concatenate_through_access_slice(),
