@@ -924,7 +924,7 @@ pub fn slice_concatenate_accesses(
                      // impossible, obviously. I'm just being lazy right now.
                      if is_access()
                      if access_has_axis(axis)
-                     if access_dimension_divisible_by(axis, 2)
+                     if access_dimension_divisible_by(axis, divisor)
                      if access_dimension_greater_than(axis, limit))
         }
     }
