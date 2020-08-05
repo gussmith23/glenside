@@ -12,7 +12,6 @@ use std::str::FromStr;
 fn mlp() {
     // TODO(@gussmith23) This test should use temporary files
     const LIBRARY_FILENAME_C: &str = "mlp.c";
-    const LIBRARY_FILENAME_O: &str = "mlp.o";
     const MAIN_FILENAME: &str = "main.c";
 
     // This is a simplified version of what's produced in the
@@ -54,25 +53,11 @@ fn mlp() {
     // Get hardware design
     let (hw_map, _atoms) = create_hardware_design_no_sharing(&egraph);
 
-    let (signature, program) = codegen(&egraph, id, &hw_map, "mlp");
-    println!("{}", program);
+    let code = codegen(&egraph, id, &hw_map, "mlp");
+    println!("{}", code);
 
     let mut file = File::create(LIBRARY_FILENAME_C).unwrap();
-    file.write_all(program.as_bytes()).unwrap();
-
-    let output = Command::new("gcc")
-        .arg("-c")
-        .arg(LIBRARY_FILENAME_C)
-        .arg("-O0")
-        .arg("-Werror")
-        .arg(format!("-o{}", LIBRARY_FILENAME_O))
-        .output()
-        .expect("Failed to compile with gcc");
-    assert!(
-        output.status.success(),
-        "Compilation failed. stderr:\n{}",
-        std::str::from_utf8(output.stderr.as_slice()).expect("Could not convert stderr to UTF8")
-    );
+    file.write_all(code.as_bytes()).unwrap();
 
     File::create(MAIN_FILENAME)
             .expect("Couldn't create main file")
@@ -81,8 +66,7 @@ fn mlp() {
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
-
-extern {};
+#include \"{}\"
 
 // Generated with mlp_c_gen_helper.py
 float input[2] = {{ 0.07359921, 0.77422889 }};
@@ -113,7 +97,7 @@ int main() {{
   return 0;
 }}
 ",
-                signature}
+               LIBRARY_FILENAME_C }
                 .as_bytes(),
             )
             .expect("Couldn't write main file");
@@ -121,7 +105,6 @@ int main() {{
     let output = Command::new("gcc")
         .arg("-Werror")
         .arg(MAIN_FILENAME)
-        .arg(LIBRARY_FILENAME_O)
         .arg(format!(
             "{}/data/codegen-mlp/{}",
             env!("CARGO_MANIFEST_DIR"),

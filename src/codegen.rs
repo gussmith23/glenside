@@ -164,25 +164,16 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
     vec
 }
 
-/// Returns signature and code.
+/// Returns c code.
 // TODO(@gussmith23) Does not reason about ordering on hardware.
 // TODO(@gussmith23) Hardcoded to float32
-pub fn codegen(
-    expr: &Expr,
-    id: Id,
-    hw_map: &HashMap<Id, usize>,
-    function_name: &str,
-) -> (String, String) {
-    let mut out = String::default();
-
+pub fn codegen(expr: &Expr, id: Id, hw_map: &HashMap<Id, usize>, function_name: &str) -> String {
     let mut declarations = String::default();
     let mut code = String::default();
     codegen_recursive_helper(expr, id, id, "", &mut declarations, &mut code, hw_map).as_str();
 
-    out.push_str(declarations.as_str());
-    out.push_str("\n");
-
     let mut signature = format!("void {}(", function_name);
+    // TODO(@gussmith23) Assuming the output is a tensor
     signature.push_str("float * out, ");
     signature.push_str(
         find_vars(expr, id)
@@ -194,12 +185,15 @@ pub fn codegen(
             .as_str(),
     );
 
+    let mut out = String::default();
+
     out.push_str(SYSTOLIC_ARRAY_SIGNATURE);
     out.push_str("\n");
 
-    out.push_str(signature.as_str());
-
+    out.push_str(declarations.as_str());
     out.push_str("\n");
+
+    out.push_str(signature.as_str());
     out.push_str("{");
     out.push_str("\n");
 
@@ -208,7 +202,7 @@ pub fn codegen(
     out.push_str("}");
     out.push_str("\n");
 
-    (signature, out)
+    out
 }
 
 /// allocations_prefix: string to prefix all allocations/declarations with
