@@ -22,7 +22,8 @@ int main() {
   mlp(&out[0], &input[0], &weights_0[0][0], &weights_1[0][0], &weights_2[0][0]);
 
   // Ensure result is what we expect.
-  for (int dim_0 = 0; dim_0 < 2; ++dim_0) {
+  int dim_0;
+  for (dim_0 = 0; dim_0 < 2; ++dim_0) {
     fprintf(stderr, "%f ?= %f\\n", out[dim_0],expected_out[dim_0]);
     assert(fabs(out[dim_0] - expected_out[dim_0]) < 0.00001);
   }

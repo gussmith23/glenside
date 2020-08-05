@@ -9,9 +9,11 @@ void rtml_systolic_array_weight_stationary(int hardware_id, float *out,
   assert(activations_dim_0 == weights_dim_0);
   fprintf(stderr, "Running systolic array, hardware id %d\n", hardware_id);
 
-  for (int col = 0; col < weights_dim_1; ++col) {
+  int col;
+  for (col = 0; col < weights_dim_1; ++col) {
     out[col] = 0.0;
-    for (int row = 0; row < activations_dim_0; ++row) {
+    int row;
+    for (row = 0; row < activations_dim_0; ++row) {
       out[col] += activations[row] * weights[row * weights_dim_1 + col];
     }
   }
