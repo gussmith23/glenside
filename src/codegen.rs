@@ -167,10 +167,25 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
 /// Returns c code.
 // TODO(@gussmith23) Does not reason about ordering on hardware.
 // TODO(@gussmith23) Hardcoded to float32
-pub fn codegen(expr: &Expr, id: Id, hw_map: &HashMap<Id, usize>, function_name: &str) -> String {
+pub fn codegen(
+    expr: &Expr,
+    id: Id,
+    hw_map: &HashMap<Id, usize>,
+    function_name: &str,
+    allocations_prefix: &str,
+) -> String {
     let mut declarations = String::default();
     let mut code = String::default();
-    codegen_recursive_helper(expr, id, id, "", &mut declarations, &mut code, hw_map).as_str();
+    codegen_recursive_helper(
+        expr,
+        id,
+        id,
+        allocations_prefix,
+        &mut declarations,
+        &mut code,
+        hw_map,
+    )
+    .as_str();
 
     let mut signature = format!("void {}(", function_name);
     // TODO(@gussmith23) Assuming the output is a tensor

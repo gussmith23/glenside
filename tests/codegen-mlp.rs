@@ -53,7 +53,7 @@ fn mlp() {
     // Get hardware design
     let (hw_map, _atoms) = create_hardware_design_no_sharing(&egraph);
 
-    let code = codegen(&egraph, id, &hw_map, "mlp");
+    let code = codegen(&egraph, id, &hw_map, "mlp", "");
     println!("{}", code);
 
     let mut file = File::create(LIBRARY_FILENAME_C).unwrap();

@@ -18,6 +18,11 @@ fn main() {
                     Arg::with_name("OUT_DESIGN_FILEPATH")
                         .required(true)
                         .index(5),
+                )
+                .arg(
+                    Arg::with_name("allocate-for-manycore")
+                        .help("Declares all buffers using the attributes required by the Manycore")
+                        .long("allocate-for-manycore"),
                 ),
         )
         .get_matches();
@@ -73,8 +78,17 @@ fn main() {
         let id = egraph.add_expr(&extracted_expr);
         let (hw_id_map, hw_atoms) = glenside::codegen::create_hardware_design_no_sharing(&egraph);
 
-        let code =
-            glenside::codegen::codegen(&egraph, id, &hw_id_map, matches.value_of("NAME").unwrap());
+        let code = glenside::codegen::codegen(
+            &egraph,
+            id,
+            &hw_id_map,
+            matches.value_of("NAME").unwrap(),
+            if !matches.is_present("allocate-for-manycore") {
+                ""
+            } else {
+                r#"__attribute__ ((section (".dram"))) __attribute__ ((aligned (256)))"#
+            },
+        );
 
         let json = glenside::hw_design_language::design_to_json(
             &glenside::hw_design_language::HardwareDesign { atoms: hw_atoms },
