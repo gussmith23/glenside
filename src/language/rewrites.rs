@@ -12,6 +12,18 @@ fn is_access() -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     }
 }
 
+/// True if a list is equal to 0..len(list)
+fn list_is_0_through_len(list: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    move |egraph, _id, subst| {
+        let list = match &egraph[subst[list]].data {
+            MyAnalysisData::List(l) => l,
+            _ => panic!(),
+        };
+
+        *list == (0..list.len()).collect::<Vec<_>>()
+    }
+}
+
 fn same_item_axis(
     axis0: Var,
     access0: Var,
@@ -1319,12 +1331,61 @@ pub fn bubble_access_concatenate_through_access_slice() -> Rewrite<Language, MyA
     })
 }
 
+pub fn collapse_nested_transposes() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        inner_list: Var,
+        outer_list: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let inner_list = match &egraph[subst[self.inner_list]].data {
+                MyAnalysisData::List(l) => l,
+                _ => panic!(),
+            };
+            let outer_list = match &egraph[subst[self.outer_list]].data {
+                MyAnalysisData::List(l) => l,
+                _ => panic!(),
+            };
+
+            assert_eq!(inner_list.len(), outer_list.len());
+
+            let new_list = outer_list
+                .iter()
+                .map(|outer_index| inner_list[*outer_index])
+                .collect::<Vec<_>>();
+
+            format!(
+                "(access-transpose ?a (list {}))",
+                itertools::join(new_list.iter().map(|v| v.to_string()), " ")
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite!("collapse-nested-transposes";
+             "(access-transpose (access-transpose ?a ?inner-list) ?outer-list)" =>
+             { ApplierImpl {
+                 inner_list: "?inner-list".parse().unwrap(),
+                 outer_list: "?outer-list".parse().unwrap(),
+             } }
+    )
+}
+
+pub fn remove_trivial_transpose() -> Rewrite<Language, MyAnalysis> {
+    rewrite!("remove-trivial-transpose";
+             "(access-transpose ?a ?list)" => "?a"
+             if list_is_0_through_len("?list".parse().unwrap())
+    )
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
     use egg::{Pattern, Runner, Searcher};
     use ndarray::IxDyn;
+    use std::collections::HashMap;
 
     #[test]
     fn split() {
@@ -2355,6 +2416,60 @@ mod tests {
         .unwrap()
         .search_eclass(&runner.egraph, id)
         .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn collapse_nested_transposes() {
+        let program = "
+             (access-transpose
+              (access-transpose
+               (access (access-tensor t) 1)
+               (list 1 3 2 0)
+              )
+              (list 3 2 1 0)
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::collapse_nested_transposes()];
+        let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
+
+        let matches = "(access-transpose (access (access-tensor t) 1) (list 0 2 3 1))"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn remove_trivial_transpose() {
+        let program = "
+              (access-transpose
+               (access (access-tensor t) 1)
+               (list 0 1 2 3)
+              )
+             "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::remove_trivial_transpose()];
+        let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
+
+        let matches = "(access (access-tensor t) 1)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 }
