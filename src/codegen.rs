@@ -16,10 +16,10 @@ extern void rtml_systolic_array_weight_stationary(
   int hardware_id,
   float * out,
   float * activations,
-  int activations_width,
   float * weights,
-  int weights_width,
-  int weights_height);
+  int input_vector_size,
+  int output_vector_size,
+  int batch);
 ";
 
 /// Creates a representation (currently just a string with a C declaration) of
@@ -336,16 +336,23 @@ fn codegen_recursive_helper(
             code.push_str(
                 format!(
                     "rtml_systolic_array_weight_stationary(
-                       // Hardware ID
-                       {},
-                       {}, {}, {}, {}, {}, {});\n",
+                       {}, {}, {}, {}, {}, {}, {});\n",
+                    // Hardware ID
                     hw_map.get(&id).unwrap(),
+                    // Pointer to output
                     format!("&{}[0]", out_var_name,),
+                    // Pointer to input vector
                     format!("&{}[0]", s0,),
-                    rows,
+                    // Pointer to input matrix
                     format!("&{}[0]", s1,),
+                    // Length of input vector/size of input matrix dim 0
                     rows,
-                    cols
+                    // Size of input matrix dim 1/length of output vector
+                    cols,
+                    // Batch size, or, the number of vectors to push through.
+                    // Changing this is how we implement matrix-matrix
+                    // multiplication.
+                    1
                 )
                 .as_str(),
             );
