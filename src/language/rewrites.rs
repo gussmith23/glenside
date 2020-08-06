@@ -1,4 +1,4 @@
-use super::{Language, MyAnalysis, MyAnalysisData};
+use super::{Language, MyAnalysis, MyAnalysisData, PadType};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
@@ -1486,6 +1486,138 @@ pub fn collapse_nested_accesses() -> Rewrite<Language, MyAnalysis> {
              "(access (access ?a ?unused) ?new)" => "(access ?a ?new)")
 }
 
+#[derive(Copy, Clone)]
+pub enum PadLocation {
+    End,
+}
+impl std::fmt::Display for PadLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PadLocation::End => "end",
+            }
+        )
+    }
+}
+pub enum PadSliceStrategy {
+    PadToMultiplesOf {
+        multiples_of: usize,
+        limit: usize,
+        pad_location: PadLocation,
+        pad_type: PadType,
+    },
+}
+
+pub fn pad_slice_accesses(
+    axis: usize,
+    strategy: PadSliceStrategy,
+) -> Rewrite<Language, MyAnalysis> {
+    struct PadToMultiplesOfApplier {
+        axis: usize,
+        limit: usize,
+        multiples_of: usize,
+        pad_location: PadLocation,
+        pad_type: PadType,
+    }
+    impl Applier<Language, MyAnalysis> for PadToMultiplesOfApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            _subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let access = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+
+            let dim_val = access[self.axis];
+            let mut ids = Vec::new();
+            let mut pad_to = closest_greater_multiple(self.multiples_of, access[self.axis]);
+
+            while pad_to <= self.limit {
+                let pad_before = match self.pad_location {
+                    PadLocation::End => 0,
+                };
+                let pad_after = match self.pad_location {
+                    PadLocation::End => pad_to - dim_val,
+                };
+                let low = match self.pad_location {
+                    PadLocation::End => 0,
+                };
+                let high = match self.pad_location {
+                    PadLocation::End => dim_val,
+                };
+
+                let pad_before_id = egraph.add(Language::Usize(pad_before));
+                let pad_after_id = egraph.add(Language::Usize(pad_after));
+                let low_id = egraph.add(Language::Usize(low));
+                let high_id = egraph.add(Language::Usize(high));
+                let axis_id = egraph.add(Language::Usize(self.axis));
+                let pad_type_id = egraph.add(Language::PadType(self.pad_type));
+
+                let access_pad_id = egraph.add(Language::AccessPad([
+                    id,
+                    pad_type_id,
+                    axis_id,
+                    pad_before_id,
+                    pad_after_id,
+                ]));
+                let access_slice_id = egraph.add(Language::AccessSlice([
+                    access_pad_id,
+                    axis_id,
+                    low_id,
+                    high_id,
+                ]));
+
+                ids.push(access_slice_id);
+
+                pad_to += self.multiples_of;
+            }
+
+            ids
+        }
+    }
+
+    fn closest_greater_multiple(multiple_of: usize, closest_to: usize) -> usize {
+        let multiple = closest_to + (multiple_of - (closest_to % multiple_of));
+        if multiple == 0 {
+            multiple + multiple_of
+        } else {
+            multiple
+        }
+    }
+
+    match strategy {
+        PadSliceStrategy::PadToMultiplesOf {
+            multiples_of,
+            limit,
+            pad_location,
+            pad_type,
+        } => rewrite!(
+            format!("pad-slice-accesses-axis-{}-pad-to-nearest-multiple-of-{}-limit-{}-location-{}",
+                            axis, multiples_of, limit, pad_location);
+                            "?a" =>
+            { PadToMultiplesOfApplier{
+                limit,
+                axis,
+                multiples_of,
+                pad_location,
+                pad_type
+
+            } }
+                            if  is_access()
+                            if access_has_axis(axis)
+                            if constrain_access("?a".parse().unwrap(), move |a| {
+                                    closest_greater_multiple(a[axis], multiples_of) <= limit
+                            })
+
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2653,5 +2785,44 @@ mod tests {
             .search_eclass(&runner.egraph, id)
             .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn pad_slice_accesses_pad_to_multiples() {
+        let program = "(access (access-tensor t) 0)".parse().unwrap();
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::pad_slice_accesses(
+            0,
+            PadSliceStrategy::PadToMultiplesOf {
+                limit: 16,
+                multiples_of: 4,
+                pad_location: PadLocation::End,
+                pad_type: PadType::ZeroPadding,
+            },
+        )];
+        let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
+
+        for dim_val in &[4, 8, 12, 16] {
+            let matches = format!(
+                "(access-slice
+                  (access-pad
+                   (access (access-tensor t) 0)
+                   zero-padding
+                   0 0 {}
+                  )
+                  0 0 1
+                 )",
+                dim_val - 1
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+            assert_eq!(matches.substs.len(), 1);
+        }
     }
 }
