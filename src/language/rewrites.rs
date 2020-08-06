@@ -852,13 +852,7 @@ pub fn slice_concatenate_accesses(
         divisor: usize,
     ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, id, _subst| match &egraph[id].data {
-            MyAnalysisData::AccessPattern(a) => {
-                if axis < a.shape.ndim() {
-                    a.shape[axis] % 2 == 0
-                } else {
-                    a.item_shape[axis - a.shape.ndim()] % divisor == 0
-                }
-            }
+            MyAnalysisData::AccessPattern(a) => a[axis] % divisor == 0,
             _ => panic!(),
         }
     }
