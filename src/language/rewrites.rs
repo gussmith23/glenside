@@ -1541,7 +1541,7 @@ pub fn pad_slice_accesses(
             };
 
             let dim_val = access[self.axis];
-            let mut pad_to = closest_multiple(self.multiple_of, access[self.axis]);
+            let pad_to = closest_multiple(self.multiple_of, access[self.axis]);
 
             let pad_before = match self.pad_location {
                 PadLocation::End => 0,
@@ -1640,9 +1640,16 @@ pub fn pad_slice_accesses(
 
     /// Given closest_to and multiple_of, returns n such that n >= closest_to,
     /// n % multiple_of == 0, and n-closest_to < multiple_of.
-    /// ```
-    /// panic!();
-    /// ```
+    ///
+    /// for closest_to in 0..100 {
+    ///   for multiple_of in 0..100 {
+    ///     let closest_multiple = closest_multiple(multiple_of, closest_to);
+    ///     assert!(closest_multiple >= closest_to);
+    ///     assert_eq!(closest_multiple % multiple_of, 0);
+    ///     assert!(closest_multiple - closest_to < multiple_of);
+    ///   }
+    /// }
+    ///
     /// TODO(@gussmith23) Test this
     fn closest_multiple(multiple_of: usize, closest_to: usize) -> usize {
         closest_to + ((multiple_of - (closest_to % multiple_of)) % multiple_of)
@@ -3131,29 +3138,27 @@ mod tests {
             super::systolic_array(),
             super::pad_slice_accesses(
                 0,
-                PadSliceStrategy::PadToMultiplesOf {
-                    limit: 1024,
-                    multiples_of: 16,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 64,
                     pad_location: PadLocation::End,
                     pad_type: PadType::ZeroPadding,
                 },
             ),
             super::pad_slice_accesses(
                 1,
-                PadSliceStrategy::PadToMultiplesOf {
-                    limit: 1024,
-                    multiples_of: 16,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 64,
                     pad_location: PadLocation::End,
                     pad_type: PadType::ZeroPadding,
                 },
             ),
             super::slice_concatenate_accesses(
                 0,
-                SliceConcatenateStrategy::DivideInto { segment_size: 16 },
+                SliceConcatenateStrategy::DivideInto { segment_size: 64 },
             ),
             super::slice_concatenate_accesses(
                 1,
-                SliceConcatenateStrategy::DivideInto { segment_size: 16 },
+                SliceConcatenateStrategy::DivideInto { segment_size: 64 },
             ),
         ];
 
@@ -3164,8 +3169,8 @@ mod tests {
         let matches = "
 (access-cartesian-product
  (access-slice
-  (access-pad
-   (access-slice
+  (access-slice
+   (access-pad
     (access-pad
      (access-reshape
       (access-flatten
@@ -3178,9 +3183,9 @@ mod tests {
      )
      zero-padding 1 ?m ?n
     )
-    1 ?j ?k)
-   zero-padding 0 ?d ?e
-  )
+    zero-padding 0 ?d ?e
+   )
+   1 ?j ?k)
   0 ?f ?g
  )
  ?h
@@ -3189,11 +3194,7 @@ mod tests {
         .parse::<Pattern<_>>()
         .unwrap()
         .search(&runner.egraph);
-        for m in &matches {
-            //println!("{:#?}", runner.egraph[m.substs[0]["?a".parse().unwrap()]]);
-        }
         assert_eq!(matches.len(), 1);
-        panic!()
     }
 
     #[test]
