@@ -1584,9 +1584,18 @@ pub fn pad_slice_accesses(
         }
     }
 
+    /// Given closest_to and multiple_of, returns n such that n >= closest_to,
+    /// n % multiple_of == 0, and n-closest_to < multiple_of.
+    /// ```
+    /// panic!();
+    /// ```
+    /// TODO(@gussmith23) Test this
+    fn closest_multiple(multiple_of: usize, closest_to: usize) -> usize {
+        closest_to + ((multiple_of - (closest_to % multiple_of)) % multiple_of)
+    }
     fn closest_greater_multiple(multiple_of: usize, closest_to: usize) -> usize {
-        let multiple = closest_to + (multiple_of - (closest_to % multiple_of));
-        if multiple == 0 {
+        let multiple = closest_multiple(multiple_of, closest_to);
+        if multiple == closest_to {
             multiple + multiple_of
         } else {
             multiple
@@ -3017,6 +3026,101 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
+        let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
+        let id = expr.as_ref().len() - 1;
+        let _conv2d_id =
+            crate::models::resnet50::conv2d(&mut expr, id as u32, "weights", (1, 1), (1, 1));
+
+        let mut map = HashMap::default();
+        // batch, height, width, channels
+        map.insert("image".to_string(), vec![1, 32, 32, 3]);
+        // kernel height, kernel width, in channels, out channels
+        map.insert("weights".to_string(), vec![3, 3, 3, 8]);
+
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let _id = egraph.add_expr(&expr);
+
+        let rws = vec![
+            super::flatten_unflatten_any_access(),
+            super::bubble_reshape_through_cartesian_product(),
+            super::bubble_reshape_through_compute_dot_product(),
+            super::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
+            super::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
+            super::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
+            super::bubble_access_concatenate_through_compute_dot_product_item_axis(),
+            super::bubble_access_concatenate_through_compute_dot_product_not_item_axis(),
+            super::bubble_access_slice_through_access_pad_inequal_axes(),
+            super::systolic_array(),
+            super::pad_slice_accesses(
+                0,
+                PadSliceStrategy::PadToMultiplesOf {
+                    limit: 1024,
+                    multiples_of: 16,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            super::pad_slice_accesses(
+                1,
+                PadSliceStrategy::PadToMultiplesOf {
+                    limit: 1024,
+                    multiples_of: 16,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            super::slice_concatenate_accesses(
+                0,
+                SliceConcatenateStrategy::DivideInto { segment_size: 16 },
+            ),
+            super::slice_concatenate_accesses(
+                1,
+                SliceConcatenateStrategy::DivideInto { segment_size: 16 },
+            ),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+(access-cartesian-product
+ (access-slice
+  (access-pad
+   (access-slice
+    (access-pad
+     (access-reshape
+      (access-flatten
+       (access
+        (access-move-axis (access (access-tensor weights) 0) 3 0)
+        1
+       )
+      )
+      ?shape
+     )
+     zero-padding 1 ?m ?n
+    )
+    1 ?j ?k)
+   zero-padding 0 ?d ?e
+  )
+  0 ?f ?g
+ )
+ ?h
+)
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search(&runner.egraph);
+        for m in &matches {
+            //println!("{:#?}", runner.egraph[m.substs[0]["?a".parse().unwrap()]]);
+        }
+        assert_eq!(matches.len(), 1);
+        panic!()
     }
 
     #[test]
