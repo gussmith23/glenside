@@ -823,7 +823,6 @@ pub enum SliceConcatenateStrategy {
     },
     DivideInto {
         segment_size: usize,
-        limit: usize,
     },
 }
 
@@ -986,16 +985,12 @@ pub fn slice_concatenate_accesses(
                      if access_dimension_divisible_by(axis, divisor)
                      if access_dimension_greater_than(axis, limit))
         }
-        SliceConcatenateStrategy::DivideInto {
-            segment_size,
-            limit,
-        } => {
-            rewrite!(format!("slice-concatenate-access-axis-{}-divide-into-{}-limit-{}", axis, segment_size, limit);
+        SliceConcatenateStrategy::DivideInto { segment_size } => {
+            rewrite!(format!("slice-concatenate-access-axis-{}-divide-into-{}", axis, segment_size);
                      "?a" => { DivideIntoApplier {axis: axis, segment_size:segment_size} }
                      if is_access()
                      if access_has_axis(axis)
-                     if access_dimension_divisible_by(axis, segment_size)
-                     if access_dimension_greater_than(axis, limit))
+                     if access_dimension_divisible_by(axis, segment_size))
         }
     }
 }
@@ -1968,17 +1963,11 @@ mod tests {
         let rws = vec![
             super::slice_concatenate_accesses(
                 0,
-                SliceConcatenateStrategy::DivideInto {
-                    segment_size: 8,
-                    limit: 8,
-                },
+                SliceConcatenateStrategy::DivideInto { segment_size: 8 },
             ),
             super::slice_concatenate_accesses(
                 1,
-                SliceConcatenateStrategy::DivideInto {
-                    segment_size: 8,
-                    limit: 8,
-                },
+                SliceConcatenateStrategy::DivideInto { segment_size: 8 },
             ),
             super::collapse_nested_access_slices(),
         ];
