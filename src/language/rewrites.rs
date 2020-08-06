@@ -5,6 +5,20 @@ use ndarray::Dimension;
 type EG = EGraph<Language, MyAnalysis>;
 type RW = Rewrite<Language, MyAnalysis>;
 
+fn constrain_vars(
+    vars: Vec<Var>,
+    constraint: impl Fn(Vec<MyAnalysisData>) -> bool,
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    move |egraph, _, subst| {
+        constraint(
+            vars.iter()
+                .map(|var| &egraph[subst[*var]].data)
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
 fn constrain_access(
     access: Var,
     constraint: impl Fn(&super::language::AccessPatternData) -> bool,
