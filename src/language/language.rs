@@ -325,6 +325,17 @@ pub struct AccessPatternData {
     pub item_shape: IxDyn,
 }
 
+impl std::ops::Index<usize> for AccessPatternData {
+    type Output = ndarray::Ix;
+    fn index(&self, index: usize) -> &Self::Output {
+        if index < self.shape.ndim() {
+            &self.shape[index]
+        } else {
+            &self.item_shape[index - self.shape.ndim()]
+        }
+    }
+}
+
 pub fn access_windows_resulting_shape(
     access_shape: &IxDyn,
     filters_shape: &IxDyn,
