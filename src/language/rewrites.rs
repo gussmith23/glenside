@@ -1505,6 +1505,11 @@ impl std::fmt::Display for PadLocation {
     }
 }
 pub enum PadSliceStrategy {
+    PadToClosestMultipleOf {
+        multiple_of: usize,
+        pad_location: PadLocation,
+        pad_type: PadType,
+    },
     PadToMultiplesOf {
         multiples_of: usize,
         limit: usize,
@@ -1517,6 +1522,55 @@ pub fn pad_slice_accesses(
     axis: usize,
     strategy: PadSliceStrategy,
 ) -> Rewrite<Language, MyAnalysis> {
+    struct PadToClosestMultipleOfApplier {
+        axis: usize,
+        multiple_of: usize,
+        pad_location: PadLocation,
+        pad_type: PadType,
+    }
+    impl Applier<Language, MyAnalysis> for PadToClosestMultipleOfApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            _subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let access = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+
+            let dim_val = access[self.axis];
+            let mut pad_to = closest_multiple(self.multiple_of, access[self.axis]);
+
+            let pad_before = match self.pad_location {
+                PadLocation::End => 0,
+            };
+            let pad_after = match self.pad_location {
+                PadLocation::End => pad_to - dim_val,
+            };
+            let low = match self.pad_location {
+                PadLocation::End => 0,
+            };
+            let high = match self.pad_location {
+                PadLocation::End => dim_val,
+            };
+
+            format!(
+                "(access-slice
+                  (access-pad
+                   ?a
+                   {} {} {} {}
+                  )
+                  {} {} {}
+                 )",
+                self.pad_type, self.axis, pad_before, pad_after, self.axis, low, high
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, id, _subst)
+        }
+    }
     struct PadToMultiplesOfApplier {
         axis: usize,
         limit: usize,
@@ -1603,6 +1657,25 @@ pub fn pad_slice_accesses(
     }
 
     match strategy {
+        PadSliceStrategy::PadToClosestMultipleOf {
+            multiple_of,
+            pad_location,
+            pad_type,
+        } => rewrite!(
+            format!("pad-slice-accesses-axis-{}-pad-to-nearest-multiple-of-{}-location-{}",
+                    axis, multiple_of, pad_location);
+            "?a" =>
+            {
+                PadToClosestMultipleOfApplier{
+                    axis,
+                    multiple_of,
+                    pad_location,
+                    pad_type
+                }
+            }
+            if is_access()
+                if access_has_axis(axis)
+        ),
         PadSliceStrategy::PadToMultiplesOf {
             multiples_of,
             limit,
@@ -3158,5 +3231,91 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn pad_slice_accesses_pad_to_closest_multiple() {
+        let program = "(access (access-tensor t) 0)".parse().unwrap();
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![
+            super::pad_slice_accesses(
+                0,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 4,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            super::pad_slice_accesses(
+                1,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 4,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            super::pad_slice_accesses(
+                2,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 4,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            super::pad_slice_accesses(
+                3,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 4,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+        ];
+        let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
+
+        for axis in 0..4 {
+            let matches = format!(
+                "(access-slice
+                  (access-pad
+                   (access (access-tensor t) 0)
+                   zero-padding
+                   {} 0 {}
+                  )
+                  {} 0 {}
+                 )",
+                axis,
+                4 - (axis + 1),
+                axis,
+                axis + 1
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+            assert_eq!(matches.substs.len(), 1);
+
+            let matches = format!(
+                "(access-slice
+                  (access-pad
+                   (access (access-tensor t) 0)
+                   zero-padding
+                   {} 0 {}
+                  )
+                  {} 0 {}
+                 )",
+                axis,
+                4 - (axis + 1) + 4,
+                axis,
+                axis + 1
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id);
+            assert!(matches.is_none());
+        }
     }
 }
