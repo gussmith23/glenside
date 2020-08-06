@@ -1611,9 +1611,10 @@ pub fn pad_slice_accesses(
 mod tests {
 
     use super::*;
-    use egg::{Pattern, Runner, Searcher};
+    use egg::{Pattern, RecExpr, Runner, Searcher};
     use ndarray::IxDyn;
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     #[test]
     fn split() {
@@ -2807,5 +2808,176 @@ mod tests {
             .unwrap();
             assert_eq!(matches.substs.len(), 1);
         }
+    }
+
+    /// This test tests the newer conv2d syntax, on a more realistically-shaped
+    /// set of inputs.
+    #[test]
+    fn conv2d_im2col_systolic_array_1() {
+        let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
+        let id = expr.as_ref().len() - 1;
+        let _conv2d_id =
+            crate::models::resnet50::conv2d(&mut expr, id as u32, "weights", (1, 1), (1, 1));
+
+        let mut map = HashMap::default();
+        // batch, height, width, channels
+        map.insert("image".to_string(), vec![1, 32, 32, 3]);
+        // kernel height, kernel width, in channels, out channels
+        map.insert("weights".to_string(), vec![3, 3, 3, 8]);
+
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let rws = vec![
+            super::flatten_unflatten_any_access(),
+            super::bubble_reshape_through_cartesian_product(),
+            super::bubble_reshape_through_compute_dot_product(),
+            super::systolic_array(),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        // Expected original program.
+        let matches = "
+            (access-move-axis
+             (compute dot-product
+              (access-cartesian-product
+               (access
+                (access-move-axis (access (access-tensor weights) 0) 3 0)
+                1
+               )
+               (access
+                (access-squeeze
+                 (access-squeeze
+                  (access-windows
+                   (access-pad
+                    (access-pad
+                     (access (access-tensor image) 4)
+                     zero-padding 1 1 1
+                    )
+                    zero-padding 2 1 1
+                   )
+                   (shape-insert-axis (shape-remove-axis (shape-of weights) 3) 0)
+                   (shape 1 1 1 1)
+                  )
+                  3
+                 )
+                 3
+                )
+                3
+               )
+              )
+             )
+             0 3
+            )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        // Find the version with flattened and reshaped weight/image arguments
+        let matches = "
+            (access-move-axis
+             (compute dot-product
+              (access-cartesian-product
+               (access-reshape
+                (access-flatten
+                 (access
+                  (access-move-axis (access (access-tensor weights) 0) 3 0)
+                  1
+                 )
+                )
+                ?shape-of-weights
+               )
+               (access-reshape
+                (access-flatten
+                 (access
+                  (access-squeeze
+                   (access-squeeze
+                    (access-windows
+                     (access-pad
+                      (access-pad
+                       (access (access-tensor image) 4)
+                       zero-padding 1 1 1
+                      )
+                      zero-padding 2 1 1
+                     )
+                     (shape-insert-axis (shape-remove-axis (shape-of weights) 3) 0)
+                     (shape 1 1 1 1)
+                    )
+                    3
+                   )
+                   3
+                  )
+                  3
+                 )
+                )
+                ?shape-of-image
+               )
+              )
+             )
+             0 3
+            )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+            (access-move-axis
+             (access-reshape
+              (systolic-array 27 1024
+               (access-flatten
+                (access
+                 (access-move-axis (access (access-tensor weights) 0) 3 0)
+                 1
+                )
+               )
+               (access
+                (access-transpose
+                 (access-flatten
+                  (access
+                   (access-squeeze
+                    (access-squeeze
+                     (access-windows
+                      (access-pad
+                       (access-pad
+                        (access (access-tensor image) 4)
+                        zero-padding 1 1 1
+                       )
+                       zero-padding 2 1 1
+                      )
+                      (shape-insert-axis (shape-remove-axis (shape-of weights) 3) 0)
+                      (shape 1 1 1 1)
+                     )
+                     3
+                    )
+                    3
+                   )
+                   3
+                  )
+                 )
+                 (list 1 0)
+                )
+                0
+               )
+              )
+              ?shape
+             )
+             0 3
+            )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
