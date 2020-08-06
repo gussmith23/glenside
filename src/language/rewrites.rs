@@ -1621,6 +1621,30 @@ pub fn pad_slice_accesses(
     }
 }
 
+pub fn bubble_access_slice_through_access_pad_inequal_axes() -> Rewrite<Language, MyAnalysis> {
+    rewrite! {"bubble-access-slice-through-access-pad-inequal-axes";
+        "(access-pad
+               (access-slice ?a ?slice-axis ?low ?high)
+               ?padding ?pad-axis ?pad-before ?pad-after
+              )" =>
+        "(access-slice
+               (access-pad ?a ?padding ?pad-axis ?pad-before ?pad-after)
+               ?slice-axis ?low ?high
+              )"
+    if constrain_vars(vec!["?slice-axis".parse().unwrap(), "?pad-axis".parse().unwrap()], |data| {
+        assert_eq!(data.len(), 2);
+        let slice_axis = match &data[0] {
+            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            _ =>panic!(),
+        };
+        let pad_axis = match &data[1] {
+            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            _ =>panic!(),
+        };
+        slice_axis != pad_axis
+    })}
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -2988,6 +3012,43 @@ mod tests {
              0 3
             )
             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_slice_through_access_pad_inequal_axes() {
+        let program = "
+              (access-pad
+               (access-slice
+                (access-tensor t)
+                0 0 8
+               )
+               zero-padding 1 2 2
+              )
+             "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), vec![8, 10]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_slice_through_access_pad_inequal_axes()];
+        let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
+
+        let matches = "
+              (access-slice
+               (access-pad
+                (access-tensor t)
+                zero-padding 1 2 2
+               )
+               0 0 8
+              )
+"
         .parse::<Pattern<_>>()
         .unwrap()
         .search_eclass(&runner.egraph, id)
