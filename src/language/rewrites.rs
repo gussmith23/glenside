@@ -5,6 +5,23 @@ use ndarray::Dimension;
 type EG = EGraph<Language, MyAnalysis>;
 type RW = Rewrite<Language, MyAnalysis>;
 
+fn constrain_access(
+    access: Var,
+    constraint: impl Fn(&super::language::AccessPatternData) -> bool,
+) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    move |egraph, _, subst| match &egraph[subst[access]].data {
+        MyAnalysisData::AccessPattern(a) => constraint(a),
+        _ => false,
+    }
+}
+
+fn access_has_axis(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    move |egraph, id, _subst| match &egraph[id].data {
+        MyAnalysisData::AccessPattern(a) => axis < a.shape.ndim() + a.item_shape.ndim(),
+        _ => panic!(),
+    }
+}
+
 fn is_access() -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     move |egraph, id, _| match &egraph[id].data {
         MyAnalysisData::AccessPattern(_) => true,
@@ -752,15 +769,6 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
 }
 
 pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
-    fn constrain_access(
-        access: Var,
-        constraint: impl Fn(&super::language::AccessPatternData) -> bool,
-    ) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-        move |egraph, _, subst| match &egraph[subst[access]].data {
-            MyAnalysisData::AccessPattern(a) => constraint(a),
-            _ => false,
-        }
-    }
     struct ApplierImpl {
         a: Var,
         b: Var,
@@ -823,13 +831,6 @@ pub fn slice_concatenate_accesses(
     axis: usize,
     strategy: SliceConcatenateStrategy,
 ) -> Rewrite<Language, MyAnalysis> {
-    fn access_has_axis(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-        move |egraph, id, _subst| match &egraph[id].data {
-            MyAnalysisData::AccessPattern(a) => axis < a.shape.ndim() + a.item_shape.ndim(),
-            _ => panic!(),
-        }
-    }
-
     fn access_dimension_greater_than(
         axis: usize,
         greater_than: usize,
@@ -1009,13 +1010,6 @@ pub fn slice_concatenate_tensor_accesses(
     axis: usize,
     dimension_greater_than: usize,
 ) -> Rewrite<Language, MyAnalysis> {
-    fn access_has_axis(axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-        move |egraph, id, _subst| match &egraph[id].data {
-            MyAnalysisData::AccessPattern(a) => axis < a.shape.ndim() + a.item_shape.ndim(),
-            _ => panic!(),
-        }
-    }
-
     fn access_dimension_greater_than(
         axis: usize,
         greater_than: usize,
