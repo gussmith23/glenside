@@ -1,8 +1,9 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::multizip;
 use ndarray::{s, Dimension, IxDyn};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
+use std::iter::FromIterator;
 use std::str::FromStr;
 
 define_language! {
@@ -317,6 +318,226 @@ pub enum MyAnalysisData {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapeData {
     shape: IxDyn,
+}
+
+/// Used to represent ranges over a set from 0..n, for some n. Ranges are
+/// half-open.
+type RangeHashSet = HashSet<(usize, usize)>;
+pub enum RangeInsertStrategy {
+    /// If elements are inserted in the middle of a range, the range gets split
+    /// in two.
+    BreakRanges,
+    /// If elements are inserted in the middle of a range, they get folded into
+    /// the range.
+    PreserveRanges,
+}
+trait RangeSet {
+    type Index;
+
+    /// Updates ranges as if `num_elements_inserted` elements were inserted at
+    /// `index`, according to `strategy`.
+    fn insert_elements(
+        &mut self,
+        strategy: RangeInsertStrategy,
+        index: Self::Index,
+        num_elements_inserted: usize,
+    );
+
+    /// Updates ranges as if `num_elements_removed` elements were removed at
+    /// `index`.
+    fn remove_elements(&mut self, index: Self::Index, num_elements_removed: usize);
+
+    /// Checks whether `range` is covered by the ranges in this set.
+    fn covered(&self, range: (Self::Index, Self::Index)) -> bool;
+
+    /// Adds range. Ranges are half-open.
+    fn add_range(&mut self, range: (Self::Index, Self::Index));
+}
+impl RangeSet for RangeHashSet {
+    type Index = usize;
+
+    fn insert_elements(
+        &mut self,
+        strategy: RangeInsertStrategy,
+        index: usize,
+        num_elements_inserted: usize,
+    ) {
+        let mut new_ranges = Vec::default();
+        for (low, high) in self.drain() {
+            assert!(low <= high);
+            match strategy {
+                RangeInsertStrategy::PreserveRanges => {
+                    let (new_low, new_high) = if index < low {
+                        (low + num_elements_inserted, high + num_elements_inserted)
+                    } else if index >= low && index <= high {
+                        (low, high + num_elements_inserted)
+                    } else if index > high {
+                        (low, high)
+                    } else {
+                        unreachable!()
+                    };
+                    new_ranges.push((new_low, new_high));
+                }
+                RangeInsertStrategy::BreakRanges => {
+                    match {
+                        if index <= low {
+                            (
+                                Some((low + num_elements_inserted, high + num_elements_inserted)),
+                                None,
+                            )
+                        } else if index > low && index < high {
+                            (
+                                Some((low, index)),
+                                Some((index + num_elements_inserted, high + num_elements_inserted)),
+                            )
+                        } else if index >= high {
+                            (Some((low, high)), None)
+                        } else {
+                            unreachable!()
+                        }
+                    } {
+                        (Some(range1), Some(range2)) => {
+                            new_ranges.push(range1);
+                            new_ranges.push(range2);
+                        }
+                        (Some(range1), None) => {
+                            new_ranges.push(range1);
+                        }
+                        _ => panic!(),
+                    };
+                }
+            }
+        }
+
+        for range in new_ranges.iter() {
+            self.insert(*range);
+        }
+    }
+
+    fn remove_elements(&mut self, index: usize, num_elements_removed: usize) {
+        let new_ranges = self
+            .drain()
+            .filter_map(|(low, high): (usize, usize)| {
+                let new_low = if low <= index {
+                    low
+                } else if low > index {
+                    low - std::cmp::min(num_elements_removed, low - index)
+                } else {
+                    unreachable!()
+                };
+                let new_high = if index >= high {
+                    high
+                } else if index < high {
+                    high - std::cmp::min(num_elements_removed, high - index)
+                } else {
+                    unreachable!()
+                };
+
+                // If the range is valid and nonempty
+                if new_low < new_high {
+                    Some((new_low, new_high))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for new_range in new_ranges {
+            self.insert(new_range);
+        }
+    }
+
+    /// I'm hoping this implementation will be fast.
+    fn covered(&self, range: (Self::Index, Self::Index)) -> bool {
+        let mut to_be_covered =
+            HashSet::<_, std::collections::hash_map::RandomState>::from_iter(range.0..range.1);
+
+        for (low, high) in self.iter() {
+            to_be_covered = to_be_covered
+                .difference(&HashSet::from_iter(*low..*high))
+                .cloned()
+                .collect();
+        }
+
+        to_be_covered.is_empty()
+    }
+
+    /// Adds range. Ranges are half-open.
+    fn add_range(&mut self, range: (Self::Index, Self::Index)) {
+        self.insert(range);
+    }
+}
+
+#[cfg(test)]
+mod range_hash_set_tests {
+    use super::*;
+
+    #[test]
+    fn insert_elements_break_ranges() {
+        let mut range_set = RangeHashSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((2, 6));
+        range_set.add_range((4, 8));
+        range_set.add_range((7, 10));
+        range_set.insert_elements(RangeInsertStrategy::BreakRanges, 5, 5);
+        assert_eq!(range_set.len(), 6);
+        assert!(range_set.contains(&(0, 3)));
+        assert!(range_set.contains(&(2, 5)));
+        assert!(range_set.contains(&(10, 11)));
+        assert!(range_set.contains(&(4, 5)));
+        assert!(range_set.contains(&(10, 13)));
+        assert!(range_set.contains(&(12, 15)));
+    }
+
+    #[test]
+    fn insert_elements_preserve_ranges() {
+        let mut range_set = RangeHashSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((2, 6));
+        range_set.add_range((4, 8));
+        range_set.add_range((7, 10));
+        range_set.insert_elements(RangeInsertStrategy::PreserveRanges, 5, 5);
+        assert_eq!(range_set.len(), 4);
+        assert!(range_set.contains(&(0, 3)));
+        assert!(range_set.contains(&(2, 11)));
+        assert!(range_set.contains(&(4, 13)));
+        assert!(range_set.contains(&(12, 15)));
+    }
+
+    #[test]
+    fn remove_elements() {
+        let mut range_set = RangeHashSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((2, 6));
+        range_set.add_range((5, 8));
+        range_set.add_range((9, 12));
+        range_set.add_range((10, 14));
+        range_set.remove_elements(5, 5);
+        assert_eq!(range_set.len(), 4);
+        assert!(range_set.contains(&(0, 3)));
+        assert!(range_set.contains(&(2, 5)));
+        assert!(range_set.contains(&(5, 7)));
+        assert!(range_set.contains(&(5, 9)));
+    }
+
+    #[test]
+    fn covered() {
+        let mut range_set = RangeHashSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((5, 6));
+        range_set.add_range((6, 8));
+        range_set.add_range((10, 12));
+        range_set.add_range((11, 14));
+        assert!(range_set.covered((0, 2)));
+        assert!(!range_set.covered((0, 4)));
+        assert!(!range_set.covered((2, 5)));
+        assert!(!range_set.covered((3, 5)));
+        assert!(range_set.covered((5, 7)));
+        assert!(range_set.covered((5, 8)));
+        assert!(!range_set.covered((5, 9)));
+        assert!(range_set.covered((10, 14)));
+        assert!(!range_set.covered((10, 16)));
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
