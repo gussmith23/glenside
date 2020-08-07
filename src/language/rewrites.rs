@@ -2619,7 +2619,7 @@ mod tests {
     }
 
     #[test]
-    fn bubble_access_concatenate_through_compute_dot_product_not_item_access() {
+    fn bubble_access_concatenate_through_compute_dot_product_not_item_axis() {
         let program = "
              (compute dot-product
               (access-concatenate
