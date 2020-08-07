@@ -1734,6 +1734,114 @@ pub fn bubble_access_slice_through_access_pad_inequal_axes() -> Rewrite<Language
     })}
 }
 
+pub fn bubble_access_slice_through_access_cartesian_product_not_item_axis_left(
+) -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-access-slice-through-access-cartesian-product-not-item-axis-left";
+             "(access-cartesian-product (access-slice ?a ?axis ?low ?high) ?right)" =>
+             "(access-slice
+               (access-cartesian-product ?a ?right)
+               ?axis
+               ?low
+               ?high
+              )"
+             if not_item_axis("?axis".parse().unwrap(), "?a".parse().unwrap()))
+}
+
+pub fn bubble_access_slice_through_access_cartesian_product_not_item_axis_right(
+) -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        axis: Var,
+        left: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let left = match &egraph[subst[self.left]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let axis = MyAnalysis::get_usize(subst[self.axis], egraph);
+            format!(
+                "(access-slice
+                  (access-cartesian-product ?left ?a)
+                  {}
+                  ?low
+                  ?high
+                 )",
+                axis + left.shape.ndim()
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("bubble-access-slice-through-access-cartesian-product-not-item-axis-right";
+                 "(access-cartesian-product ?left (access-slice ?a ?axis ?low ?high))" =>
+             { ApplierImpl {
+                 axis: "?axis".parse().unwrap(),
+                 left: "?left".parse().unwrap(),
+             } }
+                 if not_item_axis("?axis".parse().unwrap(), "?a".parse().unwrap()))
+}
+
+pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
+) -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        axis0: Var,
+        access1: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let a1 = match &egraph[subst[self.access1]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let axis0 = MyAnalysis::get_usize(subst[self.axis0], egraph);
+
+            let new_axis = axis0 + a1.shape.ndim() + 1;
+
+            format!(
+                "(access-slice
+                    (access-cartesian-product ?a0 ?a1)
+                    {} ?low ?high)",
+                new_axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite! {"bubble-access-concatenate-through-access-cartesian-product-same-axis";
+    "(access-cartesian-product
+               (access-slice ?a0 ?axis0 ?low ?high)
+               (access-slice ?a1 ?axis1 ?low ?high)
+              )" =>
+    { ApplierImpl {
+        axis0: "?axis0".parse().unwrap(),
+        access1: "?a1".parse().unwrap()
+    }}
+    if constrain_vars(vec!["?a0".parse().unwrap(), "?a1".parse().unwrap(), "?axis0".parse().unwrap(), "?axis1".parse().unwrap()], |data| {
+        let a0 = match &data[0] {
+            MyAnalysisData::AccessPattern(a) =>a,
+            _ => panic!(),
+        };
+        let a1 = match &data[1] {
+            MyAnalysisData::AccessPattern(a) =>a,
+            _ => panic!(),
+        };
+        let axis0 = match &data[2] {
+            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            _ => panic!(),
+        };
+        let axis1 = match &data[3] {
+            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            _ => panic!(),
+        };
+
+        // The unsliced dimensions must be cartesian-product-compatible (i.e. equal)
+        a0[axis0] == a1[axis1]
+    })}
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -3318,5 +3426,113 @@ mod tests {
             .search_eclass(&runner.egraph, id);
             assert!(matches.is_none());
         }
+    }
+
+    #[test]
+    fn bubble_access_slice_through_access_cartesian_product_left() {
+        let program = "
+             (access-cartesian-product
+              (access-slice (access (access-tensor a) 1) 0 0 2)
+              (access (access-tensor b) 1)
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 3, 3, 4]);
+        map.insert("b".to_string(), vec![10, 3, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_slice_through_access_cartesian_product_not_item_axis_left()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-slice
+              (access-cartesian-product
+               (access (access-tensor a) 1)
+               (access (access-tensor b) 1)
+              )
+              0 0 2
+             )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_slice_through_access_cartesian_product_right() {
+        let program = "
+             (access-cartesian-product
+              (access (access-tensor b) 1)
+              (access-slice (access (access-tensor a) 1) 0 0 2)
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 3, 3, 4]);
+        map.insert("b".to_string(), vec![10, 3, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_slice_through_access_cartesian_product_not_item_axis_right()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-slice
+              (access-cartesian-product
+               (access (access-tensor b) 1)
+               (access (access-tensor a) 1)
+              )
+              1 0 2
+             )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_slice_through_access_cartesian_product_same_item_axis() {
+        let program = "
+             (access-cartesian-product
+              (access-slice (access (access-tensor a) 2) 3 1 2)
+              (access-slice (access (access-tensor b) 1) 2 1 2)
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 16, 3, 3, 4]);
+        map.insert("b".to_string(), vec![10, 3, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_slice_through_access_cartesian_product_same_item_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-slice
+              (access-cartesian-product
+               (access (access-tensor a) 2)
+               (access (access-tensor b) 1)
+              )
+              5 1 2
+             )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
