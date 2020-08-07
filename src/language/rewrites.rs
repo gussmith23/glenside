@@ -1842,6 +1842,20 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
     })}
 }
 
+/// If we're not slicing in an axis that's being computed over, then removing
+/// the slice has no potential to effect the computation. It will just result in
+/// a larger computation, with some of the data being sliced away.
+pub fn bubble_access_slice_through_compute_dot_product_not_item_axis(
+) -> Rewrite<Language, MyAnalysis> {
+    rewrite!("bubble-access-slice-through-compute-dot-product-not-item-axis";
+             "(compute dot-product (access-slice ?a ?axis ?low ?high))" =>
+             "(access-slice
+               (compute dot-product ?a)
+               ?axis ?low ?high
+              )"
+             if not_item_axis("?axis".parse().unwrap(), "?a".parse().unwrap()))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -3529,6 +3543,40 @@ mod tests {
               )
               5 1 2
              )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_slice_through_compute_dot_product_not_item_axis() {
+        let program = "
+             (compute dot-product
+              (access-slice
+               (access (access-tensor a) 1)
+               0 2 3
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 16, 3, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws = vec![super::bubble_access_slice_through_compute_dot_product_not_item_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-slice
+              (compute dot-product (access (access-tensor a) 1))
+              0 2 3
+             )
+             "
         .parse::<Pattern<_>>()
         .unwrap()
         .search_eclass(&runner.egraph, id)
