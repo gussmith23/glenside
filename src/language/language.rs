@@ -1,6 +1,7 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::multizip;
-use ndarray::{s, Dimension, IxDyn};
+use log::warn;
+use ndarray::{s, Dimension, Ix, IxDyn};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::FromIterator;
@@ -544,6 +545,15 @@ mod range_hash_set_tests {
 pub struct AccessPatternData {
     pub shape: IxDyn,
     pub item_shape: IxDyn,
+    /// Regions proven to be zero-valued. The outermost map maps a axis index to
+    /// a set of usize tuples, indicating the half-open indices [low, high)
+    /// which are known to be zero in that axis.
+    /// TODO(@gussmith23) Might want to replace this with full partial eval
+    /// I realized while implementing this that I could just implement partial
+    /// eval, and it would do the same for me. I don't think it would be more
+    /// time efficient, though, and I'm even more certain that it wouldn't be
+    /// space efficient.
+    pub zero_regions: HashMap<Ix, RangeHashSet>,
 }
 
 impl std::ops::Index<usize> for AccessPatternData {
@@ -620,8 +630,50 @@ impl egg::Analysis<Language> for MyAnalysis {
     type Data = MyAnalysisData;
 
     fn merge(&self, to: &mut Self::Data, from: Self::Data) -> bool {
-        assert_eq!(*to, from);
-        merge_if_different(to, from)
+        match (to, &from) {
+            (
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: to_shape,
+                    item_shape: to_item_shape,
+                    zero_regions: to_zero_regions,
+                }),
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: from_shape,
+                    item_shape: from_item_shape,
+                    zero_regions: from_zero_regions,
+                }),
+            ) => {
+                assert_eq!(to_shape, from_shape);
+                assert_eq!(to_item_shape, from_item_shape);
+
+                // Merge zero regions.
+                // TODO(@gussmith23) Make sure merge returns `true` infrequently
+                // Returning `true` more often forces more rebuilds, which kills
+                // performance!
+                let mut changed = false;
+                for (axis_index, from_range_set) in from_zero_regions.iter() {
+                    if let Some(to_range_set) = to_zero_regions.get_mut(&axis_index) {
+                        // If `axis` is already in `from`, merge the two
+                        // RangeSets
+                        for range in from_range_set {
+                            if !to_range_set.contains(range) {
+                                to_range_set.add_range(*range);
+                                changed = true;
+                            }
+                        }
+                    } else {
+                        to_zero_regions.insert(*axis_index, from_range_set.clone());
+                        changed = true;
+                    }
+                }
+
+                changed
+            }
+            (to @ _, _) => {
+                assert_eq!(*to, from);
+                merge_if_different(to, from)
+            }
+        }
     }
 
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
@@ -645,9 +697,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .chain(access.item_shape.slice().iter())
                     .collect::<Vec<_>>();
                 let new_shape = list.iter().map(|i| *tmp[*i]).collect::<Vec<_>>();
+
+                // Re-sort zero regions.
+                let mut new_zero_regions = HashMap::default();
+                for (new_axis_index, old_axis_index) in list.iter().enumerate() {
+                    if let Some(val) = access.zero_regions.get(old_axis_index) {
+                        new_zero_regions.insert(new_axis_index, val.clone());
+                    }
+                }
+
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&new_shape[..access.shape.ndim()]),
                     item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
+                    zero_regions: new_zero_regions,
                 })
             }
             List(list) => {
@@ -693,9 +755,23 @@ impl egg::Analysis<Language> for MyAnalysis {
                     })
                     .collect::<Vec<_>>();
 
+                if !access.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
+
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&new_shape[..access.shape.ndim()]),
                     item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !access.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                 })
             }
             &AccessInsertAxis([access_id, axis_id]) => {
@@ -703,6 +779,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
+                // TODO(@gussmith23) Implement zero_regions
+                if !access.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
                 let axis = MyAnalysis::get_usize(axis_id, egraph);
 
                 assert!(axis <= access.shape.ndim() + access.item_shape.ndim());
@@ -737,6 +817,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
+                // TODO(@gussmith23) Implement zero_regions
+                if !access.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
                 let axis = MyAnalysis::get_usize(axis_id, egraph);
                 use ndarray::RemoveAxis;
                 if axis < access.shape.ndim() {
@@ -760,7 +844,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
-                let _pad_type = match &egraph[pad_type_id].data {
+                let pad_type = match &egraph[pad_type_id].data {
                     MyAnalysisData::PadType(t) => t,
                     _ => panic!(),
                 };
@@ -773,9 +857,52 @@ impl egg::Analysis<Language> for MyAnalysis {
                 } else {
                     access.item_shape[axis - access.shape.ndim()] += pad_before + pad_after;
                 };
+
+                // Update zero regions
+                match pad_type {
+                    crate::language::PadType::ZeroPadding => {
+                        if !access.zero_regions.contains_key(&axis) {
+                            access.zero_regions.insert(axis, HashSet::default());
+                        }
+                        // Update the zero regions. Order here is important (we
+                        // do the end padding first, then the beginning)
+                        let axis_val = access[axis];
+                        access.zero_regions.get_mut(&axis).unwrap().insert_elements(
+                            RangeInsertStrategy::PreserveRanges,
+                            axis_val,
+                            pad_after,
+                        );
+                        access.zero_regions.get_mut(&axis).unwrap().insert_elements(
+                            RangeInsertStrategy::PreserveRanges,
+                            0,
+                            pad_before,
+                        );
+                        let axis_val = access[axis];
+                        if pad_before > 0 {
+                            access
+                                .zero_regions
+                                .get_mut(&axis)
+                                .unwrap()
+                                .insert((0, pad_before));
+                        }
+                        if pad_after > 0 {
+                            access
+                                .zero_regions
+                                .get_mut(&axis)
+                                .unwrap()
+                                .insert((axis_val - pad_after, axis_val));
+                        }
+                    }
+                }
+
                 MyAnalysisData::AccessPattern(access)
             }
             &AccessTensor(t_id) => MyAnalysisData::AccessPattern(AccessPatternData {
+                // TODO(@gussmith23) Implement zero regions
+                // It's harmless (I think) if `zero_regions` defaults to
+                // empty, but for it to be useful, we need to implement it
+                // for each operator.
+                zero_regions: { HashMap::default() },
                 shape: match &egraph[t_id].data {
                     MyAnalysisData::Legacy(l) => l.shape.as_ref().unwrap().clone(),
                     _ => panic!(),
@@ -796,6 +923,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .cloned()
                     .collect::<Vec<_>>();
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !a.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: IxDyn(&combined[..(a.shape.ndim().saturating_sub(1))]),
                     item_shape: IxDyn(&combined[(a.shape.ndim().saturating_sub(1))..]),
                 })
@@ -812,6 +949,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(a0.item_shape, a1.item_shape);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !a0.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        if !a1.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: a0.shape.clone(),
                     item_shape: IxDyn(
                         std::iter::once(2)
@@ -822,6 +972,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             &AccessMoveAxis([access_id, src_axis_id, dest_axis_id]) => {
+                let access = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
                 let (split_axis, shape) = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => (
                         a.shape.ndim(),
@@ -859,6 +1013,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !access.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: IxDyn(&new_shape_order[..split_axis]),
                     item_shape: IxDyn(&new_shape_order[split_axis..]),
                 })
@@ -868,6 +1032,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
+                // TODO(@gussmith23) Implement zero_regions
+                if !new_access.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
 
                 let axis: usize = Self::get_usize(axis_id, egraph);
                 let low: usize = Self::get_usize(low_id, egraph);
@@ -896,6 +1064,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
                 };
+                // TODO(@gussmith23) Implement zero_regions
+                if !new_access.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
+                if !a1.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
                 assert_eq!(new_access.shape.ndim(), a1.shape.ndim(),);
                 assert_eq!(new_access.item_shape.ndim(), a1.item_shape.ndim(),);
                 assert!(axis < a1.shape.ndim() + a1.item_shape.ndim());
@@ -910,6 +1085,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             &AccessShape([shape_id, item_shape_id]) => {
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    zero_regions: { HashMap::default() },
                     shape: match &egraph[shape_id].data {
                         MyAnalysisData::Shape(s) => s.shape.clone(),
                         _ => panic!(),
@@ -933,6 +1109,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
+                // TODO(@gussmith23) Implement zero_regions
+                if !a.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
                 let new_shape = match &egraph[access_shape_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
@@ -957,6 +1137,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !a.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: IxDyn(&[a.shape.as_array_view().iter().product()]),
                     item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
                 })
@@ -972,11 +1162,25 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a0) => a0,
                     _ => panic!(),
                 };
+                // TODO(@gussmith23) Implement zero_regions
+                if !a0.zero_regions.is_empty() {
+                    warn!("Throwing away zero_regions analysis data");
+                }
 
                 match compute_type {
                     self::ComputeType::ElementwiseAdd | self::ComputeType::ElementwiseMul => {
                         assert!(a0.item_shape.ndim() >= 1);
                         MyAnalysisData::AccessPattern(AccessPatternData {
+                            // TODO(@gussmith23) Implement zero regions
+                            // It's harmless (I think) if `zero_regions` defaults to
+                            // empty, but for it to be useful, we need to implement it
+                            // for each operator.
+                            zero_regions: {
+                                if !a0.zero_regions.is_empty() {
+                                    warn!("Throwing away zero_regions analysis data");
+                                }
+                                HashMap::default()
+                            },
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&a0.item_shape.slice()[1..]),
                         })
@@ -994,17 +1198,43 @@ impl egg::Analysis<Language> for MyAnalysis {
                         //     shape: a0.shape.clone(),
                         // })
                         MyAnalysisData::AccessPattern(AccessPatternData {
+                            // TODO(@gussmith23) Implement zero regions
+                            // It's harmless (I think) if `zero_regions` defaults to
+                            // empty, but for it to be useful, we need to implement it
+                            // for each operator.
+                            zero_regions: {
+                                if !a0.zero_regions.is_empty() {
+                                    warn!("Throwing away zero_regions analysis data");
+                                }
+                                HashMap::default()
+                            },
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
                         })
                     }
                     self::ComputeType::ReduceSum | self::ComputeType::ReduceMax => {
                         MyAnalysisData::AccessPattern(AccessPatternData {
+                            // TODO(@gussmith23) Implement zero regions
+                            // It's harmless (I think) if `zero_regions` defaults to
+                            // empty, but for it to be useful, we need to implement it
+                            // for each operator.
+                            zero_regions: {
+                                if !a0.zero_regions.is_empty() {
+                                    warn!("Throwing away zero_regions analysis data");
+                                }
+                                HashMap::default()
+                            },
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
                         })
                     }
-                    self::ComputeType::ReLU => MyAnalysisData::AccessPattern(a0.clone()),
+                    self::ComputeType::ReLU => {
+                        // TODO(@gussmith23) Implement zero_regions
+                        if !a0.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        MyAnalysisData::AccessPattern(a0.clone())
+                    }
                 }
             }
             &AccessCartesianProduct([a0_id, a1_id]) => {
@@ -1045,6 +1275,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !a0.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        if !a1.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: new_shape,
                     item_shape: new_item_shape,
                 })
@@ -1100,17 +1343,28 @@ impl egg::Analysis<Language> for MyAnalysis {
             &Access([tensor_or_access_id, dim_id]) => {
                 // TODO(@gussmith23) How to access tensor literals?
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
-                let shape = match &egraph[tensor_or_access_id].data {
-                    MyAnalysisData::AccessPattern(a) => a
-                        .shape
-                        .as_array_view()
-                        .iter()
-                        .chain(a.item_shape.as_array_view().iter())
-                        .cloned()
-                        .collect::<Vec<_>>(),
+                let access = match &egraph[tensor_or_access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
                 };
+                let shape = access
+                    .shape
+                    .as_array_view()
+                    .iter()
+                    .chain(access.item_shape.as_array_view().iter())
+                    .cloned()
+                    .collect::<Vec<_>>();
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !access.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: IxDyn(&shape[..dim]),
                     item_shape: IxDyn(&shape[dim..]),
                 })
@@ -1240,6 +1494,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(a0.item_shape, IxDyn(&[rows]));
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !a0.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        if !a1.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: IxDyn(
                         a0.shape
                             .as_array_view()
@@ -1360,6 +1627,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(access.item_shape.ndim(), 0);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if !access.zero_regions.is_empty() {
+                            warn!("Throwing away zero_regions analysis data");
+                        }
+                        HashMap::default()
+                    },
                     shape: IxDyn(
                         access_windows_resulting_shape(
                             &access.shape,
@@ -2404,7 +2681,7 @@ mod tests {
     }
 
     #[test]
-    fn access_pad_0() {
+    fn access_pad_zero_padding_0() {
         let program = "
          (access-pad (access (access-tensor t-32-32) 1) zero-padding 0 1 2)
          "
@@ -2416,15 +2693,19 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[35]));
                 assert_eq!(a.item_shape, IxDyn(&[32]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&0].len(), 2);
+                assert!(a.zero_regions[&0].contains(&(0, 1)));
+                assert!(a.zero_regions[&0].contains(&(33, 35)));
             }
             _ => panic!(),
         }
     }
 
     #[test]
-    fn access_pad_1() {
+    fn access_pad_zero_padding_1() {
         let program = "
-         (access-pad (access (access-tensor t-32-32) 1) zero-padding 1 3 2)
+         (access-pad (access (access-tensor t-32-32) 1) zero-padding 1 0 2)
          "
         .parse()
         .unwrap();
@@ -2433,7 +2714,66 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[32]));
-                assert_eq!(a.item_shape, IxDyn(&[37]));
+                assert_eq!(a.item_shape, IxDyn(&[34]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&1].len(), 1);
+                assert!(a.zero_regions[&1].contains(&(32, 34)));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pad_zero_padding_2() {
+        let program = "
+(access-pad
+ (access-pad (access (access-tensor t-32-32) 1) zero-padding 1 0 2)
+ zero-padding 0 1 3
+)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[36]));
+                assert_eq!(a.item_shape, IxDyn(&[34]));
+                assert_eq!(a.zero_regions.len(), 2);
+                assert_eq!(a.zero_regions[&1].len(), 1);
+                assert!(a.zero_regions[&1].contains(&(32, 34)));
+                assert_eq!(a.zero_regions[&0].len(), 2);
+                assert!(a.zero_regions[&0].contains(&(0, 1)));
+                assert!(a.zero_regions[&0].contains(&(33, 36)));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pad_zero_padding_3() {
+        let program = "
+(access-pad
+ (access-pad (access (access-tensor t-32-32) 1) zero-padding 0 0 2)
+ zero-padding 0 1 3
+)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[38]));
+                assert_eq!(a.item_shape, IxDyn(&[32]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&0].len(), 3);
+                assert!(a.zero_regions[&0].contains(&(0, 1)));
+                assert!(a.zero_regions[&0].contains(&(35, 38)));
+                // This one is key: this makes sure that the first pad's zero
+                // region was shifted appropriately by the second pad (was (32,
+                // 34), but should get shifted by 1)
+                assert!(a.zero_regions[&0].contains(&(33, 35)));
             }
             _ => panic!(),
         }
@@ -2713,6 +3053,33 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[2]));
                 assert_eq!(a.item_shape, IxDyn(&[4, 3, 1]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose_3() {
+        let program = "
+              (access-transpose
+               (access-pad (access (access-tensor t) 1) zero-padding 1 5 0)
+               (list 1 3 2 0)
+              )
+             "
+        .parse()
+        .unwrap();
+        let mut map = HashMap::new();
+        map.insert("t".to_string(), vec![1, 2, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[7]));
+                assert_eq!(a.item_shape, IxDyn(&[4, 3, 1]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&0].len(), 1);
+                assert!(a.zero_regions[&0].contains(&(0, 5)));
             }
             _ => panic!(),
         }
