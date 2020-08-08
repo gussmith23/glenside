@@ -1856,6 +1856,19 @@ pub fn bubble_access_slice_through_compute_dot_product_not_item_axis(
              if not_item_axis("?axis".parse().unwrap(), "?a".parse().unwrap()))
 }
 
+/// If we're slicing in an item axis that isn't the tuple axis (i.e. the first
+/// item axis), then computing before slicing has the potential to affect the
+/// computation, as it is adding data. So we need to be able to prove that this
+/// region will not affect the computation.
+pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
+) -> Rewrite<Language, MyAnalysis> {
+    todo!();
+    rewrite!("bubble-access-slice-through-compute-dot-product-item-axis";
+             "(compute dot-product (access-slice ?a ?axis ?low ?high))" =>
+             "(compute dot-product ?a)"
+             if item_axis("?axis".parse().unwrap(), "?a0".parse().unwrap()))
+}
+
 #[cfg(test)]
 mod tests {
 

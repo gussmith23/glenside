@@ -331,7 +331,7 @@ pub enum RangeInsertStrategy {
     /// the range.
     PreserveRanges,
 }
-trait RangeSet {
+pub trait RangeSet {
     type Index;
 
     /// Updates ranges as if `num_elements_inserted` elements were inserted at
