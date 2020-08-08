@@ -1,4 +1,4 @@
-use super::{Language, MyAnalysis, MyAnalysisData, PadType};
+use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 
@@ -1862,11 +1862,40 @@ pub fn bubble_access_slice_through_compute_dot_product_not_item_axis(
 /// region will not affect the computation.
 pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
 ) -> Rewrite<Language, MyAnalysis> {
-    todo!();
     rewrite!("bubble-access-slice-through-compute-dot-product-item-axis";
              "(compute dot-product (access-slice ?a ?axis ?low ?high))" =>
              "(compute dot-product ?a)"
-             if item_axis("?axis".parse().unwrap(), "?a0".parse().unwrap()))
+             if item_axis("?axis".parse().unwrap(), "?a".parse().unwrap())
+             // This checks that everything outside of the sliced region in
+             // this axis is zero.
+             if constrain_vars(vec!["?a".parse().unwrap(), "?axis".parse().unwrap(), "?low".parse().unwrap(), "?high".parse().unwrap()],
+                               |data| {
+                                   let a = match &data[0] {
+                                       MyAnalysisData::AccessPattern(a) =>a,
+                                       _ => panic!(),
+                                   };
+                                   let axis = match &data[1] {
+                                       MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+                                       _ => panic!(),
+                                   };
+                                   let low = match &data[2] {
+                                       MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+                                       _ => panic!(),
+                                   };
+                                   let high = match &data[3] {
+                                       MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+                                       _ => panic!(),
+                                   };
+
+                                   a.zero_regions.get(&axis).map_or(false,
+                                                                    |range_set|{
+                                                                        range_set.covered((0, low))
+                                                                            &&
+                                                                            range_set.covered((high, a[axis]))
+                                                                    })
+                               })
+
+    )
 }
 
 #[cfg(test)]
@@ -3500,6 +3529,48 @@ mod tests {
               (compute dot-product (access (access-tensor a) 1))
               0 2 3
              )
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis() {
+        let program = "
+             (compute dot-product
+              (access-slice
+               (access-pad
+                (access (access-tensor a) 1)
+                zero-padding
+                3 2 3
+               )
+               3 2 5
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![4, 16, 3, 3, 4]);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis()];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+              (compute dot-product
+               (access-pad
+                (access (access-tensor a) 1)
+                zero-padding
+                3 2 3
+               )
+              )
              "
         .parse::<Pattern<_>>()
         .unwrap()
