@@ -2441,7 +2441,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn access_pad_panic() {
+    fn access_pad_zero_padding_panic() {
         let program = "
          (access-pad (access (access-tensor t-32-32) 1) zero-padding 2 3 2)
          "
