@@ -1819,6 +1819,7 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
         axis0: "?axis0".parse().unwrap(),
         access1: "?a1".parse().unwrap()
     }}
+              if same_item_axis("?axis0".parse().unwrap(), "?a0".parse().unwrap(), "?axis1".parse().unwrap(), "?a1".parse().unwrap())
     if constrain_vars(vec!["?a0".parse().unwrap(), "?a1".parse().unwrap(), "?axis0".parse().unwrap(), "?axis1".parse().unwrap()], |data| {
         let a0 = match &data[0] {
             MyAnalysisData::AccessPattern(a) =>a,
