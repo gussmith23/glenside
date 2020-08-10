@@ -3105,6 +3105,8 @@ mod tests {
     /// set of inputs.
     #[test]
     fn conv2d_im2col_systolic_array_1() {
+        test_logger::ensure_env_logger_initialized();
+
         let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
         let id = expr.as_ref().len() - 1;
         let _conv2d_id =
