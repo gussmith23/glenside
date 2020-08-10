@@ -1810,7 +1810,7 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
             .apply_one(egraph, matched_id, subst)
         }
     }
-    rewrite! {"bubble-access-slice-through-access-cartesian-product-same-axis";
+    rewrite! {"bubble-access-slice-through-access-cartesian-product-same-item-axis";
     "(access-cartesian-product
                (access-slice ?a0 ?axis0 ?low ?high)
                (access-slice ?a1 ?axis1 ?low ?high)
