@@ -1543,24 +1543,35 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
-                    // TODO(@gussmith23) Implement zero regions
-                    // It's harmless (I think) if `zero_regions` defaults to
-                    // empty, but for it to be useful, we need to implement it
-                    // for each operator.
                     zero_regions: {
-                        if !a0.zero_regions.is_empty() {
-                            warn!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
+                        // TODO(@gussmith23) We only implement zero regions for
+                        // item dimensions.
+                        // That's all we need for now w/r/t cart prods.
+
+                        let mut zero_regions = HashMap::new();
+                        for item_dim in 0..a0.item_shape.ndim() {
+                            if let (Some(range_set_0), Some(range_set_1)) = (
+                                a0.zero_regions.get(&(a0.shape.ndim() + item_dim)),
+                                a1.zero_regions.get(&(a1.shape.ndim() + item_dim)),
+                            ) {
+                                // Basically, we know a range [:, :, :, :, x] is
+                                // filled with zeros if its original ranges [:,
+                                // :, x] and [:, :, x] are zeros.
+                                let new_range_set: BoolVecRangeSet = range_set_0
+                                    .iter()
+                                    .zip(range_set_1.iter())
+                                    .map(|(v0, v1): (&bool, &bool)| *v0 && *v1)
+                                    .collect();
+                                if new_range_set.iter().any(|v| *v) {
+                                    zero_regions.insert(
+                                        a0.shape.ndim() + a1.shape.ndim() + 1 + item_dim,
+                                        new_range_set,
+                                    );
+                                }
+                            }
                         }
-                        if !a1.zero_regions.is_empty() {
-                            warn!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
-                        }
-                        HashMap::default()
+
+                        zero_regions
                     },
                     shape: new_shape,
                     item_shape: new_item_shape,
@@ -2275,6 +2286,47 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[32]));
                 assert_eq!(a.item_shape, IxDyn(&[2, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    // TODO(@gussmith23) More tests of cart prod w/ padding
+    fn access_cartesian_product_zero_padding() {
+        let program = "
+         (access-cartesian-product
+          (access-pad
+           (access (access-tensor v-32) 0)
+           zero-padding 0 2 3
+          )
+          (access-pad
+           (access (access-tensor t-32-32) 1)
+           zero-padding 1 2 3
+          )
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[2, 37]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&2].len(), 37);
+                assert!(a.zero_regions[&2].covered((0, 2)));
+                assert!(!a.zero_regions[&2].covered((2, 34)));
+                assert!(a.zero_regions[&2].covered((34, 37)));
+                assert_eq!(
+                    a.zero_regions[&2],
+                    std::iter::repeat(true)
+                        .take(2)
+                        .chain(std::iter::repeat(false).take(32))
+                        .chain(std::iter::repeat(true).take(3))
+                        .collect::<Vec<_>>()
+                )
             }
             _ => panic!(),
         }
