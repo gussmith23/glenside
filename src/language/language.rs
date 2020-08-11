@@ -321,6 +321,138 @@ pub struct ShapeData {
     shape: IxDyn,
 }
 
+/// New version of rangeset.
+pub trait RangeSet2 {
+    type Index;
+
+    /// Inserts elements, shifting existing ranges as needed.
+    fn insert_elements(&mut self, index: Self::Index, num_elements_inserted: usize);
+
+    /// Updates ranges as if `num_elements_removed` elements were removed at
+    /// `index`.
+    fn remove_elements(&mut self, index: Self::Index, num_elements_removed: usize);
+
+    /// Checks whether `range` is covered by the ranges in this set.
+    fn covered(&self, range: (Self::Index, Self::Index)) -> bool;
+
+    /// Adds range. Ranges are half-open.
+    fn add_range(&mut self, range: (Self::Index, Self::Index));
+}
+
+type BoolVecRangeSet = Vec<bool>;
+impl RangeSet2 for BoolVecRangeSet {
+    type Index = usize;
+
+    fn insert_elements(&mut self, index: Self::Index, num_elements_inserted: usize) {
+        // Make index-1 the last valid index.
+        if index >= self.len() {
+            self.resize(index, false);
+        }
+        *self = self[..index]
+            .iter()
+            .chain(std::iter::repeat(&false).take(num_elements_inserted))
+            .chain(self[index..].iter())
+            .cloned()
+            .collect();
+    }
+
+    fn remove_elements(&mut self, index: Self::Index, num_elements_removed: usize) {
+        *self = self[..index]
+            .iter()
+            .chain(self[index + num_elements_removed..].iter())
+            .cloned()
+            .collect()
+    }
+
+    fn covered(&self, range: (Self::Index, Self::Index)) -> bool {
+        // If the top end of the range is not actually represented, then those
+        // values are implicitly false and so the range is not covered.
+        // Otherwise, check that the values are all true.
+        range.1 <= self.len() && self[range.0..range.1].iter().all(|v| *v)
+    }
+
+    fn add_range(&mut self, range: (Self::Index, Self::Index)) {
+        // Make range.1-1 the last valid index.
+        if range.1 > self.len() {
+            self.resize(range.1, false);
+        }
+        for i in range.0..range.1 {
+            self[i] = true;
+        }
+    }
+}
+
+#[cfg(test)]
+mod bool_vec_range_set_tests {
+    use super::*;
+
+    #[test]
+    fn insert_elements_0() {
+        let mut range_set = BoolVecRangeSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((2, 6));
+        range_set.add_range((4, 8));
+        range_set.add_range((7, 10));
+        range_set.insert_elements(5, 5);
+        assert!(range_set.covered((0, 3)));
+        assert!(range_set.covered((2, 5)));
+        assert!(range_set.covered((10, 11)));
+        assert!(range_set.covered((4, 5)));
+        assert!(range_set.covered((10, 13)));
+        assert!(range_set.covered((12, 15)));
+    }
+
+    #[test]
+    fn insert_elements_1() {
+        let mut range_set = BoolVecRangeSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((2, 6));
+        range_set.add_range((4, 8));
+        range_set.add_range((7, 10));
+        range_set.insert_elements(5, 5);
+        range_set.add_range((5, 10));
+        assert!(range_set.covered((0, 3)));
+        assert!(range_set.covered((2, 11)));
+        assert!(range_set.covered((4, 13)));
+        assert!(range_set.covered((12, 15)));
+    }
+
+    #[test]
+    fn remove_elements() {
+        let mut range_set = BoolVecRangeSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((2, 6));
+        range_set.add_range((5, 8));
+        range_set.add_range((9, 12));
+        range_set.add_range((10, 14));
+        range_set.remove_elements(5, 5);
+        assert!(range_set.covered((0, 3)));
+        assert!(range_set.covered((2, 5)));
+        assert!(range_set.covered((5, 7)));
+        assert!(range_set.covered((5, 9)));
+    }
+
+    #[test]
+    fn covered() {
+        let mut range_set = BoolVecRangeSet::default();
+        range_set.add_range((0, 3));
+        range_set.add_range((5, 6));
+        range_set.add_range((6, 8));
+        range_set.add_range((10, 12));
+        range_set.add_range((11, 14));
+        assert!(range_set.covered((0, 2)));
+        assert!(!range_set.covered((0, 4)));
+        assert!(!range_set.covered((2, 5)));
+        assert!(!range_set.covered((3, 5)));
+        assert!(range_set.covered((5, 7)));
+        assert!(range_set.covered((5, 8)));
+        assert!(!range_set.covered((5, 9)));
+        assert!(range_set.covered((10, 14)));
+        assert!(!range_set.covered((10, 16)));
+        assert!(!range_set.covered((22, 23)));
+    }
+}
+
 /// Used to represent ranges over a set from 0..n, for some n. Ranges are
 /// half-open.
 type RangeHashSet = HashSet<(usize, usize)>;
