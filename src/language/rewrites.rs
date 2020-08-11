@@ -1,4 +1,4 @@
-use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet};
+use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
 

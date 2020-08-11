@@ -1,5 +1,5 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
-use itertools::multizip;
+use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::warn;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use std::collections::{HashMap, HashSet};
@@ -697,7 +697,7 @@ pub struct AccessPatternData {
     /// eval, and it would do the same for me. I don't think it would be more
     /// time efficient, though, and I'm even more certain that it wouldn't be
     /// space efficient.
-    pub zero_regions: HashMap<Ix, RangeHashSet>,
+    pub zero_regions: HashMap<Ix, BoolVecRangeSet>,
 }
 
 impl std::ops::Index<usize> for AccessPatternData {
@@ -796,18 +796,71 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // performance!
                 let mut changed = false;
                 for (axis_index, from_range_set) in from_zero_regions.iter() {
+                    // Skip if `from` doesn't contain any interesting data.
+                    if !from_range_set.iter().any(|v| *v) {
+                        continue;
+                    }
+
                     if let Some(to_range_set) = to_zero_regions.get_mut(&axis_index) {
-                        // If `axis` is already in `from`, merge the two
-                        // RangeSets
-                        for range in from_range_set {
-                            if !to_range_set.contains(range) {
-                                to_range_set.add_range(*range);
-                                changed = true;
-                            }
+                        // We first check whether `from_zero_regions` contains
+                        // any information not already known in
+                        // `to_zero_regions`. This is done by checking them
+                        // element-by-element. If it is ever true that
+                        // `from_zero_regions` contains a `true` where
+                        // `to_zero_regions` contains a `false` or does not have
+                        // data (because they may be different lengths), then
+                        // they're different and must be merged.
+
+                        // TODO(@gussmith23) Delete these
+                        //println!("to: {:?}", to_range_set.len());
+                        //println!("from: {:?}", from_range_set.len());
+
+                        // Check.
+                        let needs_merge = to_range_set
+                            .iter()
+                            .zip_longest(from_range_set.iter())
+                            .map(|v| {
+                                match v {
+                                    // `*from` being true implies `*to` must be true.
+                                    Both(to, from) => {
+                                        if *from {
+                                            *from != *to
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    // If `to` has a value and `from` doesn't, then
+                                    // no merging needed.
+                                    Left(_) => false,
+                                    // If `from` has a value, then we need to merge
+                                    // if that value is true.
+                                    Right(from) => *from,
+                                }
+                            })
+                            .any(|v| v);
+
+                        if needs_merge {
+                            *to_range_set = to_range_set
+                                .iter()
+                                .zip_longest(from_range_set.iter())
+                                .map(|v| match v {
+                                    Both(to, from) => *to || *from,
+                                    Left(to) => *to,
+                                    Right(from) => *from,
+                                })
+                                .collect();
+                            changed = true;
                         }
                     } else {
-                        to_zero_regions.insert(*axis_index, from_range_set.clone());
-                        changed = true;
+                        // If no info exists for this axis in `to_zero_regions`,
+                        // then we insert the information from
+                        // `from_zero_regions`, but only if there's actual
+                        // useful information there (i.e. at least one `true`
+                        // value).
+                        if from_range_set.iter().any(|v| *v) {
+                            to_zero_regions.insert(*axis_index, from_range_set.clone());
+                            changed = true;
+                        }
                     }
                 }
 
@@ -926,6 +979,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // TODO(@gussmith23) Implement zero_regions
                 if !access.zero_regions.is_empty() {
                     warn!("Throwing away zero_regions analysis data");
+                    access.zero_regions = HashMap::default();
                 }
                 let axis = MyAnalysis::get_usize(axis_id, egraph);
 
@@ -964,6 +1018,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // TODO(@gussmith23) Implement zero_regions
                 if !access.zero_regions.is_empty() {
                     warn!("Throwing away zero_regions analysis data");
+                    access.zero_regions = HashMap::default();
                 }
                 let axis = MyAnalysis::get_usize(axis_id, egraph);
                 use ndarray::RemoveAxis;
@@ -994,6 +1049,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 let axis = MyAnalysis::get_usize(axis_id, egraph);
                 assert!(axis < access.shape.ndim() + access.item_shape.ndim());
+                let orig_axis_val = access[axis];
                 let pad_before = MyAnalysis::get_usize(pad_before_id, egraph);
                 let pad_after = MyAnalysis::get_usize(pad_after_id, egraph);
                 if axis < access.shape.ndim() {
@@ -1002,41 +1058,51 @@ impl egg::Analysis<Language> for MyAnalysis {
                     access.item_shape[axis - access.shape.ndim()] += pad_before + pad_after;
                 };
 
+                // TODO(@gussmith23) Remove this after figuring out padding issues
+                for (axis, val) in &access.zero_regions {
+                    assert!(
+                        val.len() <= access[*axis],
+                        "{} > {}",
+                        val.len(),
+                        access[*axis]
+                    );
+                }
+
                 // Update zero regions
                 match pad_type {
                     crate::language::PadType::ZeroPadding => {
                         if !access.zero_regions.contains_key(&axis) {
-                            access.zero_regions.insert(axis, HashSet::default());
+                            access.zero_regions.insert(axis, BoolVecRangeSet::default());
                         }
                         // Update the zero regions. Order here is important (we
                         // do the end padding first, then the beginning)
-                        let axis_val = access[axis];
-                        access.zero_regions.get_mut(&axis).unwrap().insert_elements(
-                            RangeInsertStrategy::PreserveRanges,
-                            axis_val,
-                            pad_after,
-                        );
-                        access.zero_regions.get_mut(&axis).unwrap().insert_elements(
-                            RangeInsertStrategy::PreserveRanges,
-                            0,
-                            pad_before,
-                        );
-                        let axis_val = access[axis];
-                        if pad_before > 0 {
-                            access
-                                .zero_regions
-                                .get_mut(&axis)
-                                .unwrap()
-                                .insert((0, pad_before));
-                        }
-                        if pad_after > 0 {
-                            access
-                                .zero_regions
-                                .get_mut(&axis)
-                                .unwrap()
-                                .insert((axis_val - pad_after, axis_val));
-                        }
+                        // TODO(@gussmith23) Written in a rush.
+                        access
+                            .zero_regions
+                            .get_mut(&axis)
+                            .unwrap()
+                            .insert_elements(orig_axis_val, pad_after);
+                        access
+                            .zero_regions
+                            .get_mut(&axis)
+                            .unwrap()
+                            .add_range((orig_axis_val, orig_axis_val + pad_after));
+                        access
+                            .zero_regions
+                            .get_mut(&axis)
+                            .unwrap()
+                            .insert_elements(0, pad_before);
+                        access
+                            .zero_regions
+                            .get_mut(&axis)
+                            .unwrap()
+                            .add_range((0, pad_before));
                     }
+                }
+
+                // TODO(@gussmith23) Remove this after figuring out padding issues
+                for (axis, val) in &access.zero_regions {
+                    assert!(val.len() <= access[*axis]);
                 }
 
                 MyAnalysisData::AccessPattern(access)
@@ -1179,6 +1245,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // TODO(@gussmith23) Implement zero_regions
                 if !new_access.zero_regions.is_empty() {
                     warn!("Throwing away zero_regions analysis data");
+                    new_access.zero_regions = HashMap::default();
                 }
 
                 let axis: usize = Self::get_usize(axis_id, egraph);
@@ -1211,6 +1278,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // TODO(@gussmith23) Implement zero_regions
                 if !new_access.zero_regions.is_empty() {
                     warn!("Throwing away zero_regions analysis data");
+                    new_access.zero_regions = HashMap::default();
                 }
                 if !a1.zero_regions.is_empty() {
                     warn!("Throwing away zero_regions analysis data");
@@ -1253,14 +1321,15 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
+                let mut new_shape = match &egraph[access_shape_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
                 // TODO(@gussmith23) Implement zero_regions
+                new_shape.zero_regions = HashMap::default();
                 if !a.zero_regions.is_empty() {
                     warn!("Throwing away zero_regions analysis data");
                 }
-                let new_shape = match &egraph[access_shape_id].data {
-                    MyAnalysisData::AccessPattern(a) => a,
-                    _ => panic!(),
-                };
                 assert_eq!(
                     a.shape.as_array_view().iter().product::<usize>(),
                     new_shape.shape.as_array_view().iter().product::<usize>(),
@@ -1273,7 +1342,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .iter()
                         .product::<usize>(),
                 );
-                MyAnalysisData::AccessPattern(new_shape.clone())
+                MyAnalysisData::AccessPattern(new_shape)
             }
             &AccessFlatten(access_id) => {
                 let a = match &egraph[access_id].data {
@@ -1377,7 +1446,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                         if !a0.zero_regions.is_empty() {
                             warn!("Throwing away zero_regions analysis data");
                         }
-                        MyAnalysisData::AccessPattern(a0.clone())
+                        let mut a = a0.clone();
+                        a.zero_regions = HashMap::default();
+                        MyAnalysisData::AccessPattern(a)
                     }
                 }
             }
@@ -2838,9 +2909,10 @@ mod tests {
                 assert_eq!(a.shape, IxDyn(&[35]));
                 assert_eq!(a.item_shape, IxDyn(&[32]));
                 assert_eq!(a.zero_regions.len(), 1);
-                assert_eq!(a.zero_regions[&0].len(), 2);
-                assert!(a.zero_regions[&0].contains(&(0, 1)));
-                assert!(a.zero_regions[&0].contains(&(33, 35)));
+                assert_eq!(a.zero_regions[&0].len(), 35);
+                assert!(a.zero_regions[&0].covered((0, 1)));
+                assert!(!a.zero_regions[&0].covered((1, 33)));
+                assert!(a.zero_regions[&0].covered((33, 35)));
             }
             _ => panic!(),
         }
@@ -2860,8 +2932,9 @@ mod tests {
                 assert_eq!(a.shape, IxDyn(&[32]));
                 assert_eq!(a.item_shape, IxDyn(&[34]));
                 assert_eq!(a.zero_regions.len(), 1);
-                assert_eq!(a.zero_regions[&1].len(), 1);
-                assert!(a.zero_regions[&1].contains(&(32, 34)));
+                assert_eq!(a.zero_regions[&1].len(), 34);
+                assert!(a.zero_regions[&1].covered((32, 34)));
+                assert!(!a.zero_regions[&1].covered((0, 32)));
             }
             _ => panic!(),
         }
@@ -2884,11 +2957,13 @@ mod tests {
                 assert_eq!(a.shape, IxDyn(&[36]));
                 assert_eq!(a.item_shape, IxDyn(&[34]));
                 assert_eq!(a.zero_regions.len(), 2);
-                assert_eq!(a.zero_regions[&1].len(), 1);
-                assert!(a.zero_regions[&1].contains(&(32, 34)));
-                assert_eq!(a.zero_regions[&0].len(), 2);
-                assert!(a.zero_regions[&0].contains(&(0, 1)));
-                assert!(a.zero_regions[&0].contains(&(33, 36)));
+                assert_eq!(a.zero_regions[&1].len(), 34);
+                assert_eq!(a.zero_regions[&0].len(), 36);
+                assert!(a.zero_regions[&1].covered((32, 34)));
+                assert!(!a.zero_regions[&1].covered((0, 32)));
+                assert!(a.zero_regions[&0].covered((0, 1)));
+                assert!(a.zero_regions[&0].covered((33, 36)));
+                assert!(!a.zero_regions[&0].covered((1, 33)));
             }
             _ => panic!(),
         }
@@ -2911,13 +2986,15 @@ mod tests {
                 assert_eq!(a.shape, IxDyn(&[38]));
                 assert_eq!(a.item_shape, IxDyn(&[32]));
                 assert_eq!(a.zero_regions.len(), 1);
-                assert_eq!(a.zero_regions[&0].len(), 3);
-                assert!(a.zero_regions[&0].contains(&(0, 1)));
-                assert!(a.zero_regions[&0].contains(&(35, 38)));
+                assert_eq!(a.zero_regions[&0].len(), 38);
+                assert!(a.zero_regions[&0].covered((0, 1)));
+                assert!(a.zero_regions[&0].covered((35, 38)));
+                assert!(!a.zero_regions[&0].covered((1, 35)));
                 // This one is key: this makes sure that the first pad's zero
                 // region was shifted appropriately by the second pad (was (32,
                 // 34), but should get shifted by 1)
-                assert!(a.zero_regions[&0].contains(&(33, 35)));
+                assert!(a.zero_regions[&0].covered((33, 35)));
+                assert!(!a.zero_regions[&0].covered((0, 33)));
             }
             _ => panic!(),
         }
@@ -3222,8 +3299,9 @@ mod tests {
                 assert_eq!(a.shape, IxDyn(&[7]));
                 assert_eq!(a.item_shape, IxDyn(&[4, 3, 1]));
                 assert_eq!(a.zero_regions.len(), 1);
-                assert_eq!(a.zero_regions[&0].len(), 1);
-                assert!(a.zero_regions[&0].contains(&(0, 5)));
+                assert_eq!(a.zero_regions[&0].len(), 7);
+                assert!(a.zero_regions[&0].covered((0, 5)));
+                assert!(!a.zero_regions[&0].covered((5, 7)));
             }
             _ => panic!(),
         }
