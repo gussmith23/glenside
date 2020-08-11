@@ -3356,6 +3356,22 @@ mod tests {
         ];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
+        for class in runner.egraph.classes() {
+            match &class.data {
+                MyAnalysisData::AccessPattern(a) => {
+                    for &shape_dim_val in a.shape.slice() {
+                        assert!(shape_dim_val <= 4);
+                    }
+                    for &item_shape_dim_val in a.item_shape.slice() {
+                        assert!(item_shape_dim_val <= 4);
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        runner.print_report();
+
         for axis in 0..4 {
             let matches = format!(
                 "(access-slice
