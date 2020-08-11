@@ -26,7 +26,6 @@ pub fn find_all_systolic_array_configurations(
 pub struct MonolithicCostFunction<'a> {
     pub systolic_array_configuration: (usize, usize),
     pub egraph: &'a EGraph<Language, MyAnalysis>,
-    pub infinite_cost_value: <MonolithicCostFunction<'a> as CostFunction<Language>>::Cost,
 }
 impl CostFunction<Language> for MonolithicCostFunction<'_> {
     type Cost = usize;
@@ -43,7 +42,7 @@ impl CostFunction<Language> for MonolithicCostFunction<'_> {
                     MyAnalysis::get_usize(cols_id, self.egraph),
                 ) != self.systolic_array_configuration =>
             {
-                self.infinite_cost_value
+                std::usize::MAX
             }
 
             Language::Symbol(_)
@@ -52,10 +51,10 @@ impl CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Slice(_)
             | Language::Concatenate(_)
             | Language::ElementwiseAdd(_) => 1,
-            _ => self.infinite_cost_value,
+            _ => std::usize::MAX,
         };
 
-        enode.fold(base_cost, |sum, id| sum + costs(id))
+        enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
     }
 }
 
@@ -170,8 +169,6 @@ mod tests {
 
     #[test]
     fn extract() {
-        const INFINITE: usize = 1000000;
-
         let program = "
          (bsg-systolic-array 16 128
           (bsg-systolic-array 128 64
@@ -196,12 +193,11 @@ mod tests {
             MonolithicCostFunction {
                 systolic_array_configuration: (16, 128),
                 egraph: &egraph,
-                infinite_cost_value: INFINITE,
             },
         );
 
         let (cost, _) = ex.find_best(id);
-        assert!(cost > INFINITE);
+        assert_eq!(cost, std::usize::MAX);
 
         let program = "
          (bsg-systolic-array 32 64
@@ -227,12 +223,11 @@ mod tests {
             MonolithicCostFunction {
                 egraph: &egraph,
                 systolic_array_configuration: (32, 64),
-                infinite_cost_value: INFINITE,
             },
         );
 
         let (cost, expr) = ex.find_best(id);
-        assert!(cost < INFINITE);
+        assert!(cost < std::usize::MAX);
         assert_eq!(
             expr,
             "
@@ -287,7 +282,7 @@ mod tests {
         let mut ex = Extractor::new(&egraph, SimpleCostFunction);
 
         let (cost, best) = ex.find_best(id);
-        assert!(cost < usize::MAX);
+        assert!(cost < std::usize::MAX);
 
         assert_eq!(
             best,
