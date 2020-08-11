@@ -451,6 +451,18 @@ mod bool_vec_range_set_tests {
         assert!(!range_set.covered((10, 16)));
         assert!(!range_set.covered((22, 23)));
     }
+
+    #[test]
+    fn test() {
+        let mut range_set = BoolVecRangeSet::default();
+        range_set.insert_elements(0, 1);
+        range_set.add_range((0, 1));
+        range_set.insert_elements(33, 2);
+        range_set.add_range((33, 35));
+        assert!(range_set.covered((0, 1)));
+        assert!(!range_set.covered((1, 33)));
+        assert!(range_set.covered((33, 35)));
+    }
 }
 
 /// Used to represent ranges over a set from 0..n, for some n. Ranges are
