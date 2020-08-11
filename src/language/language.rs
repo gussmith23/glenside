@@ -1266,18 +1266,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
-                // TODO(@gussmith23) Implement zero_regions
-                if !new_access.zero_regions.is_empty() {
-                    warn!(
-                        "Throwing away zero region analysis data on line {}",
-                        std::line!()
-                    );
-                    new_access.zero_regions = HashMap::default();
-                }
-
                 let axis: usize = Self::get_usize(axis_id, egraph);
                 let low: usize = Self::get_usize(low_id, egraph);
                 let high: usize = Self::get_usize(high_id, egraph);
+                let original_axis_value = new_access[axis];
 
                 assert!(new_access.shape.ndim() + new_access.item_shape.ndim() > axis);
                 if axis < new_access.shape.ndim() {
@@ -1288,6 +1280,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     assert!(low < new_access.item_shape[axis - new_access.shape.ndim()]);
                     assert!(high <= new_access.item_shape[axis - new_access.shape.ndim()]);
                     new_access.item_shape[axis - new_access.shape.ndim()] = high - low;
+                }
+
+                // Update zero regions
+                if let Some(range_set) = new_access.zero_regions.get_mut(&axis) {
+                    // TODO(@gussmith23) should really just have an "envelope"
+                    range_set.remove_elements(high, original_axis_value - high);
+                    range_set.remove_elements(0, low - 0);
                 }
 
                 MyAnalysisData::AccessPattern(new_access)
@@ -2509,6 +2508,58 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32]));
                 assert_eq!(a.item_shape, IxDyn(&[16]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_zero_pad_0() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "(access-slice (access-pad (access (access-tensor t-3-32-32) 1) zero-padding 0 2 3) 0 0 3)"
+            .parse()
+            .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&0].len(), 3);
+                assert_eq!(a.zero_regions[&0], vec![true, true, false]);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_zero_pad_1() {
+        test_logger::ensure_env_logger_initialized();
+
+        let program = "
+(access-slice
+ (access-pad
+  (access (access-tensor t-3-32-32) 1)
+  zero-padding 0 2 3
+ )
+ 0 1 7
+)"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[6]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+                assert_eq!(a.zero_regions.len(), 1);
+                assert_eq!(a.zero_regions[&0].len(), 6);
+                assert_eq!(
+                    a.zero_regions[&0],
+                    vec![true, false, false, false, true, true]
+                );
             }
             _ => panic!(),
         }
