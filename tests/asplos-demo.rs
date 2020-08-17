@@ -15,6 +15,16 @@ fn asplos_demo_mlp() {
         env!("CARGO_MANIFEST_DIR")
     );
 
+    // The final generated executable
+    let out_filepath = format!(
+        "{}/asplos-demo-mlp-{}",
+        std::env::temp_dir().to_string_lossy(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+
     // Where we'll put the compiled C code.
     let mut out_code_filepath = std::env::temp_dir();
     out_code_filepath.push("mlp.c");
@@ -61,12 +71,15 @@ fn asplos_demo_mlp() {
     );
 
     let output = Command::new("gcc")
+        .current_dir(std::env::temp_dir())
         .arg("-Werror")
         // The test harness #includes the generated mlp.c file, so we include
         // the tmp dir on the include path so that gcc will find mlp.c.
         .arg(format!("-I{}", std::env::temp_dir().to_string_lossy()))
         .arg(&main_c_filepath)
         .arg(&systolic_array_impl_filepath)
+        .arg("-o")
+        .arg(&out_filepath)
         .output()
         .expect("Failed to compile main file with gcc");
 
@@ -78,7 +91,7 @@ fn asplos_demo_mlp() {
     );
 
     // Run the test harness.
-    let output = Command::new("./a.out")
+    let output = Command::new(out_filepath)
         .output()
         .expect("Failed to run result");
     assert!(
