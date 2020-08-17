@@ -9,11 +9,14 @@ use std::process::Command;
 use std::str::FromStr;
 
 #[test]
-fn mlp() {
-    // TODO(@gussmith23) This test should use temporary files
-    const LIBRARY_FILENAME_C: &str = "mlp.c";
-    const MAIN_FILENAME: &str = "main.c";
-
+fn codegen_mlp() {
+    let library_filepath = format!("{}/{}", std::env::temp_dir().to_string_lossy(), "mlp.c");
+    let main_filepath = format!("{}/{}", std::env::temp_dir().to_string_lossy(), "main.c");
+    let out_filepath = format!(
+        "{}/{}",
+        std::env::temp_dir().to_string_lossy(),
+        "codegen-mlp"
+    );
     // This is a simplified version of what's produced in the
     // regular-multilayer-perceptron test. It's simplified in that the
     // accesses are collapsed (transpose, move-axis) which are things that
@@ -56,10 +59,10 @@ fn mlp() {
     let code = codegen(&egraph, id, &hw_map, "mlp", "");
     println!("{}", code);
 
-    let mut file = File::create(LIBRARY_FILENAME_C).unwrap();
+    let mut file = File::create(&library_filepath).unwrap();
     file.write_all(code.as_bytes()).unwrap();
 
-    File::create(MAIN_FILENAME)
+    File::create(&main_filepath)
             .expect("Couldn't create main file")
             .write_all(
                 format! {"
@@ -98,19 +101,22 @@ int main() {{
   return 0;
 }}
 ",
-               LIBRARY_FILENAME_C }
+               library_filepath }
                 .as_bytes(),
             )
             .expect("Couldn't write main file");
 
     let output = Command::new("gcc")
         .arg("-Werror")
-        .arg(MAIN_FILENAME)
+        .arg(main_filepath)
         .arg(format!(
             "{}/data/codegen-mlp/{}",
             env!("CARGO_MANIFEST_DIR"),
             "rtml_systolic_array_weight_stationary.c"
         ))
+        .arg("-o")
+        .arg(&out_filepath)
+        .current_dir(std::env::temp_dir())
         .output()
         .expect("Failed to compile main file with gcc");
     assert!(
@@ -119,7 +125,8 @@ int main() {{
         std::str::from_utf8(output.stderr.as_slice()).expect("Could not convert stderr to UTF8")
     );
 
-    let output = Command::new("./a.out")
+    let output = Command::new(out_filepath)
+        .current_dir(std::env::temp_dir())
         .output()
         .expect("Failed to run result");
     assert!(
