@@ -751,7 +751,7 @@ pub struct MyAnalysis {
     pub name_to_shape: HashMap<String, Vec<usize>>,
 }
 impl MyAnalysis {
-    pub(crate) fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
+    pub fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
         match &egraph[id].data {
             MyAnalysisData::Legacy(s) => s.usize_value.unwrap(),
             _ => panic!(),
