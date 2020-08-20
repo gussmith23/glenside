@@ -1121,34 +1121,21 @@ pub fn collapse_nested_access_slices() -> Rewrite<Language, MyAnalysis> {
     }})
 }
 
-pub fn access_slice_access_move_axis_composition_commutative() -> Rewrite<Language, MyAnalysis> {
+pub fn access_slice_access_transpose_composition_commutative() -> Rewrite<Language, MyAnalysis> {
     struct ApplierImpl {
-        move_axis_src: Var,
-        move_axis_dest: Var,
+        axis_list: Var,
         slice_axis: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
         fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
-            let src_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_src], egraph);
-            let dst_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_dest], egraph);
-            let old_slice_axis: usize = MyAnalysis::get_usize(subst[self.slice_axis], egraph);
-            let new_slice_axis = if (old_slice_axis < src_axis && old_slice_axis < dst_axis)
-                || (old_slice_axis > src_axis && old_slice_axis > dst_axis)
-            {
-                // Axis is unaffected if it's not between src and dst.
-                old_slice_axis
-            } else if old_slice_axis == dst_axis {
-                src_axis
-            } else if old_slice_axis <= src_axis && old_slice_axis > dst_axis {
-                old_slice_axis - 1
-            } else if old_slice_axis >= src_axis && old_slice_axis < dst_axis {
-                old_slice_axis + 1
-            } else {
-                unreachable!()
+            let axis_list = match &egraph[subst[self.axis_list]].data {
+                MyAnalysisData::List(l) => l,
+                _ => panic!("expected list"),
             };
-
+            let old_slice_axis: usize = MyAnalysis::get_usize(subst[self.slice_axis], egraph);
+            let new_slice_axis = axis_list[old_slice_axis];
             format!(
-                "(access-move-axis (access-slice ?tensor {} ?bottom ?top) ?src ?dest)",
+                "(access-transpose (access-slice ?tensor {} ?bottom ?top) ?list)",
                 new_slice_axis
             )
             .parse::<Pattern<Language>>()
@@ -1157,56 +1144,43 @@ pub fn access_slice_access_move_axis_composition_commutative() -> Rewrite<Langua
         }
     }
     rewrite!(
-        "access-slice-access-move-axis-composition-commutative";
-        "(access-slice (access-move-axis ?tensor ?src ?dest) ?axis ?bottom ?top)" =>
+        "access-slice-access-transpose-composition-commutative";
+        "(access-slice (access-transpose ?tensor ?list) ?axis ?bottom ?top)" =>
         { ApplierImpl {
-            move_axis_src: "?src".parse().unwrap(),
-            move_axis_dest: "?dest".parse().unwrap(),
+            axis_list: "?list".parse().unwrap(),
             slice_axis: "?axis".parse().unwrap(),
         }}
     )
 }
 
-pub fn bubble_access_concatenate_through_access_move_axis() -> Rewrite<Language, MyAnalysis> {
+pub fn bubble_access_concatenate_through_access_transpose() -> Rewrite<Language, MyAnalysis> {
     struct ApplierImpl {
         concatenate_axis: Var,
-        src_axis: Var,
-        dst_axis: Var,
+        axis_list: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let original_concatenate_axis: usize =
                 MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
-            let src_axis: usize = MyAnalysis::get_usize(subst[self.src_axis], egraph);
-            let dst_axis: usize = MyAnalysis::get_usize(subst[self.dst_axis], egraph);
-
-            // If the move now happens /before/ the concatenate, we have to
-            // figure out what the new axis for the concatenate is.
-            // TODO(@gussmith23) Would be nice to have a more principled system of
-            // keeping track of axes. This is where Remy's relational algebra
-            // stuff could be really useful!
-            let new_concatenate_axis: usize = if (original_concatenate_axis < src_axis
-                && original_concatenate_axis < dst_axis)
-                || (original_concatenate_axis > src_axis && original_concatenate_axis > dst_axis)
-            {
-                // Axis is unaffected if it's not between src and dst.
-                original_concatenate_axis
-            } else if original_concatenate_axis == src_axis {
-                dst_axis
-            } else if original_concatenate_axis < src_axis && original_concatenate_axis >= dst_axis
-            {
-                original_concatenate_axis + 1
-            } else if original_concatenate_axis > src_axis && original_concatenate_axis <= dst_axis
-            {
-                original_concatenate_axis - 1
-            } else {
-                unreachable!()
+            let axis_list = match &egraph[subst[self.axis_list]].data {
+                MyAnalysisData::List(l) => l,
+                _ => panic!("Expected list"),
             };
+            let new_concatenate_axis = axis_list
+                .iter()
+                .position(|axis| *axis == original_concatenate_axis)
+                .expect(
+                    format!(
+                        "Did not find axis {} in list of axes {:?}",
+                        original_concatenate_axis, axis_list
+                    )
+                    .as_str(),
+                );
 
             format!(
                 "(access-concatenate
-                      (access-move-axis ?a ?src-axis ?dst-axis)
-                      (access-move-axis ?b ?src-axis ?dst-axis) {})",
+                      (access-transpose ?a ?list)
+                      (access-transpose ?b ?list) {})",
                 new_concatenate_axis
             )
             .parse::<Pattern<_>>()
@@ -1214,13 +1188,12 @@ pub fn bubble_access_concatenate_through_access_move_axis() -> Rewrite<Language,
             .apply_one(egraph, eclass, subst)
         }
     }
-    rewrite!("bubble-access-concatenate-through-access-move-axis";
-        "(access-move-axis (access-concatenate ?a ?b ?concatenate-axis) ?src-axis ?dst-axis)" =>
+    rewrite!("bubble-access-concatenate-through-access-transpose";
+        "(access-transpose (access-concatenate ?a ?b ?concatenate-axis) ?list)" =>
     {
         ApplierImpl {
             concatenate_axis: "?concatenate-axis".parse().unwrap(),
-            src_axis:"?src-axis".parse().unwrap(),
-            dst_axis:"?dst-axis".parse().unwrap()
+            axis_list: "?list".parse().unwrap()
         }
     })
 }
@@ -2353,177 +2326,267 @@ mod tests {
     }
 
     #[test]
-    fn access_slice_access_move_axis_composition_commutative_0() {
+    fn access_slice_access_transpose_composition_commutative_0() {
         let program = "
-        (access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) 0 16 32)
+(access-slice
+ (access-transpose
+  (access (access-tensor t-3-32-32) 1)
+  (list 2 0 1)
+ )
+ 0 16 32
+)
         "
         .parse()
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 2 16 32) 2 0)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search_eclass(&runner.egraph, id)
-                .unwrap();
+        let matches = "
+(access-transpose
+ (access-slice
+  (access (access-tensor t-3-32-32) 1)
+  2 16 32
+ )
+ (list 2 0 1)
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn access_slice_access_move_axis_composition_commutative_1() {
+    fn access_slice_access_transpose_composition_commutative_1() {
         let program = "
-        (access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) 1 0 2)
+(access-slice
+ (access-transpose
+  (access (access-tensor t-3-32-32) 1)
+  (list 2 0 1)
+ )
+ 1 0 2
+)
         "
         .parse()
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 0 0 2) 2 0)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search_eclass(&runner.egraph, id)
-                .unwrap();
+        let matches = "
+(access-transpose
+ (access-slice
+  (access (access-tensor t-3-32-32) 1)
+  0 0 2
+ )
+ (list 2 0 1)
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn access_slice_access_move_axis_composition_commutative_2() {
+    fn access_slice_access_transpose_composition_commutative_2() {
         let program = "
-        (access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 1 0) 2 0 16)
+(access-slice
+ (access-transpose
+  (access (access-tensor t-3-32-32) 1)
+  (list 1 0 2)
+ )
+ 2 0 16
+)
         "
         .parse()
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 2 0 16) 1 0)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search_eclass(&runner.egraph, id)
-                .unwrap();
+        let matches = "
+(access-transpose
+ (access-slice (access (access-tensor t-3-32-32) 1) 2 0 16)
+ (list 1 0 2)
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn access_slice_access_move_axis_composition_commutative_3() {
-        let program =
-            "(access-slice (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) 1 0 2)"
-                .parse()
-                .unwrap();
+    fn access_slice_access_transpose_composition_commutative_3() {
+        let program = "
+(access-slice
+ (access-transpose
+  (access (access-tensor t-3-32-32) 1)
+  (list 1 0 2)
+ )
+ 1 0 2
+)"
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::access_slice_access_move_axis_composition_commutative()];
+        let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-move-axis (access-slice (access (access-tensor t-3-32-32) 1) 0 0 2) 0 1)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search_eclass(&runner.egraph, id)
-                .unwrap();
+        let matches = "
+(access-transpose
+ (access-slice (access (access-tensor t-3-32-32) 1) 0 0 2)
+ (list 1 0 2)
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn bubble_access_concatenate_through_access_move_axis_0() {
-        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0) 0 2)"
-            .parse()
-            .unwrap();
+    fn bubble_access_concatenate_through_access_transpose_0() {
+        let program = "
+(access-transpose
+ (access-concatenate
+  (access (access-tensor t-3-32-32) 1)
+  (access (access-tensor t-3-32-32) 1)
+  0
+ )
+ (list 1 2 0)
+)"
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) 2)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches = "
+(access-concatenate
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
+ 2
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn bubble_access_concatenate_through_access_move_axis_1() {
-        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1) 0 2)"
-            .parse()
-            .unwrap();
+    fn bubble_access_concatenate_through_access_transpose_1() {
+        let program = "
+(access-transpose
+ (access-concatenate
+  (access (access-tensor t-3-32-32) 1)
+  (access (access-tensor t-3-32-32) 1)
+  1
+ )
+ (list 1 2 0)
+)"
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) (access-move-axis (access (access-tensor t-3-32-32) 1) 0 2) 0)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches = "
+(access-concatenate
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
+ 0
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn bubble_access_concatenate_through_access_move_axis_2() {
-        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 2) 0 1)"
-            .parse()
-            .unwrap();
+    fn bubble_access_concatenate_through_access_transpose_2() {
+        let program = "
+(access-transpose
+ (access-concatenate
+  (access (access-tensor t-3-32-32) 1)
+  (access (access-tensor t-3-32-32) 1)
+  2
+ )
+ (list 1 0 2)
+)"
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) (access-move-axis (access (access-tensor t-3-32-32) 1) 0 1) 2)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches = "
+(access-concatenate
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 0 2))
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 0 2))
+ 2
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
-    fn bubble_access_concatenate_through_access_move_axis_3() {
-        let program = "(access-move-axis (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 1) 2 0)"
-            .parse()
-            .unwrap();
+    fn bubble_access_concatenate_through_access_transpose_3() {
+        let program = "
+(access-transpose
+ (access-concatenate
+  (access (access-tensor t-3-32-32) 1)
+  (access (access-tensor t-3-32-32) 1)
+  1
+ )
+ (list 2 0 1)
+)"
+        .parse()
+        .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
-        let rws = vec![super::bubble_access_concatenate_through_access_move_axis()];
+        let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches =
-            "(access-concatenate (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) (access-move-axis (access (access-tensor t-3-32-32) 1) 2 0) 2)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let matches = "
+(access-concatenate
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 2 0 1))
+ (access-transpose (access (access-tensor t-3-32-32) 1) (list 2 0 1))
+ 2
+)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3136,11 +3199,14 @@ mod tests {
 
         // Expected original program.
         let matches = "
-            (access-move-axis
+            (access-transpose
              (compute dot-product
               (access-cartesian-product
                (access
-                (access-move-axis (access (access-tensor weights) 0) 3 0)
+                (access-transpose
+                 (access (access-tensor weights) 0)
+                 (list 3 0 1 2)
+                )
                 1
                )
                (access
@@ -3165,7 +3231,7 @@ mod tests {
                )
               )
              )
-             0 3
+             (list 1 2 3 0)
             )
             "
         .parse::<Pattern<_>>()
@@ -3176,13 +3242,16 @@ mod tests {
 
         // Find the version with flattened and reshaped weight/image arguments
         let matches = "
-            (access-move-axis
+            (access-transpose
              (compute dot-product
               (access-cartesian-product
                (access-reshape
                 (access-flatten
                  (access
-                  (access-move-axis (access (access-tensor weights) 0) 3 0)
+                  (access-transpose
+                   (access (access-tensor weights) 0)
+                   (list 3 0 1 2)
+                  )
                   1
                  )
                 )
@@ -3215,7 +3284,7 @@ mod tests {
                )
               )
              )
-             0 3
+             (list 1 2 3 0)
             )
             "
         .parse::<Pattern<_>>()
@@ -3225,12 +3294,15 @@ mod tests {
         assert_eq!(matches.substs.len(), 1);
 
         let matches = "
-            (access-move-axis
+            (access-transpose
              (access-reshape
               (systolic-array 27 1024
                (access-flatten
                 (access
-                 (access-move-axis (access (access-tensor weights) 0) 3 0)
+                 (access-transpose
+                  (access (access-tensor weights) 0)
+                  (list 3 0 1 2)
+                 )
                  1
                 )
                )
@@ -3265,7 +3337,7 @@ mod tests {
               )
               ?shape
              )
-             0 3
+             (list 1 2 3 0)
             )
             "
         .parse::<Pattern<_>>()

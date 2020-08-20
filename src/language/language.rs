@@ -107,14 +107,6 @@ define_language! {
         // whose elements are of shape d<dim>, .., dn.
         "access" = Access([Id; 2]),
 
-        // (access-move-axis <access> <axis (usize)> <dest (usize)>)
-        // Move <axis> so it is now <dest>, shifting other axes as needed.
-        // TODO(@gussmith23) Nail down access-move-axis semantics
-        // Specifically, how does the access axis move based on the moved axes?
-        // I think the easiest thing to do is to is the dumbest: don't move the
-        // access axis.
-        "access-move-axis" = AccessMoveAxis([Id; 3]),
-
         // (access-transpose <a: access> <new-order: list>)
         // Uses numpy.transpose() semantics. Reorders axes in an access.
         // Does not change the access dimension.
@@ -1200,65 +1192,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()
                             .as_slice(),
                     ),
-                })
-            }
-            &AccessMoveAxis([access_id, src_axis_id, dest_axis_id]) => {
-                let access = match &egraph[access_id].data {
-                    MyAnalysisData::AccessPattern(a) => a,
-                    _ => panic!(),
-                };
-                let (split_axis, shape) = match &egraph[access_id].data {
-                    MyAnalysisData::AccessPattern(a) => (
-                        a.shape.ndim(),
-                        a.shape
-                            .as_array_view()
-                            .iter()
-                            .chain(a.item_shape.as_array_view().iter())
-                            .cloned()
-                            .collect::<Vec<_>>(),
-                    ),
-                    _ => panic!(),
-                };
-                let src_axis = Self::get_usize(src_axis_id, egraph);
-                let dest_axis = Self::get_usize(dest_axis_id, egraph);
-
-                assert!(src_axis < shape.len());
-                assert!(dest_axis < shape.len());
-
-                let new_shape_order = if src_axis <= dest_axis {
-                    shape[..src_axis]
-                        .iter()
-                        .chain(shape[src_axis + 1..=dest_axis].iter())
-                        .chain(std::iter::once(&shape[src_axis]))
-                        .chain(shape[dest_axis + 1..].iter())
-                        .cloned()
-                        .collect::<Vec<_>>()
-                } else {
-                    shape[..dest_axis]
-                        .iter()
-                        .chain(std::iter::once(&shape[src_axis]))
-                        .chain(shape[dest_axis..src_axis].iter())
-                        .chain(shape[src_axis + 1..].iter())
-                        .cloned()
-                        .collect::<Vec<_>>()
-                };
-
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    // TODO(@gussmith23) Implement zero regions
-                    // It's harmless (I think) if `zero_regions` defaults to
-                    // empty, but for it to be useful, we need to implement it
-                    // for each operator.
-                    zero_regions: {
-                        if !access.zero_regions.is_empty() {
-                            warn!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
-                        }
-                        HashMap::default()
-                    },
-                    shape: IxDyn(&new_shape_order[..split_axis]),
-                    item_shape: IxDyn(&new_shape_order[split_axis..]),
                 })
             }
             &AccessSlice([access_id, axis_id, low_id, high_id]) => {
@@ -2701,8 +2634,8 @@ mod tests {
     }
 
     #[test]
-    fn access_move_axis_0() {
-        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 0 2)"
+    fn access_transpose_0() {
+        let program = "(access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
@@ -2717,8 +2650,8 @@ mod tests {
     }
 
     #[test]
-    fn access_move_axis_1() {
-        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 1 0)"
+    fn access_transpose_4() {
+        let program = "(access-transpose (access (access-tensor t-3-32-32) 1) (list 1 0 2))"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
@@ -2733,8 +2666,8 @@ mod tests {
     }
 
     #[test]
-    fn access_move_axis_2() {
-        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 1 1)"
+    fn access_transpose_5() {
+        let program = "(access-transpose (access (access-tensor t-3-32-32) 1) (list 0 1 2))"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
@@ -2750,8 +2683,8 @@ mod tests {
 
     #[should_panic]
     #[test]
-    fn access_move_axis_panic_0() {
-        let program = "(access-move-axis (access (access-tensor t-3-32-32) 1) 3 1)"
+    fn access_transpose_panic_2() {
+        let program = "(access-transpose (access (access-tensor t-3-32-32) 1) (list 0 1 3))"
             .parse()
             .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
@@ -3313,7 +3246,7 @@ mod tests {
         let program = "
          (systolic-array 64 32
           (access (access-tensor a) 1)
-          (access (access-move-axis (access-tensor a) 0 1) 0)
+          (access (access-transpose (access-tensor a) (list 1 0)) 0)
          )
          "
         .parse()

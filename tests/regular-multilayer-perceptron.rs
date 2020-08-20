@@ -15,17 +15,17 @@ fn regular_multilayer_perceptron() {
            (compute dot-product
             (access-cartesian-product
              (access (access-tensor v-32) 0)
-             (access-move-axis (access (access-tensor t-32-64) 1) 1 0)
+             (access-transpose (access (access-tensor t-32-64) 1) (list 1 0))
             )
            )
            0
           )
-          (access-move-axis (access (access-tensor t-64-128) 1) 1 0)
+          (access-transpose (access (access-tensor t-64-128) 1) (list 1 0))
          )
         )
         0
        )
-       (access-move-axis (access (access-tensor t-128-16) 1) 1 0)
+       (access-transpose (access (access-tensor t-128-16) 1) (list 1 0))
       )
      )
      "
@@ -66,7 +66,7 @@ fn regular_multilayer_perceptron() {
         // expressions, and the top-level concatenate will be handled by the compiler.
         rewrites::bubble_access_concatenate_through_access(),
         rewrites::bubble_access_concatenate_through_access_slice(),
-        rewrites::bubble_access_concatenate_through_access_move_axis(),
+        rewrites::bubble_access_concatenate_through_access_transpose(),
         rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
         rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
         rewrites::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
@@ -104,7 +104,7 @@ fn regular_multilayer_perceptron() {
           (access (access-tensor v-32) 0)
           (access
            (access-transpose
-            (access-move-axis (access (access-tensor t-32-64) 1) 1 0)
+            (access-transpose (access (access-tensor t-32-64) 1) (list 1 0))
             (list 1 0)
            )
            0
@@ -114,7 +114,7 @@ fn regular_multilayer_perceptron() {
         )
         (access
          (access-transpose
-          (access-move-axis (access (access-tensor t-64-128) 1) 1 0)
+          (access-transpose (access (access-tensor t-64-128) 1) (list 1 0))
           (list 1 0)
          )
          0
@@ -124,7 +124,7 @@ fn regular_multilayer_perceptron() {
       )
       (access
        (access-transpose
-        (access-move-axis (access (access-tensor t-128-16) 1) 1 0)
+        (access-transpose (access (access-tensor t-128-16) 1) (list 1 0))
         (list 1 0)
        )
        0

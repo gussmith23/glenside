@@ -75,7 +75,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
 
     // Search for continued tensorization
     let _matches = "
- (access-move-axis
+ (access-transpose
   (access-reshape
    (access-slice
     (access-concatenate
@@ -91,8 +91,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
          (access-pad
           (access-flatten
            (access
-            (access-move-axis (access (access-tensor weights) 0)
-             3 0
+            (access-transpose (access (access-tensor weights) 0)
+             (list 3 0 1 2)
             )
             1
            )
@@ -128,7 +128,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
    )
    ?shape
   )
-  ?src ?dest
+  ?list
  )
             "
     .parse::<Pattern<_>>()
@@ -142,7 +142,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
 
     // Find whole program
     let _matches = "
- (access-move-axis
+ (access-transpose
   (access-reshape
    (access-slice
     (access-concatenate
@@ -152,8 +152,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         (access-pad
          (access-flatten
           (access
-           (access-move-axis (access (access-tensor weights) 0)
-            3 0
+           (access-transpose (access (access-tensor weights) 0)
+            (list 3 0 1 2)
            )
            1
           )
@@ -172,7 +172,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
    )
    ?shape
   )
-  ?src ?dest
+  ?list
  )
             "
     .parse::<Pattern<_>>()
@@ -189,8 +189,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -220,8 +220,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -237,8 +237,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -293,8 +293,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
      (access-pad
       (access-flatten
        (access
-        (access-move-axis (access (access-tensor weights) 0)
-         3 0
+        (access-transpose (access (access-tensor weights) 0)
+         (list 3 0 1 2)
         )
         1
        )
@@ -342,7 +342,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     assert!(matches.len() > 0);
 
     let matches = "
-(access-move-axis
+(access-transpose
  (access-reshape
   (compute dot-product
    (access-cartesian-product
@@ -367,7 +367,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
   )
   ?shape
  )
- ?21 ?22
+ ?21
 )
             "
     .parse::<Pattern<_>>()
@@ -385,8 +385,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -404,8 +404,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -459,8 +459,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -476,8 +476,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
       (access-pad
        (access-flatten
         (access
-         (access-move-axis (access (access-tensor weights) 0)
-          3 0
+         (access-transpose (access (access-tensor weights) 0)
+          (list 3 0 1 2)
          )
          1
         )
@@ -532,8 +532,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
      (access-pad
       (access-flatten
        (access
-        (access-move-axis (access (access-tensor weights) 0)
-         3 0
+        (access-transpose (access (access-tensor weights) 0)
+         (list 3 0 1 2)
         )
         1
        )
@@ -581,7 +581,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     assert!(matches.len() > 0);
 
     let matches = "
-(access-move-axis
+(access-transpose
  (access-reshape
   (compute dot-product
    (access-cartesian-product
@@ -606,7 +606,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
   )
   ?shape
  )
- ?21 ?22
+ ?21
 )
             "
     .parse::<Pattern<_>>()
@@ -730,7 +730,6 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
                 | Language::PadType(_)
                 | Language::Access(_)
                 | Language::AccessTensor(_)
-                | Language::AccessMoveAxis(_)
                 | Language::ShapeOf(_)
                 | Language::ShapeRemoveAxis(_)
                 | Language::ShapeInsertAxis(_)

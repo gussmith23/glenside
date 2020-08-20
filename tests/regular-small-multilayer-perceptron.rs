@@ -10,12 +10,12 @@ fn regular_small_multilayer_perceptron() {
         (compute dot-product
          (access-cartesian-product
           (access (access-tensor v-32) 0)
-          (access-move-axis (access (access-tensor t-32-32) 1) 1 0)
+          (access-transpose (access (access-tensor t-32-32) 1) (list 1 0))
          )
         )
         0
        )
-       (access-move-axis (access (access-tensor t-32-32) 1) 1 0)
+       (access-transpose (access (access-tensor t-32-32) 1) (list 1 0))
       )
      )
      "
@@ -40,7 +40,7 @@ fn regular_small_multilayer_perceptron() {
         rewrites::collapse_nested_access_slices(),
         rewrites::bubble_access_concatenate_through_access(),
         rewrites::bubble_access_concatenate_through_access_slice(),
-        rewrites::bubble_access_concatenate_through_access_move_axis(),
+        rewrites::bubble_access_concatenate_through_access_transpose(),
         rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
         rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
         rewrites::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
@@ -73,7 +73,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -81,7 +81,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 0 16
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -92,7 +92,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -100,7 +100,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 0 16
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -113,7 +113,7 @@ fn regular_small_multilayer_perceptron() {
     )
     (access
      (access-transpose
-      (access-move-axis
+      (access-transpose
        (access-slice
         (access-slice
          (access (access-tensor t-32-32) 1)
@@ -121,7 +121,7 @@ fn regular_small_multilayer_perceptron() {
         )
         1 0 16
        )
-       1 0
+       (list 1 0)
       )
       (list 1 0)
      )
@@ -136,7 +136,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -144,7 +144,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 16 32
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -155,7 +155,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -163,7 +163,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 16 32
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -176,7 +176,7 @@ fn regular_small_multilayer_perceptron() {
     )
     (access
      (access-transpose
-      (access-move-axis
+      (access-transpose
        (access-slice
         (access-slice
          (access (access-tensor t-32-32) 1)
@@ -184,7 +184,7 @@ fn regular_small_multilayer_perceptron() {
         )
         1 0 16
        )
-       1 0
+       (list 1 0)
       )
       (list 1 0)
      )
@@ -203,7 +203,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -211,7 +211,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 0 16
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -222,7 +222,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -230,7 +230,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 0 16
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -243,7 +243,7 @@ fn regular_small_multilayer_perceptron() {
     )
     (access
      (access-transpose
-      (access-move-axis
+      (access-transpose
        (access-slice
         (access-slice
          (access (access-tensor t-32-32) 1)
@@ -251,7 +251,7 @@ fn regular_small_multilayer_perceptron() {
         )
         1 16 32
        )
-       1 0
+       (list 1 0)
       )
       (list 1 0)
      )
@@ -266,7 +266,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 0 16)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -274,7 +274,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 16 32
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -285,7 +285,7 @@ fn regular_small_multilayer_perceptron() {
         (access-slice (access (access-tensor v-32) 0) 0 16 32)
         (access
          (access-transpose
-          (access-move-axis
+          (access-transpose
            (access-slice
             (access-slice
              (access (access-tensor t-32-32) 1)
@@ -293,7 +293,7 @@ fn regular_small_multilayer_perceptron() {
             )
             1 16 32
            )
-           1 0
+           (list 1 0)
           )
           (list 1 0)
          )
@@ -306,7 +306,7 @@ fn regular_small_multilayer_perceptron() {
     )
     (access
      (access-transpose
-      (access-move-axis
+      (access-transpose
        (access-slice
         (access-slice
          (access (access-tensor t-32-32) 1)
@@ -314,7 +314,7 @@ fn regular_small_multilayer_perceptron() {
         )
         1 16 32
        )
-       1 0
+       (list 1 0)
       )
       (list 1 0)
      )

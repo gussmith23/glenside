@@ -262,11 +262,13 @@ pub fn conv2d(
     // TODO(@gussmith23) Layout assumption
     let access_weights_id = access_tensor_literal(expr, weights_name, 0);
     // Weights are in HWIO. Move O to first position.
+    let weight_transpose_list_id = expr.add(Language::List(Box::new([
+        usize_3_id, usize_0_id, usize_1_id, usize_2_id,
+    ])));
     // TODO(@gussmith23) Layout assumption
-    let access_weights_id = expr.add(Language::AccessMoveAxis([
+    let access_weights_id = expr.add(Language::AccessTranspose([
         access_weights_id,
-        usize_3_id,
-        usize_0_id,
+        weight_transpose_list_id,
     ]));
     // Re-access to get [O] [HWI]
     let access_weights_id = access(expr, access_weights_id, 1);
@@ -281,10 +283,12 @@ pub fn conv2d(
 
     // TODO(@gussmith23) Layout assumption
     // Move old output/new input channels dimension to the back.
-    let data_id = expr.add(Language::AccessMoveAxis([
+    let data_transpose_list_id = expr.add(Language::List(Box::new([
+        usize_1_id, usize_2_id, usize_3_id, usize_0_id,
+    ])));
+    let data_id = expr.add(Language::AccessTranspose([
         compute_dot_product_id,
-        usize_0_id,
-        usize_3_id,
+        data_transpose_list_id,
     ]));
 
     data_id

@@ -165,51 +165,6 @@ where
             Value::Access(access)
         }
         Language::PadType(t) => Value::PadType(*t),
-        &Language::AccessMoveAxis([access_id, src_axis_id, dst_axis_id]) => {
-            let mut access = match interpret(expr, access_id as usize, env) {
-                Value::Access(a) => a,
-                _ => panic!(),
-            };
-            let src_axis = match interpret(expr, src_axis_id as usize, env) {
-                Value::Usize(u) => u,
-                _ => panic!(),
-            };
-            let dst_axis = match interpret(expr, dst_axis_id as usize, env) {
-                Value::Usize(u) => u,
-                _ => panic!(),
-            };
-
-            assert!(src_axis < access.tensor.ndim());
-            assert!(dst_axis < access.tensor.ndim());
-
-            access.tensor = ndarray::stack(
-                ndarray::Axis(dst_axis),
-                access
-                    .tensor
-                    .axis_iter(ndarray::Axis(src_axis))
-                    .map(|t| t.insert_axis(ndarray::Axis(dst_axis)))
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            )
-            .unwrap();
-
-            // Changing the semantics: access axis doesn't change.
-            // access.access_axis = if access.access_axis < src_axis && access.access_axis < dst_axis {
-            //     access.access_axis
-            // } else if access.access_axis == src_axis {
-            //     dst_axis
-            // } else if access.access_axis > src_axis && access.access_axis <= dst_axis {
-            //     access.access_axis - 1
-            // } else if access.access_axis >= dst_axis && access.access_axis < src_axis {
-            //     access.access_axis + 1
-            // } else if access.access_axis > src_axis && access.access_axis > dst_axis {
-            //     access.access_axis
-            // } else {
-            //     unreachable!()
-            // };
-
-            Value::Access(access)
-        }
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -1833,14 +1788,15 @@ mod tests {
     }
 
     #[test]
-    // TODO(@gussmith23) Add more access-move-axis tests
-    fn access_move_axis_0() {
+    fn access_transpose_0() {
         let mut env = Environment::new();
         env.insert("t", array![[1, 2]].into_dyn());
 
-        let expr =
-            RecExpr::<Language>::from_str("(access-move-axis (access (access-tensor t) 0) 0 1)")
-                .unwrap();
+        let expr = RecExpr::<Language>::from_str(
+            "
+(access-transpose (access (access-tensor t) 0) (list 1 0))",
+        )
+        .unwrap();
         match interpret(&expr, expr.as_ref().len() - 1, &env) {
             Value::Access(Access {
                 tensor,
@@ -1854,13 +1810,15 @@ mod tests {
     }
 
     #[test]
-    fn access_move_axis_1() {
+    fn access_transpose_1() {
         let mut env = Environment::new();
         env.insert("t", array![[1, 2]].into_dyn());
 
-        let expr =
-            RecExpr::<Language>::from_str("(access-move-axis (access (access-tensor t) 0) 1 0)")
-                .unwrap();
+        let expr = RecExpr::<Language>::from_str(
+            "
+(access-transpose (access (access-tensor t) 0) (list 1 0))",
+        )
+        .unwrap();
         match interpret(&expr, expr.as_ref().len() - 1, &env) {
             Value::Access(Access {
                 tensor,
@@ -1874,7 +1832,7 @@ mod tests {
     }
 
     #[test]
-    fn access_transpose() {
+    fn access_transpose_2() {
         let mut env = Environment::new();
         env.insert("t", array![[2, 3], [1, 2]].into_dyn());
 

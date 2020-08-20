@@ -81,7 +81,6 @@ impl CostFunction<Language> for SimpleCostFunction {
             AccessWindows(_)
             | Access(_)
             | AccessTranspose(_)
-            | AccessMoveAxis(_)
             | AccessCartesianProduct(_)
             | AccessReshape(_)
             | AccessFlatten(_)

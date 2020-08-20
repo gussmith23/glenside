@@ -114,11 +114,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 3]
-            &Language::AccessMoveAxis(ids) => {
-                for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
-                }
-            }
             // [Id; 4]
             &Language::SystolicArray(ids) => {
                 for id in ids.iter() {
@@ -362,7 +357,6 @@ fn codegen_recursive_helper(
         &Language::Usize(u) => format!("{}", u),
         &Language::GetAccessShape(_)
         | &Language::AccessTranspose(_)
-        | &Language::AccessMoveAxis(_)
         | Language::List(_)
         | &Language::AccessBroadcast(_)
         | &Language::AccessInsertAxis(_)
