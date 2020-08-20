@@ -446,7 +446,7 @@ where
 
             let reshaped_0 = a0
                 .tensor
-                .clone()
+                .as_standard_layout()
                 .into_shape(
                     std::iter::once(
                         a0.tensor.shape()[..a0.access_axis]
