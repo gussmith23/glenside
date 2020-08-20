@@ -878,7 +878,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
 
-                assert_eq!(access.shape.ndim() + access.item_shape.ndim(), list.len());
+                assert_eq!(
+                    access.shape.ndim() + access.item_shape.ndim(),
+                    list.len(),
+                    "Number of items in list should equal the number of axes in the first argument"
+                );
                 let tmp = access
                     .shape
                     .slice()
