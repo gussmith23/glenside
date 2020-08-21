@@ -1,6 +1,7 @@
 use clap::{App, Arg, SubCommand};
 use egg::{EGraph, RecExpr, Runner};
-use glenside::language::{Language, MyAnalysis};
+use glenside::language::rewrites::{PadLocation, PadSliceStrategy, SliceConcatenateStrategy};
+use glenside::language::{Language, MyAnalysis, PadType};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
@@ -61,11 +62,50 @@ fn main() {
         });
         let id = egraph.add_expr(&glenside_expr);
 
+        // TODO(@gussmith23) Add flags to control different rewrites
         let runner = Runner::default().with_egraph(egraph).run(&[
+            glenside::language::rewrites::flatten_unflatten_any_access(),
+            glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
+            glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
+            glenside::language::rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
+            glenside::language::rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
+            glenside::language::rewrites::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
+            glenside::language::rewrites::bubble_access_concatenate_through_compute_dot_product_item_axis(),
+            glenside::language::rewrites::bubble_access_concatenate_through_compute_dot_product_not_item_axis(),
+            glenside::language::rewrites::bubble_access_slice_through_access_pad_inequal_axes(),
+            glenside::language::rewrites::systolic_array(),
+            glenside::language::rewrites::pad_slice_accesses(
+                0,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 64,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            glenside::language::rewrites::pad_slice_accesses(
+                1,
+                PadSliceStrategy::PadToClosestMultipleOf {
+                    multiple_of: 64,
+                    pad_location: PadLocation::End,
+                    pad_type: PadType::ZeroPadding,
+                },
+            ),
+            glenside::language::rewrites::slice_concatenate_accesses(
+                0,
+                SliceConcatenateStrategy::DivideInto { segment_size: 64 },
+            ),
+            glenside::language::rewrites::slice_concatenate_accesses(
+                1,
+                SliceConcatenateStrategy::DivideInto { segment_size: 64 },
+            ),
+            glenside::language::rewrites::bubble_access_slice_through_access_cartesian_product_not_item_axis_left(),
+            glenside::language::rewrites::bubble_access_slice_through_access_cartesian_product_not_item_axis_right(),
+            glenside::language::rewrites::bubble_access_slice_through_access_cartesian_product_same_item_axis(),
+            glenside::language::rewrites::bubble_access_slice_through_compute_dot_product_not_item_axis(),
+            glenside::language::rewrites::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(),
             glenside::language::rewrites::collapse_nested_accesses(),
             glenside::language::rewrites::collapse_nested_transposes(),
             glenside::language::rewrites::remove_trivial_transpose(),
-            glenside::language::rewrites::systolic_array(),
         ]);
 
         let (_, extracted_expr) =
