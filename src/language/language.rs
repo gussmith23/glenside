@@ -1710,7 +1710,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => {
                         (a0, a1)
                     }
-                    _ => panic!(),
+                    _ => panic!("Expected access patterns as third and fourth arguments"),
                 };
 
                 assert_eq!(a1.shape, IxDyn(&[]));
