@@ -6,7 +6,7 @@ pub fn find_all_systolic_array_configurations(
     egraph: &EGraph<Language, MyAnalysis>,
 ) -> HashSet<(usize, usize)> {
     let mut systolic_arrays = HashSet::new();
-    for matches in "(bsg-systolic-array ?rows ?cols ?x ?y)"
+    for matches in "(systolic-array ?rows ?cols ?x ?y)"
         .parse::<Pattern<Language>>()
         .unwrap()
         .search(egraph)
@@ -27,16 +27,15 @@ pub struct MonolithicCostFunction<'a> {
     pub systolic_array_configuration: (usize, usize),
     pub egraph: &'a EGraph<Language, MyAnalysis>,
 }
-impl CostFunction<Language> for MonolithicCostFunction<'_> {
+impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
     type Cost = usize;
 
     fn cost<C>(&mut self, enode: &Language, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {
-        // TODO(@gussmith23) Implement a real cost model
         let base_cost = match enode {
-            &Language::BsgSystolicArray([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
+            &Language::SystolicArray([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
                 if (
                     MyAnalysis::get_usize(rows_id, self.egraph),
                     MyAnalysis::get_usize(cols_id, self.egraph),
@@ -46,12 +45,44 @@ impl CostFunction<Language> for MonolithicCostFunction<'_> {
             }
 
             Language::Symbol(_)
-            | Language::BsgSystolicArray(_)
+            | Language::SystolicArray(_)
             | Language::Usize(_)
+            | Language::AccessSlice(_)
+            | Language::AccessConcatenate(_)
+            | Language::AccessPad(_)
+            | Language::AccessWindows(_)
+            | Language::PadType(_)
+            | Language::Access(_)
+            | Language::AccessTensor(_)
+            | Language::ShapeOf(_)
+            | Language::ShapeRemoveAxis(_)
+            | Language::ShapeInsertAxis(_)
+            | Language::Shape(_)
+            | Language::AccessSqueeze(_)
+            | Language::AccessCartesianProduct(_)
+            | Language::AccessFlatten(_)
+            | Language::AccessReshape(_)
+            | Language::AccessShiftRight(_)
+            | Language::AccessInsertAxis(_)
+            | Language::AccessBroadcast(_)
+            | Language::GetAccessShape(_)
+            | Language::AccessShape(_)
+            | Language::List(_)
+            | Language::SliceShape(_)
+            | Language::AccessPair(_)
+            | Language::AccessTranspose(_) => 1,
+
+            // Computes cannot be extracted.
+            Language::ComputeType(_) | Language::Compute(_) => std::usize::MAX,
+
+            // Old constructs.
+            Language::MoveAxis(_)
+            | Language::CartesianProduct(_)
+            | Language::ElementwiseAdd(_)
+            | Language::BsgSystolicArray(_)
+            | Language::MapDotProduct(_)
             | Language::Slice(_)
-            | Language::Concatenate(_)
-            | Language::ElementwiseAdd(_) => 1,
-            _ => std::usize::MAX,
+            | Language::Concatenate(_) => panic!(),
         };
 
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
@@ -114,17 +145,23 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn find_systolic_array_configs() {
+    fn find_systolic_array_configs_0() {
         let program = "
-         (bsg-systolic-array 16 128
-          (bsg-systolic-array 128 64
-           (bsg-systolic-array 64 32
-            v-32
-            (move-axis t-32-64 1 0)
+         (systolic-array 128 16
+          (access
+           (systolic-array 64 128
+            (access
+             (systolic-array 32 64
+              (access (access-tensor v-32) 0)
+              (access (access-tensor t-32-64) 0)
+             )
+             0
+            )
+            (access (access-tensor t-64-128) 0)
            )
-           (move-axis t-64-128 1 0)
+           0
           )
-          (move-axis t-128-16 1 0)
+          (access (access-tensor t-128-16) 0)
          )
          "
         .parse()
@@ -137,19 +174,28 @@ mod tests {
         let configs = find_all_systolic_array_configurations(&egraph);
 
         assert_eq!(configs.len(), 3);
-        assert!(configs.contains(&(16, 128)));
-        assert!(configs.contains(&(128, 64)));
-        assert!(configs.contains(&(64, 32)));
+        assert!(configs.contains(&(128,16)));
+        assert!(configs.contains(&(64, 128)));
+        assert!(configs.contains(&(32, 64)));
+    }
 
+    #[test]
+    fn find_systolic_array_configs_1() {
         let program = "
-         (bsg-systolic-array 32 64
-          (bsg-systolic-array 32 64
-           v-32
-           t-32-64
+         (systolic-array 32 32
+          (access
+           (systolic-array 32 32
+            (access (access-tensor v-32) 0)
+            (access (access-tensor t-32-32) 0)
+           )
+           0
           )
-          (bsg-systolic-array 32 64
-           t-32-32
-           t-32-64
+          (access
+           (systolic-array 32 32
+            (access (access-tensor t-32-32) 1)
+            (access (access-tensor t-32-32) 0)
+           )
+           0
           )
          )
          "
@@ -163,21 +209,27 @@ mod tests {
         let configs = find_all_systolic_array_configurations(&egraph);
 
         assert_eq!(configs.len(), 1);
-        assert!(configs.contains(&(32, 64)));
+        assert!(configs.contains(&(32, 32)));
     }
 
     #[test]
-    fn extract() {
+    fn extract_0() {
         let program = "
-         (bsg-systolic-array 16 128
-          (bsg-systolic-array 128 64
-           (bsg-systolic-array 64 32
-            v-32
-            t-32-64
+         (systolic-array 128 16
+          (access
+           (systolic-array 64 128
+            (access
+             (systolic-array 32 64
+              (access (access-tensor v-32) 0)
+              (access (access-tensor t-32-64) 0)
+             )
+             0
+            )
+            (access (access-tensor t-64-128) 0)
            )
-           t-64-128
+           0
           )
-          t-128-16
+          (access (access-tensor t-128-16) 0)
          )
          "
         .parse()
@@ -197,16 +249,25 @@ mod tests {
 
         let (cost, _) = ex.find_best(id);
         assert_eq!(cost, std::usize::MAX);
+    }
 
+    #[test]
+    fn extract_1() {
         let program = "
-         (bsg-systolic-array 32 64
-          (bsg-systolic-array 32 64
-           v-32
-           t-32-64
+         (systolic-array 32 32
+          (access
+           (systolic-array 32 32
+            (access (access-tensor v-32) 0)
+            (access (access-tensor t-32-32) 0)
+           )
+           0
           )
-          (bsg-systolic-array 32 64
-           t-32-32
-           t-32-64
+          (access
+           (systolic-array 32 32
+            (access (access-tensor t-32-32) 1)
+            (access (access-tensor t-32-32) 0)
+           )
+           0
           )
          )
          "
@@ -221,7 +282,7 @@ mod tests {
             &egraph,
             MonolithicCostFunction {
                 egraph: &egraph,
-                systolic_array_configuration: (32, 64),
+                systolic_array_configuration: (32, 32),
             },
         );
 
@@ -230,14 +291,20 @@ mod tests {
         assert_eq!(
             expr,
             "
-         (bsg-systolic-array 32 64
-          (bsg-systolic-array 32 64
-           v-32
-           t-32-64
+         (systolic-array 32 32
+          (access
+           (systolic-array 32 32
+            (access (access-tensor v-32) 0)
+            (access (access-tensor t-32-32) 0)
+           )
+           0
           )
-          (bsg-systolic-array 32 64
-           t-32-32
-           t-32-64
+          (access
+           (systolic-array 32 32
+            (access (access-tensor t-32-32) 1)
+            (access (access-tensor t-32-32) 0)
+           )
+           0
           )
          )
          "

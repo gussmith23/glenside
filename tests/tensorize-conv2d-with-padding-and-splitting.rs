@@ -1,4 +1,4 @@
-use egg::{EGraph, Id, Language as LanguageTrait, Pattern, RecExpr, Runner, Searcher};
+use egg::{Pattern, RecExpr, Runner, Searcher};
 use glenside::language::rewrites::*;
 use glenside::language::*;
 use std::collections::HashMap;
@@ -700,60 +700,9 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     assert!(matches.len() > 0);
     //println!("{:#?}", runner.egraph[matches[0].substs[0]["?11".parse().unwrap()]].data);
     //panic!()//
-
-    pub struct MonolithicCostFunction<'a> {
-        pub systolic_array_configuration: (usize, usize),
-        pub egraph: &'a EGraph<Language, MyAnalysis>,
-    }
-    impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
-        type Cost = usize;
-
-        fn cost<C>(&mut self, enode: &Language, mut costs: C) -> Self::Cost
-        where
-            C: FnMut(Id) -> Self::Cost,
-        {
-            let base_cost = match enode {
-                &Language::SystolicArray([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
-                    if (
-                        MyAnalysis::get_usize(rows_id, self.egraph),
-                        MyAnalysis::get_usize(cols_id, self.egraph),
-                    ) != self.systolic_array_configuration =>
-                {
-                    std::usize::MAX
-                }
-
-                Language::Symbol(_)
-                | Language::SystolicArray(_)
-                | Language::Usize(_)
-                | Language::AccessSlice(_)
-                | Language::AccessConcatenate(_)
-                | Language::AccessPad(_)
-                | Language::AccessWindows(_)
-                | Language::PadType(_)
-                | Language::Access(_)
-                | Language::AccessTensor(_)
-                | Language::ShapeOf(_)
-                | Language::ShapeRemoveAxis(_)
-                | Language::ShapeInsertAxis(_)
-                | Language::Shape(_)
-                | Language::AccessSqueeze(_)
-                | Language::AccessCartesianProduct(_)
-                | Language::AccessFlatten(_)
-                | Language::AccessReshape(_)
-                | Language::GetAccessShape(_)
-                | Language::AccessShape(_)
-                | Language::List(_)
-                | Language::AccessTranspose(_) => 1,
-                Language::ComputeType(_) | Language::Compute(_) => std::usize::MAX,
-                _ => panic!("{:?}", enode),
-            };
-
-            enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
-        }
-    }
     let (cost, expr) = egg::Extractor::new(
         &runner.egraph,
-        MonolithicCostFunction {
+        glenside::extraction::MonolithicCostFunction {
             egraph: &runner.egraph,
             systolic_array_configuration: (64, 64),
         },
