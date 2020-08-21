@@ -2,7 +2,7 @@
 fn asplos_demo_generate_mlp_allocate_for_manycore() {
     /* Runs the following:
 
-    target/debug/glenside asplos-demo  \
+    target/debug/glenside demo  \
       --allocate-for-manycore          \
       mlp                              \
       data/asplos-demo/mlp.glenside    \
@@ -20,8 +20,8 @@ fn asplos_demo_generate_mlp_allocate_for_manycore() {
         env!("CARGO_MANIFEST_DIR")
     ))
     .current_dir(std::env::temp_dir())
-    // Runs "asplos-demo" subcommand of Glenside
-    .arg("asplos-demo")
+    // Runs "demo" subcommand of Glenside
+    .arg("demo")
     // Tells Glenside to allocate buffers for the Manycore
     .arg("--allocate-for-manycore")
     // The name of the resulting C function generated from the Glenside code

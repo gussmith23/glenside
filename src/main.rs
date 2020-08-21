@@ -9,7 +9,7 @@ use std::str::FromStr;
 fn main() {
     let matches = App::new("glenside")
         .subcommand(
-            SubCommand::with_name("asplos-demo")
+            SubCommand::with_name("demo")
                 .arg(Arg::with_name("NAME").required(true).index(1))
                 .arg(Arg::with_name("PROGRAM").required(true).index(2))
                 .arg(Arg::with_name("SHAPES").required(true).index(3))
@@ -27,7 +27,7 @@ fn main() {
         )
         .get_matches();
 
-    if let Some(matches) = matches.subcommand_matches("asplos-demo") {
+    if let Some(matches) = matches.subcommand_matches("demo") {
         // Read in shapes as JSON dict; convert to HashMap<String, Vec<usize>>
         let shapes_json: Value = serde_json::from_str(
             std::fs::read_to_string(matches.value_of("SHAPES").unwrap())

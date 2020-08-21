@@ -36,7 +36,7 @@ fn asplos_demo_mlp() {
     // Run Glenside!
     let output = Command::new("target/debug/glenside")
         // Subcommand of the glenside binary.
-        .arg("asplos-demo")
+        .arg("demo")
         // Argument 1: the name of the function to compile.
         // So our output will include a C function called mlp(...)
         .arg("mlp")
