@@ -64,9 +64,11 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         glenside::language::rewrites::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(),
     ];
 
+    // TODO(@gussmith23) This is starting to become a flaky test...
+    // I know the correct program can be found, but it takes time.
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
-        .with_time_limit(std::time::Duration::from_secs(30))
+        .with_time_limit(std::time::Duration::from_secs(40))
         .with_node_limit(500000)
         .with_iter_limit(40)
         .run(&rws);
