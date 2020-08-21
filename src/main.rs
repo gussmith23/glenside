@@ -24,7 +24,14 @@ fn main() {
                     Arg::with_name("allocate-for-manycore")
                         .help("Declares all buffers using the attributes required by the Manycore")
                         .long("allocate-for-manycore"),
-                ),
+                )
+                .arg(Arg::with_name("node-limit").takes_value(true))
+                .arg(
+                    Arg::with_name("time-limit")
+                        .help("Time limit in seconds")
+                        .takes_value(true),
+                )
+                .arg(Arg::with_name("iter-limit").takes_value(true)),
         )
         .get_matches();
 
@@ -62,8 +69,22 @@ fn main() {
         });
         let id = egraph.add_expr(&glenside_expr);
 
+        let mut runner = Runner::default().with_egraph(egraph);
+
+        if let Some(m) = matches.value_of("node-limit") {
+            runner = runner.with_node_limit(m.parse().expect("node-limit should be an integer"));
+        }
+        if let Some(m) = matches.value_of("iter-limit") {
+            runner = runner.with_iter_limit(m.parse().expect("iter-limit should be an integer"));
+        }
+        if let Some(m) = matches.value_of("time-limit") {
+            runner = runner.with_time_limit(std::time::Duration::from_secs(
+                m.parse().expect("time-limit should be an integer"),
+            ));
+        }
+
         // TODO(@gussmith23) Add flags to control different rewrites
-        let runner = Runner::default().with_egraph(egraph).run(&[
+        runner = runner.run(&[
             glenside::language::rewrites::flatten_unflatten_any_access(),
             glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
             glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
