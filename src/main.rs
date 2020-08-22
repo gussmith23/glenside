@@ -41,6 +41,17 @@ fn main() {
                         .long("iter-limit")
                         .takes_value(true),
                 )
+                .arg(
+                    Arg::with_name("find-monolithic-designs")
+                        .long("find-monolithic-designs")
+                        .help("Takes an argument (rows,cols); Glenside will \
+                               find monolithic designs of this size. Do not \
+                               include any whitespace before, between, or \
+                               after the parentheses.")
+                        .takes_value(true),
+                )
+
+                ,
         )
         .get_matches();
 
@@ -138,9 +149,28 @@ fn main() {
             glenside::language::rewrites::remove_trivial_transpose(),
         ]);
 
-        let (_, extracted_expr) =
+        let (_, extracted_expr) = if let Some(val) = matches.value_of("find-monolithic-designs") {
+            let parsed = val
+                .chars()
+                .skip(1)
+                .take(val.len() - 2)
+                .collect::<String>()
+                .split(",")
+                .map(|s| s.parse::<usize>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(parsed.len(), 2);
+            egg::Extractor::new(
+                &runner.egraph,
+                glenside::extraction::MonolithicCostFunction {
+                    egraph: &runner.egraph,
+                    systolic_array_configuration: (parsed[0], parsed[1]),
+                },
+            )
+            .find_best(id)
+        } else {
             egg::Extractor::new(&runner.egraph, glenside::extraction::SimpleCostFunction)
-                .find_best(id);
+                .find_best(id)
+        };
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: shapes_map,
