@@ -174,7 +174,7 @@ mod tests {
         let configs = find_all_systolic_array_configurations(&egraph);
 
         assert_eq!(configs.len(), 3);
-        assert!(configs.contains(&(128,16)));
+        assert!(configs.contains(&(128, 16)));
         assert!(configs.contains(&(64, 128)));
         assert!(configs.contains(&(32, 64)));
     }
