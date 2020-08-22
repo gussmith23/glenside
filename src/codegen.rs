@@ -531,6 +531,9 @@ for ({} = 0; {} < {}; {}++) {{",
             transpose_out_var_name
         }
         &Language::AccessReshape([access_id, access_shape_id]) => {
+            todo!(
+                "Dammit, this isn't actually correct though. Because it won't get copied to `out`"
+            );
             // Don't need to do anything for reshape at runtime.
             codegen_recursive_helper(
                 expr,
