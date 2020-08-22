@@ -25,13 +25,22 @@ fn main() {
                         .help("Declares all buffers using the attributes required by the Manycore")
                         .long("allocate-for-manycore"),
                 )
-                .arg(Arg::with_name("node-limit").takes_value(true))
+                .arg(
+                    Arg::with_name("node-limit")
+                        .long("node-limit")
+                        .takes_value(true),
+                )
                 .arg(
                     Arg::with_name("time-limit")
                         .help("Time limit in seconds")
+                        .long("time-limit")
                         .takes_value(true),
                 )
-                .arg(Arg::with_name("iter-limit").takes_value(true)),
+                .arg(
+                    Arg::with_name("iter-limit")
+                        .long("iter-limit")
+                        .takes_value(true),
+                )
         )
         .get_matches();
 
