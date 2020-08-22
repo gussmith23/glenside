@@ -526,6 +526,18 @@ for ({} = 0; {} < {}; {}++) {{",
 
             transpose_out_var_name
         }
+        &Language::AccessReshape([access_id, access_shape_id]) => {
+            // Don't need to do anything for reshape at runtime.
+            codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            )
+        }
         &Language::GetAccessShape(_)
         | Language::List(_)
         | &Language::AccessBroadcast(_)
@@ -550,7 +562,6 @@ for ({} = 0; {} < {}; {}++) {{",
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)
         | &Language::BsgSystolicArray(_)
-        | &Language::AccessReshape(_)
         | &Language::AccessFlatten(_)
         | &Language::AccessShape(_)
         | &Language::AccessSlice(_)
