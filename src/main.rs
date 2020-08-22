@@ -44,14 +44,14 @@ fn main() {
                 .arg(
                     Arg::with_name("find-monolithic-designs")
                         .long("find-monolithic-designs")
-                        .help("Takes an argument (rows,cols); Glenside will \
+                        .help(
+                            "Takes an argument (rows,cols); Glenside will \
                                find monolithic designs of this size. Do not \
                                include any whitespace before, between, or \
-                               after the parentheses.")
+                               after the parentheses.",
+                        )
                         .takes_value(true),
-                )
-
-                ,
+                ),
         )
         .get_matches();
 
