@@ -165,6 +165,11 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 3]
+            &Language::AccessConcatenate(ids) => {
+                for id in ids.iter() {
+                    find_vars_recursive_helper(vec, expr, *id);
+                }
+            }
             // [Id; 4]
             &Language::SystolicArray(ids) => {
                 for id in ids.iter() {
@@ -199,7 +204,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::AccessFlatten(_)
             | &Language::AccessShape(_)
             | &Language::AccessSlice(_)
-            | &Language::AccessConcatenate(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
         }
     }
@@ -538,6 +542,149 @@ for ({} = 0; {} < {}; {}++) {{",
                 hw_map,
             )
         }
+        &Language::AccessConcatenate([a0_id, a1_id, axis_id]) => {
+            let axis = MyAnalysis::get_usize(axis_id, expr);
+            let (a0, a1) = match (&expr[a0_id].data, &expr[a1_id].data) {
+                (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => (a0, a1),
+                _ => panic!(),
+            };
+            let arg_0_name = codegen_recursive_helper(
+                expr,
+                a0_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+            let arg_1_name = codegen_recursive_helper(
+                expr,
+                a1_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+
+            let concat_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a
+                    .shape
+                    .slice()
+                    .iter()
+                    .chain(a.item_shape.slice().iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                _ => panic!("Expected access pattern"),
+            };
+            let a0_shape = a0
+                .shape
+                .slice()
+                .iter()
+                .chain(a0.item_shape.slice().iter())
+                .cloned()
+                .collect::<Vec<_>>();
+            let a1_shape = a1
+                .shape
+                .slice()
+                .iter()
+                .chain(a1.item_shape.slice().iter())
+                .cloned()
+                .collect::<Vec<_>>();
+
+            let out_var_name: String = if id == top_level_id {
+                "out".to_string()
+            } else {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "concat_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    create_allocation_str(
+                        allocations_prefix,
+                        out.as_str(),
+                        concat_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            // Iterate over each dim in the output
+            for (i, dim_val) in concat_shape.iter().enumerate() {
+                code.push_str(
+                    format!(
+                        "
+int i{i};
+for (i{i} = 0; i{i} < {dim_val}; i{i} ++) {{
+",
+                        i = i,
+                        dim_val = dim_val
+                    )
+                    .as_str(),
+                );
+            }
+
+            code.push_str(
+                format!(
+                    "
+if (i{} < {}) {{
+  {}[{}] = {}[{}];
+}} else {{
+  {}[{}] = {}[{}];
+}}
+",
+                    axis,
+                    a0[axis],
+                    out_var_name,
+                    (0..(concat_shape.len()))
+                        .map(|i| format!(
+                            "i{}*{}",
+                            i,
+                            concat_shape[i + 1..].iter().product::<usize>()
+                        ))
+                        .join(" + "),
+                    arg_0_name,
+                    (0..(concat_shape.len()))
+                        .map(|i| format!("i{}*{}", i, a0_shape[i + 1..].iter().product::<usize>()))
+                        .join(" + "),
+                    out_var_name,
+                    (0..(concat_shape.len()))
+                        .map(|i| format!(
+                            "i{}*{}",
+                            i,
+                            concat_shape[i + 1..].iter().product::<usize>()
+                        ))
+                        .join(" + "),
+                    arg_1_name,
+                    (0..(concat_shape.len()))
+                        .map(|i| if i != axis {
+                            format!("i{}*{}", i, a1_shape[i + 1..].iter().product::<usize>())
+                        } else {
+                            format!(
+                                "(i{}-{})*{}",
+                                i,
+                                a0_shape[i],
+                                a1_shape[i + 1..].iter().product::<usize>()
+                            )
+                        })
+                        .join(" + "),
+                )
+                .as_str(),
+            );
+
+            for _ in concat_shape.iter().enumerate() {
+                code.push_str("}");
+            }
+
+            out_var_name
+        }
         &Language::GetAccessShape(_)
         | Language::List(_)
         | &Language::AccessBroadcast(_)
@@ -565,7 +712,6 @@ for ({} = 0; {} < {}; {}++) {{",
         | &Language::AccessFlatten(_)
         | &Language::AccessShape(_)
         | &Language::AccessSlice(_)
-        | &Language::AccessConcatenate(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
     }
 }
@@ -647,6 +793,120 @@ int main() {{
 
         let binary_filepath = std::env::temp_dir().with_file_name(format!(
             "transpose-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn concat() {
+        let shape0 = vec![2, 10, 50, 3];
+        let shape1 = vec![2, 3, 50, 3];
+        let concat_axis = 1;
+
+        let input0 = ndarray::ArrayD::from_shape_vec(
+            shape0.clone(),
+            (0..shape0.iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let input1 = ndarray::ArrayD::from_shape_vec(
+            shape1.clone(),
+            (0..shape1.iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let concatted =
+            ndarray::stack(ndarray::Axis(concat_axis), &[input0.view(), input1.view()]).unwrap();
+
+        let expr = RecExpr::from_str(
+            format!(
+                "
+(access-concatenate (access-tensor t0) (access-tensor t1) {})",
+                concat_axis
+            )
+            .as_str(),
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t0".to_string(), shape0.clone());
+        map.insert("t1".to_string(), shape1.clone());
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let code = codegen(&egraph, id, &HashMap::default(), "concatenate", "");
+
+        let main_code = format!(
+            "
+#include <assert.h>
+
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+  concatenate((float*) out, (float*) t0, (float*) t1);
+
+  int i;
+  for (i = 0; i < {}; i++) {{
+    assert(((float*)a_t)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            create_assignment_str("", "t0", DType::Fp32, &input0.view()),
+            create_assignment_str("", "t1", DType::Fp32, &input1.view()),
+            create_assignment_str("", "a_t", DType::Fp32, &concatted.view()),
+            create_assignment_str(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(concatted.shape()).view()
+            ),
+            code,
+            concatted.shape().iter().product::<usize>()
+        );
+
+        println!("{}", main_code);
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "concatenate-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "concatenate-test-{}",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
