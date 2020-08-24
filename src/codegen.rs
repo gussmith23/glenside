@@ -234,8 +234,7 @@ pub fn codegen(
         &mut declarations,
         &mut code,
         hw_map,
-    )
-    .as_str();
+    );
 
     let mut signature = format!("void {}(", function_name);
     // TODO(@gussmith23) Assuming the output is a tensor
