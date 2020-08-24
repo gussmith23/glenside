@@ -787,8 +787,6 @@ int main() {{
             shape.iter().product::<usize>()
         );
 
-        println!("{}", main_code);
-
         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
             "transpose-test-{}.c",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
@@ -899,8 +897,6 @@ int main() {{
             code,
             concatted.shape().iter().product::<usize>()
         );
-
-        println!("{}", main_code);
 
         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
             "concatenate-test-{}.c",
