@@ -605,7 +605,7 @@ for ({} = 0; {} < {}; {}++) {{",
                 .cloned()
                 .collect::<Vec<_>>();
 
-            let out_var_name: String =  {
+            let out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
