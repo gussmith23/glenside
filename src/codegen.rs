@@ -733,6 +733,7 @@ mod tests {
     use egg::RecExpr;
     use std::fs::File;
     use std::io::Write;
+    use std::path::PathBuf;
     use std::process::Command;
     use std::str::FromStr;
 
@@ -914,6 +915,135 @@ int main() {{
 
         let binary_filepath = std::env::temp_dir().with_file_name(format!(
             "concatenate-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn systolic_array() {
+        let shape0 = vec![2, 10];
+        let shape1 = vec![10, 15];
+
+        let input0 = ndarray::ArrayD::from_shape_vec(
+            shape0.clone(),
+            (0..shape0.iter().product::<usize>()).collect(),
+        )
+        .unwrap()
+        .into_dimensionality::<ndarray::Ix2>()
+        .unwrap();
+        let input1 = ndarray::ArrayD::from_shape_vec(
+            shape1.clone(),
+            (0..shape1.iter().product::<usize>()).collect(),
+        )
+        .unwrap()
+        .into_dimensionality::<ndarray::Ix2>()
+        .unwrap();
+        let multiplied = input0.dot(&input1).into_dyn();
+
+        let expr = RecExpr::from_str(
+            "
+(systolic-array 10 15
+ (access (access-tensor t0) 1)
+ (access (access-tensor t1) 0)
+)",
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t0".to_string(), shape0.clone());
+        map.insert("t1".to_string(), shape1.clone());
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let mut hw_map = HashMap::default();
+        hw_map.insert(id, 0);
+
+        let code = codegen(&egraph, id, &hw_map, "systolic_array", "");
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+  systolic_array((float*) out, (float*) t0, (float*) t1);
+
+  int i;
+  for (i = 0; i < {}; i++) {{
+    assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "rtml_systolic_array_weight_stationary.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            create_assignment_str("", "t0", DType::Fp32, &input0.into_dyn().view()),
+            create_assignment_str("", "t1", DType::Fp32, &input1.into_dyn().view()),
+            create_assignment_str("", "result", DType::Fp32, &multiplied.view()),
+            create_assignment_str(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(multiplied.shape()).view()
+            ),
+            code,
+            multiplied.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "systolic-array-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "systolic-array-test-{}",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
