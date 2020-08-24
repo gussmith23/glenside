@@ -1,7 +1,7 @@
 use crate::hw_design_language::*;
-use crate::language::Language;
 use crate::language::MyAnalysis;
 use crate::language::MyAnalysisData;
+use crate::language::{Language, PadType};
 use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
@@ -176,14 +176,18 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                     find_vars_recursive_helper(vec, expr, *id);
                 }
             }
-            &Language::Usize(_) => (),
+            // [Id; 5]
+            &Language::AccessPad(ids) => {
+                for id in ids.iter() {
+                    find_vars_recursive_helper(vec, expr, *id);
+                }
+            }
+            &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::GetAccessShape(_)
             | &Language::AccessBroadcast(_)
             | &Language::AccessInsertAxis(_)
             | &Language::AccessPair(_)
             | &Language::AccessSqueeze(_)
-            | Language::PadType(_)
-            | &Language::AccessPad(_)
             | Language::ComputeType(_)
             | &Language::Compute(_)
             | &Language::AccessCartesianProduct(_)
@@ -424,6 +428,141 @@ fn codegen_recursive_helper(
             out_var_name
         }
         &Language::Usize(u) => format!("{}", u),
+        &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
+            let access = match &expr[access_id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let original_shape = access
+                .shape
+                .slice()
+                .iter()
+                .chain(access.item_shape.slice().iter())
+                .cloned()
+                .collect::<Vec<_>>();
+
+            let pad_type = match &expr[pad_type_id].data {
+                MyAnalysisData::PadType(t) => t,
+                _ => panic!(),
+            };
+
+            let axis = MyAnalysis::get_usize(axis_id, expr);
+            let pad_before = MyAnalysis::get_usize(pad_before_id, expr);
+            let _pad_after = MyAnalysis::get_usize(pad_after_id, expr);
+
+            let new_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a
+                    .shape
+                    .slice()
+                    .iter()
+                    .chain(a.item_shape.slice().iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                _ => panic!(),
+            };
+
+            let access_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+
+            let pad_out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "pad_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    create_allocation_str(
+                        allocations_prefix,
+                        out.as_str(),
+                        new_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let index_var_names = (0..new_shape.len())
+                .map(|i| format!("i{}", i))
+                .collect::<Vec<_>>();
+
+            // Create a for loop for every dimension in the result shape.
+            for (dim_index, dim_len) in new_shape.iter().enumerate() {
+                let index_var_name = &index_var_names[dim_index];
+                code.push_str(
+                    format!(
+                        "
+int {};
+for ({} = 0; {} < {}; {}++) {{",
+                        index_var_name, index_var_name, index_var_name, dim_len, index_var_name
+                    )
+                    .as_str(),
+                );
+            }
+
+            // Within the innermost for loop: assign to the output at the
+            // correct location.
+            // We have indices i0..i(n-1), for each of the n axes.
+            code.push_str(
+                format!(
+                    "
+if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
+  {out_name}{out_index} = {pad_value};
+}} else {{
+  {out_name}{out_index} = {in_name}[{in_index}];
+}}
+",
+                    pad_axis = axis,
+                    pad_before_index = pad_before,
+                    pad_after_index = pad_before + original_shape[axis],
+                    out_name = pad_out_var_name,
+                    out_index = (0..new_shape.len())
+                        .map(|i| format!("[{}]", index_var_names[i],))
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    pad_value = match pad_type {
+                        PadType::ZeroPadding => "0",
+                    },
+                    in_name = access_var_name,
+                    in_index = (0..new_shape.len())
+                        .map(|i| if i != axis {
+                            format!(
+                                "{}*({})",
+                                index_var_names[i],
+                                original_shape[i + 1..].iter().product::<usize>()
+                            )
+                        } else {
+                            format!(
+                                "({}-{})*({})",
+                                index_var_names[i],
+                                pad_before,
+                                original_shape[i + 1..].iter().product::<usize>()
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" + ")
+                )
+                .as_str(),
+            );
+
+            // Close each for loop
+            for _ in original_shape.iter() {
+                code.push_str("}");
+            }
+
+            pad_out_var_name
+        }
         &Language::AccessTranspose([access_id, list_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -699,7 +838,6 @@ if (i{} < {}) {{
         | &Language::AccessPair(_)
         | &Language::AccessSqueeze(_)
         | Language::PadType(_)
-        | &Language::AccessPad(_)
         | Language::ComputeType(_)
         | &Language::Compute(_)
         | &Language::AccessCartesianProduct(_)
@@ -1040,6 +1178,126 @@ int main() {{
 
         let binary_filepath = std::env::temp_dir().with_file_name(format!(
             "systolic-array-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn pad() {
+        let shape = vec![10, 20, 3, 45];
+        let pad_axis = 2;
+        let pad_before = 2;
+        let pad_after = 3;
+        let pad_type = PadType::ZeroPadding;
+
+        let mut pad_before_shape = shape.clone();
+        pad_before_shape[pad_axis] = pad_before;
+        let mut pad_after_shape = shape.clone();
+        pad_after_shape[pad_axis] = pad_after;
+
+        let input = ndarray::ArrayD::from_shape_vec(
+            shape.clone(),
+            (0..shape.iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+
+        assert!(pad_type == PadType::ZeroPadding);
+
+        let padded = ndarray::stack(
+            ndarray::Axis(pad_axis),
+            &[
+                ndarray::ArrayD::zeros(pad_before_shape).view(),
+                input.view(),
+                ndarray::ArrayD::zeros(pad_after_shape).view(),
+            ],
+        )
+        .unwrap();
+
+        let expr = RecExpr::from_str(
+            format!(
+                "
+(access-pad (access-tensor t) {} {} {} {})",
+                pad_type, pad_axis, pad_before, pad_after
+            )
+            .as_str(),
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), shape.clone());
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let code = codegen(&egraph, id, &HashMap::default(), "pad", "");
+
+        let main_code = format!(
+            "
+#include <assert.h>
+
+{}
+{}
+{}
+{}
+
+int main() {{
+  pad(&out[0], &a[0]);
+
+  int i;
+  for (i = 0; i < {}; i++) {{
+    assert(((float*)a_pad)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            create_assignment_str("", "a", DType::Fp32, &input.view()),
+            create_assignment_str("", "a_pad", DType::Fp32, &padded.view()),
+            create_assignment_str(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(padded.shape()).view()
+            ),
+            code,
+            shape.iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "pad-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "pad-test-{}",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
