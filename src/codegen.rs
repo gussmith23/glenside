@@ -319,19 +319,15 @@ fn codegen_recursive_helper(
             );
             symbol
         }
-        &Language::Access([access_tensor_id, axis_id]) => {
-            let axis = MyAnalysis::get_usize(axis_id, expr);
-            assert_eq!(axis, 0);
-            codegen_recursive_helper(
-                expr,
-                access_tensor_id,
-                top_level_id,
-                allocations_prefix,
-                declarations,
-                code,
-                hw_map,
-            )
-        }
+        &Language::Access([access_tensor_id, _axis_id]) => codegen_recursive_helper(
+            expr,
+            access_tensor_id,
+            top_level_id,
+            allocations_prefix,
+            declarations,
+            code,
+            hw_map,
+        ),
         &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
             let rows = MyAnalysis::get_usize(rows_id, expr);
             let cols = MyAnalysis::get_usize(cols_id, expr);
