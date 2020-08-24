@@ -350,7 +350,7 @@ fn codegen_recursive_helper(
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
             };
-            assert_eq!(this_access.shape.ndim(), 1);
+            assert!(this_access.shape.ndim() == 1 || this_access.shape.ndim() == 2);
             assert_eq!(this_access.item_shape.ndim(), 0);
 
             let s0 = codegen_recursive_helper(
@@ -414,9 +414,13 @@ fn codegen_recursive_helper(
                     // Size of input matrix dim 1/length of output vector
                     cols,
                     // Batch size, or, the number of vectors to push through.
-                    // Changing this is how we implement matrix-matrix
-                    // multiplication.
-                    1
+                    if a0.shape.ndim() == 0 {
+                        1
+                    } else if a0.shape.ndim() == 1 {
+                        a0.shape[0]
+                    } else {
+                        panic!()
+                    }
                 )
                 .as_str(),
             );
