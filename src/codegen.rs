@@ -149,7 +149,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
         } {
             Language::Symbol(s) => vec.push(s.to_string()),
             // Id
-            &Language::AccessTensor(id) => {
+            &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
                 find_vars_recursive_helper(vec, expr, id);
             }
             // Box<[Id]>
@@ -205,7 +205,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::ElementwiseAdd(_)
             | &Language::BsgSystolicArray(_)
             | &Language::AccessReshape(_)
-            | &Language::AccessFlatten(_)
             | &Language::AccessShape(_)
             | &Language::AccessSlice(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
@@ -678,6 +677,18 @@ for ({} = 0; {} < {}; {}++) {{",
 
             transpose_out_var_name
         }
+        &Language::AccessFlatten(access_id) => {
+            // Don't need to do anything for flatten at runtime.
+            codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            )
+        }
         &Language::AccessReshape([access_id, _access_shape_id]) => {
             // Don't need to do anything for reshape at runtime.
             codegen_recursive_helper(
@@ -854,7 +865,6 @@ if (i{} < {}) {{
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)
         | &Language::BsgSystolicArray(_)
-        | &Language::AccessFlatten(_)
         | &Language::AccessShape(_)
         | &Language::AccessSlice(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
