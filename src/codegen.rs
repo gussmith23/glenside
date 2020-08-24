@@ -159,7 +159,9 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 2]
-            &Language::Access(ids) | &Language::AccessTranspose(ids) | &Language::AccessSqueeze(ids) => {
+            &Language::Access(ids)
+            | &Language::AccessTranspose(ids)
+            | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(vec, expr, *id);
                 }
