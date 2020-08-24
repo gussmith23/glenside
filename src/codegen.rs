@@ -226,7 +226,7 @@ pub fn codegen(
 ) -> String {
     let mut declarations = String::default();
     let mut code = String::default();
-    codegen_recursive_helper(
+    let out_symbol = codegen_recursive_helper(
         expr,
         id,
         id,
@@ -262,6 +262,29 @@ pub fn codegen(
     out.push_str("\n");
 
     out.push_str(code.as_str());
+
+    // Copy value into "out" variable
+    // Get length of array
+    let length = match &expr[id].data {
+        MyAnalysisData::AccessPattern(a) => a
+            .shape
+            .slice()
+            .iter()
+            .chain(a.item_shape.slice().iter())
+            .product::<usize>(),
+        _ => panic!(),
+    };
+    out.push_str(
+        format!(
+            "
+for (int i = 0; i < {}; i++) {{
+  ((float*)out)[i] = ((float*){})[i];
+}}
+",
+            length, out_symbol
+        )
+        .as_str(),
+    );
 
     out.push_str("}");
     out.push_str("\n");
@@ -349,38 +372,30 @@ fn codegen_recursive_helper(
                 hw_map,
             );
 
-            let out_var_name = if id == top_level_id {
-                "out".to_string()
-            } else {
-                let out_var_name = format!(
-                    "systolic_array_{}_eclass_{}_out",
-                    hw_map.get(&id).unwrap(),
-                    id,
-                );
+            let out_var_name = format!(
+                "systolic_array_{}_eclass_{}_out",
+                hw_map.get(&id).unwrap(),
+                id,
+            );
 
-                // TODO(@gussmith23) How to generate output buffer?
-                // This seems like it might not be legal, just declaring it.
-                // TODO(@gussmith23) how to assign unique names to each usage?
-                // TODO(@gussmith23) Allocations should not be done ad-hoc
-                declarations.push_str(
-                    create_allocation_str(
-                        allocations_prefix,
-                        out_var_name.as_str(),
-                        this_access
-                            .shape
-                            .slice()
-                            .iter()
-                            .chain(this_access.item_shape.slice().iter())
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                        DType::Fp32,
-                    )
-                    .as_str(),
-                );
-
-                out_var_name
-            };
+            // TODO(@gussmith23) how to assign unique names to each usage?
+            // TODO(@gussmith23) Allocations should not be done ad-hoc
+            declarations.push_str(
+                create_allocation_str(
+                    allocations_prefix,
+                    out_var_name.as_str(),
+                    this_access
+                        .shape
+                        .slice()
+                        .iter()
+                        .chain(this_access.item_shape.slice().iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                    DType::Fp32,
+                )
+                .as_str(),
+            );
 
             code.push_str(
                 format!(
@@ -443,12 +458,7 @@ fn codegen_recursive_helper(
                 code,
                 hw_map,
             );
-
-            // Declare transpose output
-            // TODO(@gussmith23) Having to check this at every stage is not sustainable.
-            let transpose_out_var_name: String = if id == top_level_id {
-                "out".to_string()
-            } else {
+            let transpose_out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
@@ -499,7 +509,7 @@ for ({} = 0; {} < {}; {}++) {{",
             code.push_str(
                 format!(
                     "
-{}[{}] = {}[{}];",
+((float*){})[{}] = {}[{}];",
                     transpose_out_var_name,
                     (0..original_shape.len())
                         .map(|i| format!(
@@ -529,10 +539,7 @@ for ({} = 0; {} < {}; {}++) {{",
 
             transpose_out_var_name
         }
-        &Language::AccessReshape([access_id, access_shape_id]) => {
-            todo!(
-                "Dammit, this isn't actually correct though. Because it won't get copied to `out`"
-            );
+        &Language::AccessReshape([access_id, _access_shape_id]) => {
             // Don't need to do anything for reshape at runtime.
             codegen_recursive_helper(
                 expr,
@@ -594,9 +601,7 @@ for ({} = 0; {} < {}; {}++) {{",
                 .cloned()
                 .collect::<Vec<_>>();
 
-            let out_var_name: String = if id == top_level_id {
-                "out".to_string()
-            } else {
+            let out_var_name: String =  {
                 // TODO(@gussmith23) Find a different way to name intermediates
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
@@ -637,9 +642,9 @@ for (i{i} = 0; i{i} < {dim_val}; i{i} ++) {{
                 format!(
                     "
 if (i{} < {}) {{
-  {}[{}] = {}[{}];
+  ((float*){})[{}] = {}[{}];
 }} else {{
-  {}[{}] = {}[{}];
+  ((float*){})[{}] = {}[{}];
 }}
 ",
                     axis,
