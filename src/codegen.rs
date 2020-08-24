@@ -159,7 +159,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 2]
-            &Language::Access(ids) | &Language::AccessTranspose(ids) => {
+            &Language::Access(ids) | &Language::AccessTranspose(ids) | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(vec, expr, *id);
                 }
@@ -187,7 +187,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::AccessBroadcast(_)
             | &Language::AccessInsertAxis(_)
             | &Language::AccessPair(_)
-            | &Language::AccessSqueeze(_)
             | Language::ComputeType(_)
             | &Language::Compute(_)
             | &Language::AccessCartesianProduct(_)
@@ -820,6 +819,18 @@ for ({} = 0; {} < {}; {}++) {{",
                 hw_map,
             )
         }
+        &Language::AccessSqueeze([access_id, _axis_id]) => {
+            // Don't need to do anything for squeeze at runtime.
+            codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            )
+        }
         &Language::AccessConcatenate([a0_id, a1_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
             let (a0, a1) = match (&expr[a0_id].data, &expr[a1_id].data) {
@@ -966,7 +977,6 @@ if (i{} < {}) {{
         | &Language::AccessBroadcast(_)
         | &Language::AccessInsertAxis(_)
         | &Language::AccessPair(_)
-        | &Language::AccessSqueeze(_)
         | Language::PadType(_)
         | Language::ComputeType(_)
         | &Language::Compute(_)
