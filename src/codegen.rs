@@ -153,7 +153,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 find_vars_recursive_helper(vec, expr, id);
             }
             // Box<[Id]>
-            Language::List(ids) => {
+            Language::List(ids) | Language::Shape(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(vec, expr, *id);
                 }
@@ -167,7 +167,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 3]
-            &Language::AccessConcatenate(ids) => {
+            &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(vec, expr, *id);
                 }
@@ -192,8 +192,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | Language::ComputeType(_)
             | &Language::Compute(_)
             | &Language::AccessCartesianProduct(_)
-            | &Language::AccessWindows(_)
-            | Language::Shape(_)
             | &Language::SliceShape(_)
             | &Language::ShapeInsertAxis(_)
             | &Language::ShapeRemoveAxis(_)
@@ -309,6 +307,142 @@ fn codegen_recursive_helper(
         assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
     } {
+        &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
+            let access = match &expr[access_id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let original_shape = access
+                .shape
+                .slice()
+                .iter()
+                .chain(access.item_shape.slice().iter())
+                .cloned()
+                .collect::<Vec<_>>();
+            let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, expr);
+            let stride_shape = MyAnalysis::get_shape_of_value(stride_shape_id, expr);
+
+            // TODO(@gussmith23) Generalize AccessWindows to other accesses
+            // Right now we expect item shape to be a scalar.
+            assert_eq!(access.item_shape.ndim(), 0);
+
+            let access_windows_shape = crate::language::access_windows_resulting_shape(
+                &access.shape,
+                &filters_shape,
+                &stride_shape,
+            );
+
+            let access_windows_item_shape = filters_shape.clone();
+
+            assert_eq!(access_windows_shape.len(), access_windows_item_shape.ndim());
+            assert_eq!(stride_shape.ndim(), access_windows_shape.len());
+
+            let access_windows_out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_windows_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    create_allocation_str(
+                        allocations_prefix,
+                        out.as_str(),
+                        access_windows_shape
+                            .iter()
+                            .chain(access_windows_item_shape.slice().iter())
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            // TODO(@gussmith23) It would make our lives easier if we
+            let access_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+
+            // Create a for loop for every dimension in the result shape.
+            for (dim_index, dim_len) in access_windows_shape.iter().enumerate() {
+                let index_var_name = format!("shape_index_{}", dim_index);
+                code.push_str(
+                    format!(
+                        "
+int {index_var_name};
+for ({index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{",
+                        index_var_name = index_var_name,
+                        dim_len = dim_len,
+                    )
+                    .as_str(),
+                );
+            }
+
+            // Create a for loop for every dimension in the result item shape.
+            for (dim_index, dim_len) in access_windows_item_shape.slice().iter().enumerate() {
+                let index_var_name = format!("item_shape_index_{}", dim_index);
+                code.push_str(
+                    format!(
+                        "
+int {index_var_name};
+for ({index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{",
+                        index_var_name = index_var_name,
+                        dim_len = dim_len,
+                    )
+                    .as_str(),
+                );
+            }
+
+            // Within the innermost for loop: assign to the output at the
+            // correct location.
+            code.push_str(
+                format!(
+                    "
+{out_name}{out_index} = {in_name}[{in_index}];
+",
+                    out_name = access_windows_out_var_name,
+                    out_index = (0..access_windows_shape.len())
+                        .map(|i| format!("[shape_index_{}]", i))
+                        .chain(
+                            (0..access_windows_item_shape.ndim())
+                                .map(|i| format!("[item_shape_index_{}]", i))
+                        )
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    in_name = access_var_name,
+                    in_index = (0..access_windows_shape.len())
+                        .map(|i| format!(
+                            "({shape_index}*{stride} + {item_shape_index})*{array_offset}",
+                            shape_index = format!("shape_index_{}", i),
+                            item_shape_index = format!("item_shape_index_{}", i),
+                            stride = stride_shape[i],
+                            array_offset = original_shape[i + 1..].iter().product::<usize>()
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" + ")
+                )
+                .as_str(),
+            );
+
+            // close each for loop
+            for _ in 0..(access_windows_shape.len() + access_windows_item_shape.ndim()) {
+                code.push_str("}");
+            }
+
+            access_windows_out_var_name
+        }
         &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -983,7 +1117,6 @@ if (i{} < {}) {{
         | Language::ComputeType(_)
         | &Language::Compute(_)
         | &Language::AccessCartesianProduct(_)
-        | &Language::AccessWindows(_)
         | Language::Shape(_)
         | &Language::SliceShape(_)
         | &Language::ShapeInsertAxis(_)
@@ -1561,6 +1694,129 @@ int main() {{
 
         let binary_filepath = std::env::temp_dir().with_file_name(format!(
             "slice-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn access_windows() {
+        let shape = vec![3, 50, 27, 4];
+        let filters_shape = vec![2, 9, 22, 3];
+        let stride = vec![1, 10, 3, 1];
+
+        let input = ndarray::ArrayD::from_shape_vec(
+            shape.clone(),
+            (0..shape.iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+
+        let expr = RecExpr::from_str(
+            format!(
+                "
+(access-windows
+ (access (access-tensor t) {access_axis})
+ (shape {filter_shapes})
+ (shape {strides})
+)",
+                access_axis = shape.len(),
+                filter_shapes = filters_shape
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                strides = stride
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+            .as_str(),
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), shape.clone());
+
+        let mut env = HashMap::default();
+        env.insert("t", input.clone());
+        let out =
+            match crate::language::interpreter::interpret(&expr, expr.as_ref().len() - 1, &env) {
+                crate::language::interpreter::Value::Access(a) => a,
+                _ => panic!(),
+            };
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let code = codegen(&egraph, id, &HashMap::default(), "access_windows", "");
+
+        let main_code = format!(
+            "
+#include <assert.h>
+
+{}
+{}
+{}
+{}
+
+int main() {{
+  access_windows(&out[0], &a[0]);
+
+  int i;
+  for (i = 0; i < {}; i++) {{
+    assert(((float*)a_windows)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            create_assignment_str("", "a", DType::Fp32, &input.view()),
+            create_assignment_str("", "a_windows", DType::Fp32, &out.tensor.view()),
+            create_assignment_str(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(out.tensor.shape()).view()
+            ),
+            code,
+            out.tensor.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "access-windows-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "access-windows-test-{}",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
