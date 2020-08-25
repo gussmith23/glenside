@@ -158,9 +158,19 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                     find_vars_recursive_helper(vec, expr, *id);
                 }
             }
+            // [Id; 1]
+            &Language::ShapeOf(ids) => {
+                for id in ids.iter() {
+                    find_vars_recursive_helper(vec, expr, *id);
+                }
+            }
             // [Id; 2]
             &Language::Access(ids)
             | &Language::AccessTranspose(ids)
+            | &Language::AccessReshape(ids)
+            | &Language::ShapeInsertAxis(ids)
+            | &Language::ShapeRemoveAxis(ids)
+                | &Language::AccessShape(ids)
             | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(vec, expr, *id);
@@ -193,9 +203,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::Compute(_)
             | &Language::AccessCartesianProduct(_)
             | &Language::SliceShape(_)
-            | &Language::ShapeInsertAxis(_)
-            | &Language::ShapeRemoveAxis(_)
-            | &Language::ShapeOf(_)
             | &Language::MoveAxis(_)
             | &Language::CartesianProduct(_)
             | &Language::MapDotProduct(_)
@@ -203,8 +210,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::Concatenate(_)
             | &Language::ElementwiseAdd(_)
             | &Language::BsgSystolicArray(_)
-            | &Language::AccessReshape(_)
-            | &Language::AccessShape(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
         }
     }
