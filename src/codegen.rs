@@ -24,33 +24,53 @@ extern void rtml_systolic_array_weight_stationary(
   int batch);
 ";
 
-/// Creates a representation (currently just a string with a C declaration) of
-/// an allocation, given the name, shape, dtype, and any prefix.
-pub fn create_allocation_str(prefix: &str, name: &str, shape: &[usize], dtype: DType) -> String {
-    let dtype_str = match dtype {
-        DType::Fp32 => "float",
-        _ => panic!(),
-    };
-
+/// Gives the signature of a C array given the datatype, name, and shape. Useful
+/// for declaring arrays and array-type function arguments.
+/// ```
+/// assert_eq!(
+///     glenside::codegen::c_array_string(
+///         "my_array",
+///         &[3, 4, 5],
+///         glenside::hw_design_language::DType::Fp32
+///     ),
+///     "float my_array[3][4][5]"
+/// );
+/// ```
+pub fn c_array_string(name: &str, shape: &[usize], dtype: DType) -> String {
+    assert_eq!(DType::Fp32.to_c_type_string(), "float");
     format!(
-        "{} {} {}{};",
-        prefix,
-        dtype_str,
+        "{} {}{}",
+        dtype.to_c_type_string(),
         name,
         itertools::join(shape.iter().map(|dim: &usize| format!("[{}]", *dim)), "")
     )
 }
 
+/// Creates a representation (currently just a string with a C declaration) of
+/// an allocation, given the name, shape, dtype, and any prefix.
+/// ```
+/// assert_eq!(
+///     glenside::codegen::c_allocation_string(
+///         "__my_prefix",
+///         "my_array",
+///         &[3, 4, 5],
+///         glenside::hw_design_language::DType::Fp32
+///     ),
+///     "__my_prefix float my_array[3][4][5];"
+/// );
+/// ```
+pub fn c_allocation_string(prefix: &str, name: &str, shape: &[usize], dtype: DType) -> String {
+    format!("{} {};", prefix, c_array_string(name, shape, dtype))
+}
+
 /// Creates a representation (currently just a string with a C definition) of
 /// an allocation and an assignment.
 /// ```
-/// use glenside::hw_design_language::DType::Fp32;
-/// use glenside::codegen::create_assignment_str;
 /// assert_eq!(
-///     create_assignment_str(
+///     glenside::codegen::c_assignment_string(
 ///         "my_prefix",
 ///         "a",
-///         Fp32,
+///         glenside::hw_design_language::DType::Fp32,
 ///         &ndarray::ArrayD::from_shape_vec(vec![2, 3], (0..6).collect())
 ///             .unwrap()
 ///             .view()
@@ -59,15 +79,15 @@ pub fn create_allocation_str(prefix: &str, name: &str, shape: &[usize], dtype: D
 /// );
 ///
 /// ```
-pub fn create_assignment_str<A: std::fmt::Display>(
+pub fn c_assignment_string<A: std::fmt::Display>(
     prefix: &str,
     name: &str,
     dtype: DType,
     array: &ndarray::ArrayViewD<A>,
 ) -> String {
-    let mut allocation_string = create_allocation_str(prefix, name, array.shape(), dtype);
+    let mut allocation_string = c_allocation_string(prefix, name, array.shape(), dtype);
     // TODO(@gussmith23) This is a hack
-    // Instead of this, create_allocation_str shouldn't return something with a
+    // Instead of this, c_allocation_string shouldn't return something with a
     // ; at the end.
     assert_eq!(allocation_string.chars().last().unwrap(), ';');
 
@@ -365,7 +385,7 @@ fn codegen_recursive_helper(
                         .collect::<String>()
                 );
                 declarations.push_str(
-                    create_allocation_str(
+                    c_allocation_string(
                         allocations_prefix,
                         out.as_str(),
                         access_windows_shape
@@ -507,7 +527,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                         .collect::<String>()
                 );
                 declarations.push_str(
-                    create_allocation_str(
+                    c_allocation_string(
                         allocations_prefix,
                         out.as_str(),
                         new_shape.as_slice(),
@@ -649,7 +669,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
             // TODO(@gussmith23) how to assign unique names to each usage?
             // TODO(@gussmith23) Allocations should not be done ad-hoc
             declarations.push_str(
-                create_allocation_str(
+                c_allocation_string(
                     allocations_prefix,
                     out_var_name.as_str(),
                     this_access
@@ -750,7 +770,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                         .collect::<String>()
                 );
                 declarations.push_str(
-                    create_allocation_str(
+                    c_allocation_string(
                         allocations_prefix,
                         out.as_str(),
                         new_shape.as_slice(),
@@ -876,7 +896,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                         .collect::<String>()
                 );
                 declarations.push_str(
-                    create_allocation_str(
+                    c_allocation_string(
                         allocations_prefix,
                         out.as_str(),
                         original_shape.as_slice(),
@@ -1043,7 +1063,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                         .collect::<String>()
                 );
                 declarations.push_str(
-                    create_allocation_str(
+                    c_allocation_string(
                         allocations_prefix,
                         out.as_str(),
                         concat_shape.as_slice(),
@@ -1213,9 +1233,9 @@ int main() {{
   }}
 }}
 ",
-            create_assignment_str("", "a", DType::Fp32, &input.view()),
-            create_assignment_str("", "a_t", DType::Fp32, &input_transposed.view()),
-            create_assignment_str(
+            c_assignment_string("", "a", DType::Fp32, &input.view()),
+            c_assignment_string("", "a_t", DType::Fp32, &input_transposed.view()),
+            c_assignment_string(
                 "",
                 "out",
                 DType::Fp32,
@@ -1329,10 +1349,10 @@ int main() {{
   }}
 }}
 ",
-            create_assignment_str("", "t0", DType::Fp32, &input0.view()),
-            create_assignment_str("", "t1", DType::Fp32, &input1.view()),
-            create_assignment_str("", "a_t", DType::Fp32, &concatted.view()),
-            create_assignment_str(
+            c_assignment_string("", "t0", DType::Fp32, &input0.view()),
+            c_assignment_string("", "t1", DType::Fp32, &input1.view()),
+            c_assignment_string("", "a_t", DType::Fp32, &concatted.view()),
+            c_assignment_string(
                 "",
                 "out",
                 DType::Fp32,
@@ -1464,10 +1484,10 @@ int main() {{
             )
             .unwrap()
             .to_string_lossy(),
-            create_assignment_str("", "t0", DType::Fp32, &input0.into_dyn().view()),
-            create_assignment_str("", "t1", DType::Fp32, &input1.into_dyn().view()),
-            create_assignment_str("", "result", DType::Fp32, &multiplied.view()),
-            create_assignment_str(
+            c_assignment_string("", "t0", DType::Fp32, &input0.into_dyn().view()),
+            c_assignment_string("", "t1", DType::Fp32, &input1.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &multiplied.view()),
+            c_assignment_string(
                 "",
                 "out",
                 DType::Fp32,
@@ -1585,9 +1605,9 @@ int main() {{
   }}
 }}
 ",
-            create_assignment_str("", "a", DType::Fp32, &input.view()),
-            create_assignment_str("", "a_pad", DType::Fp32, &padded.view()),
-            create_assignment_str(
+            c_assignment_string("", "a", DType::Fp32, &input.view()),
+            c_assignment_string("", "a_pad", DType::Fp32, &padded.view()),
+            c_assignment_string(
                 "",
                 "out",
                 DType::Fp32,
@@ -1705,9 +1725,9 @@ int main() {{
   }}
 }}
 ",
-            create_assignment_str("", "a", DType::Fp32, &input.view()),
-            create_assignment_str("", "a_sliced", DType::Fp32, &sliced.view()),
-            create_assignment_str(
+            c_assignment_string("", "a", DType::Fp32, &input.view()),
+            c_assignment_string("", "a_sliced", DType::Fp32, &sliced.view()),
+            c_assignment_string(
                 "",
                 "out",
                 DType::Fp32,
@@ -1834,9 +1854,9 @@ int main() {{
   }}
 }}
 ",
-            create_assignment_str("", "a", DType::Fp32, &input.view()),
-            create_assignment_str("", "a_windows", DType::Fp32, &out.tensor.view()),
-            create_assignment_str(
+            c_assignment_string("", "a", DType::Fp32, &input.view()),
+            c_assignment_string("", "a_windows", DType::Fp32, &out.tensor.view()),
+            c_assignment_string(
                 "",
                 "out",
                 DType::Fp32,

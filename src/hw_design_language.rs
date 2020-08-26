@@ -17,6 +17,21 @@ pub enum DType {
     Fp64 = 9,
 }
 
+impl DType {
+    /// Return the equivalent C type name for a given `dtype`, as a String.
+    /// ```
+    /// use glenside::hw_design_language::*;
+    /// assert_eq!(DType::Fp32.to_c_type_string(), "float");
+    /// ```
+    pub fn to_c_type_string(&self) -> String {
+        match &self {
+            &DType::Fp32 => "float",
+            _ => panic!(),
+        }
+        .to_string()
+    }
+}
+
 pub struct SystolicArrayWeightStationaryParams {
     pub dtype: DType,
     pub rows: usize,
