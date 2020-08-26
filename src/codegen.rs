@@ -276,12 +276,34 @@ pub fn codegen(
     }
 
     let mut signature = format!("void {}(", function_name);
-    // TODO(@gussmith23) Assuming the output is a tensor
-    signature.push_str("float * out, ");
+
+    // Output comes first
+    signature.push_str(
+        c_array_string(
+            "out",
+            match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!("Assuming output is a tensor for now"),
+            }
+            .as_slice(),
+            // TODO(@gussmith23) Assuming float32 output.
+            DType::Fp32,
+        )
+        .as_str(),
+    );
+
     signature.push_str(
         args.iter()
-            .map(|var| format!("float * {}", var))
-            .intersperse(", ".to_string())
+            .map(|var| {
+                format!(
+                    ", {}",
+                    c_array_string(
+                        var,
+                        expr.analysis.name_to_shape[*var].as_slice(),
+                        DType::Fp32,
+                    )
+                )
+            })
             .chain(std::iter::once(")".to_string()))
             .collect::<String>()
             .as_str(),
@@ -349,13 +371,6 @@ fn codegen_recursive_helper(
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
             };
-            let original_shape = access
-                .shape
-                .slice()
-                .iter()
-                .chain(access.item_shape.slice().iter())
-                .cloned()
-                .collect::<Vec<_>>();
             let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, expr);
             let stride_shape = MyAnalysis::get_shape_of_value(stride_shape_id, expr);
 
@@ -445,7 +460,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
             code.push_str(
                 format!(
                     "
-{out_name}{out_index} = {in_name}[{in_index}];
+{out_name}{out_index} = {in_name}{in_index};
 ",
                     out_name = access_windows_out_var_name,
                     out_index = (0..access_windows_shape.len())
@@ -459,14 +474,13 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                     in_name = access_var_name,
                     in_index = (0..access_windows_shape.len())
                         .map(|i| format!(
-                            "({shape_index}*{stride} + {item_shape_index})*{array_offset}",
+                            "[{shape_index}*{stride} + {item_shape_index}]",
                             shape_index = format!("shape_index_{}", i),
                             item_shape_index = format!("item_shape_index_{}", i),
                             stride = stride_shape[i],
-                            array_offset = original_shape[i + 1..].iter().product::<usize>()
                         ))
                         .collect::<Vec<_>>()
-                        .join(" + ")
+                        .join("")
                 )
                 .as_str(),
             );
@@ -562,7 +576,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
             code.push_str(
                 format!(
                     "
-{out_name}{out_index} = {in_name}[{in_index}];
+{out_name}{out_index} = {in_name}{in_index};
 ",
                     out_name = slice_out_var_name,
                     out_index = (0..new_shape.len())
@@ -572,21 +586,12 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                     in_name = access_var_name,
                     in_index = (0..new_shape.len())
                         .map(|i| if i != axis {
-                            format!(
-                                "{}*({})",
-                                index_var_names[i],
-                                original_shape[i + 1..].iter().product::<usize>()
-                            )
+                            format!("[{}]", index_var_names[i],)
                         } else {
-                            format!(
-                                "({}+{})*({})",
-                                index_var_names[i],
-                                low,
-                                original_shape[i + 1..].iter().product::<usize>()
-                            )
+                            format!("[{}+{}]", index_var_names[i], low,)
                         })
                         .collect::<Vec<_>>()
-                        .join(" + ")
+                        .join("")
                 )
                 .as_str(),
             );
@@ -692,11 +697,11 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                     // Hardware ID
                     hw_map.get(&id).unwrap(),
                     // Pointer to output
-                    format!("&{}[0]", out_var_name,),
+                    format!("(float*){}", out_var_name,),
                     // Pointer to input vector
-                    format!("&{}[0]", s0,),
+                    format!("(float*){}", s0,),
                     // Pointer to input matrix
-                    format!("&{}[0]", s1,),
+                    format!("(float*){}", s1,),
                     // Length of input vector/size of input matrix dim 0
                     rows,
                     // Size of input matrix dim 1/length of output vector
@@ -808,7 +813,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
 if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
   {out_name}{out_index} = {pad_value};
 }} else {{
-  {out_name}{out_index} = {in_name}[{in_index}];
+  {out_name}{out_index} = ((float*){in_name})[{in_index}];
 }}
 ",
                     pad_axis = axis,
@@ -864,17 +869,17 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 .cloned()
                 .collect::<Vec<_>>();
 
+            let new_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+
             let new_axis_order = match &expr[list_id].data {
                 MyAnalysisData::List(l) => l,
                 _ => panic!(),
             };
 
             assert_eq!(original_shape.len(), new_axis_order.len());
-
-            let new_shape = new_axis_order
-                .iter()
-                .map(|i| original_shape[*i])
-                .collect::<Vec<_>>();
 
             let access_var_name = codegen_recursive_helper(
                 expr,
@@ -899,7 +904,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                     c_allocation_string(
                         allocations_prefix,
                         out.as_str(),
-                        original_shape.as_slice(),
+                        new_shape.as_slice(),
                         DType::Fp32,
                     )
                     .as_str(),
@@ -907,54 +912,35 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 out
             };
 
-            let index_var_names = (0..original_shape.len())
-                .map(|i| format!("i{}", i))
-                .collect::<Vec<_>>();
-
-            // Create a for loop for every dimension in the shape.
+            // Create a for loop for every dimension in the input.
             for (dim_index, dim_len) in original_shape.iter().enumerate() {
-                let index_var_name = &index_var_names[dim_index];
                 code.push_str(
                     format!(
                         "
 for (int {i} = 0; {i} < {limit}; {i}++) {{",
-                        i = index_var_name,
+                        i = format!("i{}", dim_index),
                         limit = dim_len
                     )
                     .as_str(),
                 );
             }
 
-            let index_var_names_reordered = new_axis_order
-                .iter()
-                .map(|i| &index_var_names[*i])
-                .collect::<Vec<_>>();
-
             // Within the innermost for loop: assign to the output at the
             // correct location.
-            // We have indices i0..i(n-1), for each of the n axes.
             code.push_str(
                 format!(
                     "
-((float*){})[{}] = {}[{}];",
-                    transpose_out_var_name,
-                    (0..original_shape.len())
-                        .map(|i| format!(
-                            "{}*({})",
-                            index_var_names_reordered[i],
-                            new_shape[i + 1..].iter().product::<usize>()
-                        ))
+{out_var_name}{out_indices} = {access_var_name}{access_indices};",
+                    out_var_name = transpose_out_var_name,
+                    out_indices = (0..original_shape.len())
+                        .map(|i| format!("[i{}]", new_axis_order[i]))
                         .collect::<Vec<_>>()
-                        .join(" + "),
-                    access_var_name,
-                    (0..original_shape.len())
-                        .map(|i| format!(
-                            "{}*({})",
-                            index_var_names[i],
-                            original_shape[i + 1..].iter().product::<usize>()
-                        ))
+                        .join(""),
+                    access_var_name = access_var_name,
+                    access_indices = (0..original_shape.len())
+                        .map(|i| format!("[i{}]", i))
                         .collect::<Vec<_>>()
-                        .join(" + ")
+                        .join("")
                 )
                 .as_str(),
             );
@@ -1004,7 +990,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
         }
         &Language::AccessConcatenate([a0_id, a1_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
-            let (a0, a1) = match (&expr[a0_id].data, &expr[a1_id].data) {
+            let (a0, _a1) = match (&expr[a0_id].data, &expr[a1_id].data) {
                 (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => (a0, a1),
                 _ => panic!(),
             };
@@ -1042,13 +1028,6 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 .slice()
                 .iter()
                 .chain(a0.item_shape.slice().iter())
-                .cloned()
-                .collect::<Vec<_>>();
-            let a1_shape = a1
-                .shape
-                .slice()
-                .iter()
-                .chain(a1.item_shape.slice().iter())
                 .cloned()
                 .collect::<Vec<_>>();
 
@@ -1091,47 +1070,30 @@ for (int i{i} = 0; i{i} < {dim_val}; i{i} ++) {{
             code.push_str(
                 format!(
                     "
-if (i{} < {}) {{
-  ((float*){})[{}] = {}[{}];
+if (i{i} < {dim_len}) {{
+  {out_var_name}{out_indices} = {arg_0_name}{arg_0_indices};
 }} else {{
-  ((float*){})[{}] = {}[{}];
+  {out_var_name}{out_indices} = {arg_1_name}{arg_1_indices};
 }}
 ",
-                    axis,
-                    a0[axis],
-                    out_var_name,
-                    (0..(concat_shape.len()))
-                        .map(|i| format!(
-                            "i{}*{}",
-                            i,
-                            concat_shape[i + 1..].iter().product::<usize>()
-                        ))
-                        .join(" + "),
-                    arg_0_name,
-                    (0..(concat_shape.len()))
-                        .map(|i| format!("i{}*{}", i, a0_shape[i + 1..].iter().product::<usize>()))
-                        .join(" + "),
-                    out_var_name,
-                    (0..(concat_shape.len()))
-                        .map(|i| format!(
-                            "i{}*{}",
-                            i,
-                            concat_shape[i + 1..].iter().product::<usize>()
-                        ))
-                        .join(" + "),
-                    arg_1_name,
-                    (0..(concat_shape.len()))
+                    i = axis,
+                    dim_len = a0[axis],
+                    out_var_name = out_var_name,
+                    out_indices = (0..(concat_shape.len()))
+                        .map(|i| format!("[i{}]", i,))
+                        .join(""),
+                    arg_0_name = arg_0_name,
+                    arg_0_indices = (0..(concat_shape.len()))
+                        .map(|i| format!("[i{}]", i,))
+                        .join(""),
+                    arg_1_name = arg_1_name,
+                    arg_1_indices = (0..(concat_shape.len()))
                         .map(|i| if i != axis {
-                            format!("i{}*{}", i, a1_shape[i + 1..].iter().product::<usize>())
+                            format!("[i{}]", i)
                         } else {
-                            format!(
-                                "(i{}-{})*{}",
-                                i,
-                                a0_shape[i],
-                                a1_shape[i + 1..].iter().product::<usize>()
-                            )
+                            format!("[i{}-{}]", i, a0_shape[i],)
                         })
-                        .join(" + "),
+                        .join(""),
                 )
                 .as_str(),
             );
@@ -1226,7 +1188,7 @@ mod tests {
 {}
 
 int main() {{
-  transpose(&out[0], &a[0]);
+  transpose(out, a);
 
   for (int i = 0; i < {}; i++) {{
     assert(((float*)a_t)[i] == ((float*)out)[i]);
@@ -1342,7 +1304,7 @@ int main() {{
 {}
 
 int main() {{
-  concatenate((float*) out, (float*) t0, (float*) t1);
+  concatenate(out, t0, t1);
 
   for (int i = 0; i < {}; i++) {{
     assert(((float*)a_t)[i] == ((float*)out)[i]);
@@ -1465,7 +1427,7 @@ int main() {{
 {}
 
 int main() {{
-  systolic_array((float*) out, (float*) t0, (float*) t1);
+  systolic_array(out, t0, t1);
 
   for (int i = 0; i < {}; i++) {{
     assert(((float*)result)[i] == ((float*)out)[i]);
@@ -1598,7 +1560,7 @@ int main() {{
 {}
 
 int main() {{
-  pad(&out[0], &a[0]);
+  pad(out, a);
 
   for (int i = 0; i < {}; i++) {{
     assert(((float*)a_pad)[i] == ((float*)out)[i]);
@@ -1718,7 +1680,7 @@ int main() {{
 {}
 
 int main() {{
-  slice(&out[0], &a[0]);
+  slice(out, a);
 
   for (int i = 0; i < {}; i++) {{
     assert(((float*)a_sliced)[i] == ((float*)out)[i]);
@@ -1847,7 +1809,7 @@ int main() {{
 {}
 
 int main() {{
-  access_windows(&out[0], &a[0]);
+  access_windows(out, a);
 
   for (int i = 0; i < {}; i++) {{
     assert(((float*)a_windows)[i] == ((float*)out)[i]);

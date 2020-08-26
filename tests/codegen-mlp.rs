@@ -96,7 +96,7 @@ float out[2] = {{ 0., 0. }};
 float expected_out[2] = {{ 1.67773846, 2.05100039 }};
 
 int main() {{
-  mlp(&out[0], &input[0], &weights_0[0][0], &weights_1[0][0], &weights_2[0][0]);
+  mlp(out, input, weights_0, weights_1, weights_2);
 
   // Ensure result is what we expect.
   int dim_0;

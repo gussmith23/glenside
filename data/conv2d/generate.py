@@ -74,7 +74,7 @@ float out{out_size} = {out_zeros};
 float expected_out{out_size} = {output};
 
 int main() {{
-  conv2d((float*)out, (float*)image, (float*)weights);
+  conv2d(out, image, weights);
 
   // Ensure result is what we expect.
   int i;
