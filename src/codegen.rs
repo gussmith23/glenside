@@ -398,8 +398,7 @@ fn codegen_recursive_helper(
                 code.push_str(
                     format!(
                         "
-int {index_var_name};
-for ({index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{",
+for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{",
                         index_var_name = index_var_name,
                         dim_len = dim_len,
                     )
@@ -413,8 +412,7 @@ for ({index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{"
                 code.push_str(
                     format!(
                         "
-int {index_var_name};
-for ({index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{",
+for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{",
                         index_var_name = index_var_name,
                         dim_len = dim_len,
                     )
@@ -530,9 +528,9 @@ for ({index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++) {{"
                 code.push_str(
                     format!(
                         "
-int {};
-for ({} = 0; {} < {}; {}++) {{",
-                        index_var_name, index_var_name, index_var_name, dim_len, index_var_name
+for (int {i} = 0; {i} < {limit}; {i}++) {{",
+                        i = index_var_name,
+                        limit = dim_len,
                     )
                     .as_str(),
                 );
@@ -773,9 +771,9 @@ for ({} = 0; {} < {}; {}++) {{",
                 code.push_str(
                     format!(
                         "
-int {};
-for ({} = 0; {} < {}; {}++) {{",
-                        index_var_name, index_var_name, index_var_name, dim_len, index_var_name
+for (int {i} = 0; {i} < {limit}; {i}++) {{",
+                        i = index_var_name,
+                        limit = dim_len,
                     )
                     .as_str(),
                 );
@@ -899,9 +897,9 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 code.push_str(
                     format!(
                         "
-int {};
-for ({} = 0; {} < {}; {}++) {{",
-                        index_var_name, index_var_name, index_var_name, dim_len, index_var_name
+for (int {i} = 0; {i} < {limit}; {i}++) {{",
+                        i = index_var_name,
+                        limit = dim_len
                     )
                     .as_str(),
                 );
@@ -1061,8 +1059,7 @@ for ({} = 0; {} < {}; {}++) {{",
                 code.push_str(
                     format!(
                         "
-int i{i};
-for (i{i} = 0; i{i} < {dim_val}; i{i} ++) {{
+for (int i{i} = 0; i{i} < {dim_val}; i{i} ++) {{
 ",
                         i = i,
                         dim_val = dim_val
@@ -1211,8 +1208,7 @@ mod tests {
 int main() {{
   transpose(&out[0], &a[0]);
 
-  int i;
-  for (i = 0; i < {}; i++) {{
+  for (int i = 0; i < {}; i++) {{
     assert(((float*)a_t)[i] == ((float*)out)[i]);
   }}
 }}
@@ -1328,8 +1324,7 @@ int main() {{
 int main() {{
   concatenate((float*) out, (float*) t0, (float*) t1);
 
-  int i;
-  for (i = 0; i < {}; i++) {{
+  for (int i = 0; i < {}; i++) {{
     assert(((float*)a_t)[i] == ((float*)out)[i]);
   }}
 }}
@@ -1452,8 +1447,7 @@ int main() {{
 int main() {{
   systolic_array((float*) out, (float*) t0, (float*) t1);
 
-  int i;
-  for (i = 0; i < {}; i++) {{
+  for (int i = 0; i < {}; i++) {{
     assert(((float*)result)[i] == ((float*)out)[i]);
   }}
 }}
@@ -1586,8 +1580,7 @@ int main() {{
 int main() {{
   pad(&out[0], &a[0]);
 
-  int i;
-  for (i = 0; i < {}; i++) {{
+  for (int i = 0; i < {}; i++) {{
     assert(((float*)a_pad)[i] == ((float*)out)[i]);
   }}
 }}
@@ -1707,8 +1700,7 @@ int main() {{
 int main() {{
   slice(&out[0], &a[0]);
 
-  int i;
-  for (i = 0; i < {}; i++) {{
+  for (int i = 0; i < {}; i++) {{
     assert(((float*)a_sliced)[i] == ((float*)out)[i]);
   }}
 }}
@@ -1837,8 +1829,7 @@ int main() {{
 int main() {{
   access_windows(&out[0], &a[0]);
 
-  int i;
-  for (i = 0; i < {}; i++) {{
+  for (int i = 0; i < {}; i++) {{
     assert(((float*)a_windows)[i] == ((float*)out)[i]);
   }}
 }}
