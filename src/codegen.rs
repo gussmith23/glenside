@@ -1224,6 +1224,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -1342,6 +1343,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -1477,6 +1479,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -1596,6 +1599,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -1716,6 +1720,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -1845,6 +1850,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
