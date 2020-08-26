@@ -224,6 +224,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
 }
 
 /// Returns c code.
+/// args: The signature will be `void <function_name>(float * out, float * <arg0>...)`
 // TODO(@gussmith23) Does not reason about ordering on hardware.
 // TODO(@gussmith23) Hardcoded to float32
 pub fn codegen(
@@ -232,6 +233,7 @@ pub fn codegen(
     hw_map: &HashMap<Id, usize>,
     function_name: &str,
     allocations_prefix: &str,
+    args: &Vec<&str>,
 ) -> String {
     let mut declarations = String::default();
     let mut code = String::default();
@@ -245,12 +247,19 @@ pub fn codegen(
         hw_map,
     );
 
+    let found_vars = find_vars(expr, id);
+    for found_var in found_vars.iter() {
+        assert!(
+            args.contains(&found_var.as_str()),
+            format!("Found {} in program, but did not find in `args`", found_var)
+        );
+    }
+
     let mut signature = format!("void {}(", function_name);
     // TODO(@gussmith23) Assuming the output is a tensor
     signature.push_str("float * out, ");
     signature.push_str(
-        find_vars(expr, id)
-            .iter()
+        args.iter()
             .map(|var| format!("float * {}", var))
             .intersperse(", ".to_string())
             .chain(std::iter::once(")".to_string()))
@@ -1181,7 +1190,14 @@ mod tests {
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(&egraph, id, &HashMap::default(), "transpose", "");
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "transpose",
+            "",
+            &vec!["t"],
+        );
 
         let main_code = format!(
             "
@@ -1290,7 +1306,14 @@ int main() {{
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(&egraph, id, &HashMap::default(), "concatenate", "");
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "concatenate",
+            "",
+            &vec!["t0", "t1"],
+        );
 
         let main_code = format!(
             "
@@ -1406,7 +1429,14 @@ int main() {{
         let mut hw_map = HashMap::default();
         hw_map.insert(id, 0);
 
-        let code = codegen(&egraph, id, &hw_map, "systolic_array", "");
+        let code = codegen(
+            &egraph,
+            id,
+            &hw_map,
+            "systolic_array",
+            "",
+            &vec!["t0", "t1"],
+        );
 
         let main_code = format!(
             "
@@ -1542,7 +1572,7 @@ int main() {{
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(&egraph, id, &HashMap::default(), "pad", "");
+        let code = codegen(&egraph, id, &HashMap::default(), "pad", "", &vec!["t"]);
 
         let main_code = format!(
             "
@@ -1663,7 +1693,7 @@ int main() {{
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(&egraph, id, &HashMap::default(), "slice", "");
+        let code = codegen(&egraph, id, &HashMap::default(), "slice", "", &vec!["t"]);
 
         let main_code = format!(
             "
@@ -1786,7 +1816,14 @@ int main() {{
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(&egraph, id, &HashMap::default(), "access_windows", "");
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "access_windows",
+            "",
+            &vec!["t"],
+        );
 
         let main_code = format!(
             "

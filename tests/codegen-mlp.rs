@@ -56,7 +56,14 @@ fn codegen_mlp() {
     // Get hardware design
     let (hw_map, _atoms) = create_hardware_design_no_sharing(&egraph);
 
-    let code = codegen(&egraph, id, &hw_map, "mlp", "");
+    let code = codegen(
+        &egraph,
+        id,
+        &hw_map,
+        "mlp",
+        "",
+        &vec!["input", "weight0", "weight1", "weight2"],
+    );
     println!("{}", code);
 
     let mut file = File::create(&library_filepath).unwrap();

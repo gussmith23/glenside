@@ -178,6 +178,10 @@ fn main() {
         let id = egraph.add_expr(&extracted_expr);
         let (hw_id_map, hw_atoms) = glenside::codegen::create_hardware_design_no_sharing(&egraph);
 
+        // Get expression arguments/inputs and sort alphabetically.
+        let mut found_vars = glenside::codegen::find_vars(&egraph, id);
+        found_vars.sort();
+
         let code = glenside::codegen::codegen(
             &egraph,
             id,
@@ -188,6 +192,7 @@ fn main() {
             } else {
                 r#"__attribute__ ((section (".dram"))) __attribute__ ((aligned (256)))"#
             },
+            &found_vars.iter().map(AsRef::as_ref).collect(),
         );
 
         let json = glenside::hw_design_language::design_to_json(
