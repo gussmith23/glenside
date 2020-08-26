@@ -8,7 +8,8 @@ use itertools::Itertools;
 use ndarray::Dimension;
 use ndarray::IxDyn;
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 
 type Expr = EGraph<Language, MyAnalysis>;
 
@@ -142,26 +143,28 @@ pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Ve
 
 /// Finds all symbols in a program, and return their names.
 pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
-    fn find_vars_recursive_helper(vec: &mut Vec<String>, expr: &Expr, id: Id) {
+    fn find_vars_recursive_helper(set: &mut HashSet<String>, expr: &Expr, id: Id) {
         match {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
-            Language::Symbol(s) => vec.push(s.to_string()),
+            Language::Symbol(s) => {
+                set.insert(s.to_string());
+            }
             // Id
             &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
-                find_vars_recursive_helper(vec, expr, id);
+                find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
             Language::List(ids) | Language::Shape(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
+                    find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 1]
             &Language::ShapeOf(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
+                    find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 2]
@@ -170,28 +173,28 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::AccessReshape(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
-                | &Language::AccessShape(ids)
+            | &Language::AccessShape(ids)
             | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
+                    find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 3]
             &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
+                    find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 4]
             &Language::SystolicArray(ids) | &Language::AccessSlice(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
+                    find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 5]
             &Language::AccessPad(ids) => {
                 for id in ids.iter() {
-                    find_vars_recursive_helper(vec, expr, *id);
+                    find_vars_recursive_helper(set, expr, *id);
                 }
             }
             &Language::Usize(_) | &Language::PadType(_) => (),
@@ -214,10 +217,10 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
         }
     }
 
-    let mut vec = Vec::default();
-    find_vars_recursive_helper(&mut vec, expr, id);
+    let mut set = HashSet::default();
+    find_vars_recursive_helper(&mut set, expr, id);
 
-    vec
+    Vec::from_iter(set.drain())
 }
 
 /// Returns c code.
