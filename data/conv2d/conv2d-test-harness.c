@@ -4259,7 +4259,7 @@ float expected_out[1][32][32][8] = { { { {  3.1574574,  3.1552732,  2.5383651,  
      3.2087905,  2.054145 ,  2.425349  } } } };
 
 int main() {
-  conv2d((float*)out, (float*)image, (float*)weights);
+  conv2d(out, image, weights);
 
   // Ensure result is what we expect.
   int i;
