@@ -692,6 +692,30 @@ pub struct AccessPatternData {
     pub zero_regions: HashMap<Ix, BoolVecRangeSet>,
 }
 
+impl AccessPatternData {
+    /// Convenience method for getting the access pattern dimensions as a
+    /// vector.
+    /// ```
+    /// assert_eq!(
+    ///     glenside::language::AccessPatternData {
+    ///         shape: ndarray::IxDyn(&[1, 2, 3]),
+    ///         item_shape: ndarray::IxDyn(&[4, 5]),
+    ///         zero_regions: std::collections::HashMap::default()
+    ///     }
+    ///     .as_vec(),
+    ///     vec![1, 2, 3, 4, 5]
+    /// );
+    /// ```
+    pub fn as_vec(&self) -> Vec<usize> {
+        self.shape
+            .slice()
+            .iter()
+            .chain(self.item_shape.slice().iter())
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+}
+
 impl std::ops::Index<usize> for AccessPatternData {
     type Output = ndarray::Ix;
     fn index(&self, index: usize) -> &Self::Output {
