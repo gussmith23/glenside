@@ -111,6 +111,126 @@ pub fn c_assignment_string<A: std::fmt::Display>(
     format!("{} = {};", allocation_string, recursive_helper(array))
 }
 
+// TODO(@gussmith23) Turn on rustdoc lints
+// https://doc.rust-lang.org/rustdoc/lints.html
+
+/// Create a monolithic systolic array hardware design from an expression, where
+/// we use just one systolic array.
+/// (row, col): the rows/cols of the systolic array.
+///
+/// ```
+/// use glenside::hw_design_language::*;
+/// use glenside::language::*;
+/// use glenside::codegen::*;
+/// use egg::*;
+/// use std::collections::HashMap;
+/// use std::str::FromStr;
+///
+/// let expr = RecExpr::from_str(
+///     "
+///     (systolic-array 32 32
+///      (access
+///       (systolic-array 32 32
+///        (access (access-tensor t0) 1)
+///        (access (access-tensor t1) 0)
+///       )
+///       1
+///      )
+///      (access
+///       (systolic-array 32 32
+///        (access (access-tensor t2) 1)
+///        (access (access-tensor t3) 0)
+///       )
+///       0
+///      )
+///     )",
+/// )
+/// .unwrap();
+///
+/// let mut map = HashMap::default();
+/// map.insert("t0".to_string(), vec![32, 32]);
+/// map.insert("t1".to_string(), vec![32, 32]);
+/// map.insert("t2".to_string(), vec![32, 32]);
+/// map.insert("t3".to_string(), vec![32, 32]);
+///
+/// let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+/// egraph.add_expr(&expr);
+///
+/// let (hw_map, hw_design) = create_hardware_design_monolithic(&egraph, (32, 32));
+///
+/// assert_eq!(hw_design.len(), 1);
+/// match &hw_design[0] {
+///     Atom {
+///         name,
+///         id: 0,
+///         config:
+///             AtomConfig::SystolicArrayWeightStationary(SystolicArrayWeightStationaryParams {
+///                 dtype: DType::Fp32,
+///                 rows: 32,
+///                 cols: 32,
+///             }),
+///     } => assert_eq!(*name, "systolic_array_0".to_string()),
+///     _ => panic!(),
+/// };
+///
+/// assert_eq!(hw_map.len(), 3);
+/// for (_id, val) in hw_map.iter() {
+///     assert_eq!(*val, 0);
+/// }
+/// ```
+pub fn create_hardware_design_monolithic(
+    expr: &Expr,
+    (row, col): (usize, usize),
+) -> (HashMap<Id, usize>, Vec<Atom>) {
+    let hw_id = 0;
+    let mut map = HashMap::new();
+    let atoms = vec![Atom {
+        name: format!("systolic_array_{}", hw_id),
+        id: hw_id,
+        config: AtomConfig::SystolicArrayWeightStationary(SystolicArrayWeightStationaryParams {
+            // TODO(@gussmith23) hardcoded datatype
+            dtype: DType::Fp32,
+            rows: row,
+            cols: col,
+        }),
+    }];
+
+    for eclass in expr.classes() {
+        assert_eq!(eclass.nodes.len(), 1);
+        match &eclass.nodes[0] {
+            &Language::SystolicArray([row_id, col_id, _, _]) => {
+                match {
+                    assert_eq!(expr[row_id].nodes.len(), 1);
+                    &expr[row_id].nodes[0]
+                } {
+                    Language::Usize(u) => assert_eq!(
+                        *u, row,
+                        "Found a systolic array with row size {} not equal to {}",
+                        *u, row
+                    ),
+                    _ => panic!(),
+                };
+                match {
+                    assert_eq!(expr[col_id].nodes.len(), 1);
+                    &expr[col_id].nodes[0]
+                } {
+                    Language::Usize(u) => assert_eq!(
+                        *u, col,
+                        "Found a systolic array with col size {} not equal to {}",
+                        *u, col
+                    ),
+                    _ => panic!(),
+                };
+
+                map.insert(eclass.id, hw_id);
+            }
+            _ => (),
+        }
+    }
+
+    (map, atoms)
+}
+
 /// Create a hardware design from an expression, creating a unique atom for each
 /// unique node (eclass or  id).
 pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Vec<Atom>) {
@@ -2094,5 +2214,41 @@ int main() {{
             std::str::from_utf8(result.stderr.as_slice())
                 .expect("Could not convert stderr to UTF8")
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn extract_monolithic_panic() {
+        let expr = RecExpr::from_str(
+            "
+(systolic-array 32 32
+ (access
+  (systolic-array 64 32
+   (access (access-tensor t0) 1)
+   (access (access-tensor t1) 0)
+  )
+  1
+ )
+ (access
+  (systolic-array 32 32
+   (access (access-tensor t2) 1)
+   (access (access-tensor t3) 0)
+  )
+  0
+ )
+)",
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t0".to_string(), vec![32, 64]);
+        map.insert("t1".to_string(), vec![64, 32]);
+        map.insert("t2".to_string(), vec![32, 32]);
+        map.insert("t3".to_string(), vec![32, 32]);
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        egraph.add_expr(&expr);
+
+        let (_hw_map, _hw_design) = create_hardware_design_monolithic(&egraph, (32, 32));
     }
 }
