@@ -493,30 +493,15 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
             access_windows_out_var_name
         }
         &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
-            let access = match &expr[access_id].data {
-                MyAnalysisData::AccessPattern(a) => a,
+            let original_shape = match &expr[access_id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
                 _ => panic!(),
             };
-            let original_shape = access
-                .shape
-                .slice()
-                .iter()
-                .chain(access.item_shape.slice().iter())
-                .cloned()
-                .collect::<Vec<_>>();
-
             let axis = MyAnalysis::get_usize(axis_id, expr);
             let low = MyAnalysis::get_usize(low_id, expr);
             let _high = MyAnalysis::get_usize(high_id, expr);
-
             let new_shape = match &expr[id].data {
-                MyAnalysisData::AccessPattern(a) => a
-                    .shape
-                    .slice()
-                    .iter()
-                    .chain(a.item_shape.slice().iter())
-                    .cloned()
-                    .collect::<Vec<_>>(),
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
                 _ => panic!(),
             };
 
@@ -534,7 +519,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 // TODO(@gussmith23) Find a different way to name intermediates
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
-                    "slice_out_{}",
+                    "access_slice_out_{}",
                     rand::thread_rng()
                         .sample_iter(&rand::distributions::Alphanumeric)
                         .take(30)
@@ -552,18 +537,13 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 out
             };
 
-            let index_var_names = (0..new_shape.len())
-                .map(|i| format!("i{}", i))
-                .collect::<Vec<_>>();
-
             // Create a for loop for every dimension in the result shape.
-            for (dim_index, dim_len) in new_shape.iter().enumerate() {
-                let index_var_name = &index_var_names[dim_index];
+            for (i, dim_len) in new_shape.iter().enumerate() {
                 code.push_str(
                     format!(
                         "
-for (int {i} = 0; {i} < {limit}; {i}++) {{",
-                        i = index_var_name,
+for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
+                        i = i,
                         limit = dim_len,
                     )
                     .as_str(),
@@ -572,7 +552,6 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
 
             // Within the innermost for loop: assign to the output at the
             // correct location.
-            // We have indices i0..i(n-1), for each of the n axes.
             code.push_str(
                 format!(
                     "
@@ -580,24 +559,22 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
 ",
                     out_name = slice_out_var_name,
                     out_index = (0..new_shape.len())
-                        .map(|i| format!("[{}]", index_var_names[i],))
-                        .collect::<Vec<_>>()
-                        .join(""),
+                        .map(|i| format!("[i{}]", i,))
+                        .collect::<String>(),
                     in_name = access_var_name,
-                    in_index = (0..new_shape.len())
+                    in_index = (0..original_shape.len())
                         .map(|i| if i != axis {
-                            format!("[{}]", index_var_names[i],)
+                            format!("[i{}]", i)
                         } else {
-                            format!("[{}+{}]", index_var_names[i], low,)
+                            format!("[i{}+{}]", i, low,)
                         })
-                        .collect::<Vec<_>>()
-                        .join("")
+                        .collect::<String>()
                 )
                 .as_str(),
             );
 
             // Close each for loop
-            for _ in original_shape.iter() {
+            for _ in new_shape.iter() {
                 code.push_str("}");
             }
 
