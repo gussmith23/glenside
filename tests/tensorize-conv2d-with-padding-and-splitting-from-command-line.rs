@@ -1,6 +1,34 @@
 use log::debug;
 use std::process::Command;
 
+/// This test runs essentially the following commands (from the project root):
+/**
+  ```sh
+  cargo run demo \
+      conv2d \
+      data/conv2d/conv2d.glenside \
+      data/conv2d/conv2d-shapes.json \
+      conv2d.c \
+      conv2d-hw-design.json \
+      --iter-limit 40 \
+      --time-limit 40 \
+      --node-limit 500000 \
+      --find-monolithic-designs '(64,64)'
+
+    gcc -g -Werror \
+      data/conv2d/conv2d-test-harness.c \
+      data/codegen-mlp/rtml_systolic_array_weight_stationary.c \
+      -o conv2d-test \
+      -I.
+
+    ./conv2d-test
+
+    # Step through the code if you want to see what's happening
+    lldb conv2d-test
+    gdb conv2d-test
+  ```
+  TODO(@gussmith23) I need a way to keep this in sync with the actual code
+ */
 #[test]
 fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_from_command_line() {
     test_logger::ensure_env_logger_initialized();
