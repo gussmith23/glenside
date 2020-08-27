@@ -149,6 +149,13 @@ fn main() {
             glenside::language::rewrites::remove_trivial_transpose(),
         ]);
 
+        // TODO(@gussmith23) Explain difference between extraction and hw gen
+        // Why do we "extract a monolithic design" and then "create a monolithic
+        // design"? Why are these two separate steps? Well, extracting a
+        // monolithic design doesn't actually mean creating a design; it means
+        // extracting an expression which /could/ be monolithic. What comes out
+        // at extraction time doesn't actually have hardware assigned yet; that
+        // happens in design creation, a few lines later.
         let (_, extracted_expr) = if let Some(val) = matches.value_of("find-monolithic-designs") {
             let parsed = val
                 .chars()
