@@ -79,8 +79,8 @@ int main() {{
   // Ensure result is what we expect.
   int i;
   for (i = 0; i < {output_num_els}; ++i) {{
-    fprintf(stderr, "%f ?= %f\\n", out[i], expected_out[i]);
-    assert(fabs(out[i] - expected_out[i]) < 0.00001);
+    fprintf(stderr, "%f ?= %f\\n", ((float*)out)[i], ((float*)expected_out)[i]);
+    assert(fabs(((float*)out)[i] - ((float*)expected_out)[i]) < 0.00001);
   }}
 
   return 0;
