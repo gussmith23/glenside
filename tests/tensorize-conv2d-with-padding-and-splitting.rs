@@ -8,6 +8,11 @@ use std::str::FromStr;
 fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     test_logger::ensure_env_logger_initialized();
 
+    #[cfg(not(feature = "run-on-github-actions"))]
+    pub const EGG_SEARCH_TIME_SECS: u64 = 40;
+    #[cfg(feature = "run-on-github-actions")]
+    pub const EGG_SEARCH_TIME_SECS: u64 = 180;
+
     let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
     let id = expr.as_ref().len() - 1;
     let _conv2d_id =
@@ -68,7 +73,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     // I know the correct program can be found, but it takes time.
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
-        .with_time_limit(std::time::Duration::from_secs(40))
+        .with_time_limit(std::time::Duration::from_secs(EGG_SEARCH_TIME_SECS))
         .with_node_limit(500000)
         .with_iter_limit(40)
         .run(&rws);

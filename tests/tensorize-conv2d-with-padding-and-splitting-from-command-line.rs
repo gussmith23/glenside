@@ -58,6 +58,11 @@ use std::process::Command;
 fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_from_command_line() {
     test_logger::ensure_env_logger_initialized();
 
+    #[cfg(not(feature = "run-on-github-actions"))]
+    pub const EGG_SEARCH_TIME_SECS: i64 = 40;
+    #[cfg(feature = "run-on-github-actions")]
+    pub const EGG_SEARCH_TIME_SECS: i64 = 180;
+
     // The location of the Glenside program we'd like to compile.
     let program_filepath = format!("{}/data/conv2d/conv2d.glenside", env!("CARGO_MANIFEST_DIR"));
 
@@ -106,7 +111,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_from_comman
         .arg("--iter-limit")
         .arg("40")
         .arg("--time-limit")
-        .arg("40")
+        .arg(EGG_SEARCH_TIME_SECS.to_string())
         .arg("--node-limit")
         .arg("500000")
         .arg("--find-monolithic-designs")

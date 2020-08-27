@@ -14,4 +14,4 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - run: sudo /usr/share/rust/.cargo/bin/cargo test
+      - run: sudo /usr/share/rust/.cargo/bin/cargo test --features "run-on-github-actions"
