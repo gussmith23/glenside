@@ -176,7 +176,20 @@ fn main() {
             name_to_shape: shapes_map,
         });
         let id = egraph.add_expr(&extracted_expr);
-        let (hw_id_map, hw_atoms) = glenside::codegen::create_hardware_design_no_sharing(&egraph);
+        let (hw_id_map, hw_atoms) = if let Some(val) = matches.value_of("find-monolithic-designs") {
+            let parsed = val
+                .chars()
+                .skip(1)
+                .take(val.len() - 2)
+                .collect::<String>()
+                .split(",")
+                .map(|s| s.parse::<usize>().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(parsed.len(), 2);
+            glenside::codegen::create_hardware_design_monolithic(&egraph, (parsed[0], parsed[1]))
+        } else {
+            glenside::codegen::create_hardware_design_no_sharing(&egraph)
+        };
 
         // Get expression arguments/inputs and sort alphabetically.
         let mut found_vars = glenside::codegen::find_vars(&egraph, id);
