@@ -930,8 +930,35 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
             transpose_out_var_name
         }
         &Language::AccessFlatten(access_id) => {
-            // Don't need to do anything for flatten at runtime.
-            codegen_recursive_helper(
+            // Flatten doesn't do anything. Just copy the array verbatim.
+
+            let out_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_flatten_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    c_allocation_string(
+                        allocations_prefix,
+                        out.as_str(),
+                        out_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let in_var_name = codegen_recursive_helper(
                 expr,
                 access_id,
                 top_level_id,
@@ -939,11 +966,53 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 declarations,
                 code,
                 hw_map,
-            )
+            );
+
+            code.push_str(
+                format!(
+                    "
+for (int i = 0; i < {limit}; ++i) {{
+  ((float*){out_var_name})[i] = ((float*){in_var_name})[i];
+}}",
+                    out_var_name = out_var_name,
+                    in_var_name = in_var_name,
+                    limit = out_shape.iter().product::<usize>(),
+                )
+                .as_str(),
+            );
+
+            out_var_name
         }
         &Language::AccessReshape([access_id, _access_shape_id]) => {
-            // Don't need to do anything for reshape at runtime.
-            codegen_recursive_helper(
+            // Reshape doesn't do anything. Just copy the array verbatim.
+
+            let out_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_reshape_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    c_allocation_string(
+                        allocations_prefix,
+                        out.as_str(),
+                        out_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let in_var_name = codegen_recursive_helper(
                 expr,
                 access_id,
                 top_level_id,
@@ -951,11 +1020,53 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 declarations,
                 code,
                 hw_map,
-            )
+            );
+
+            code.push_str(
+                format!(
+                    "
+for (int i = 0; i < {limit}; ++i) {{
+  ((float*){out_var_name})[i] = ((float*){in_var_name})[i];
+}}",
+                    out_var_name = out_var_name,
+                    in_var_name = in_var_name,
+                    limit = out_shape.iter().product::<usize>(),
+                )
+                .as_str(),
+            );
+
+            out_var_name
         }
         &Language::AccessSqueeze([access_id, _axis_id]) => {
-            // Don't need to do anything for squeeze at runtime.
-            codegen_recursive_helper(
+            // Squeeze doesn't do anything. Just copy the array verbatim.
+
+            let out_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_squeeze_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    c_allocation_string(
+                        allocations_prefix,
+                        out.as_str(),
+                        out_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let in_var_name = codegen_recursive_helper(
                 expr,
                 access_id,
                 top_level_id,
@@ -963,7 +1074,22 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 declarations,
                 code,
                 hw_map,
-            )
+            );
+
+            code.push_str(
+                format!(
+                    "
+for (int i = 0; i < {limit}; ++i) {{
+  ((float*){out_var_name})[i] = ((float*){in_var_name})[i];
+}}",
+                    out_var_name = out_var_name,
+                    in_var_name = in_var_name,
+                    limit = out_shape.iter().product::<usize>(),
+                )
+                .as_str(),
+            );
+
+            out_var_name
         }
         &Language::AccessConcatenate([a0_id, a1_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
@@ -1817,6 +1943,124 @@ int main() {{
 
         let binary_filepath = std::env::temp_dir().with_file_name(format!(
             "access-windows-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn access_flatten() {
+        let shape = vec![3, 50, 27, 4];
+        let access_axis = 2;
+
+        let input = ndarray::ArrayD::from_shape_vec(
+            shape.clone(),
+            (0..shape.iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+
+        let expr = RecExpr::from_str(
+            format!(
+                "
+(access-flatten
+ (access (access-tensor t) {access_axis})
+)",
+                access_axis = access_axis
+            )
+            .as_str(),
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t".to_string(), shape.clone());
+
+        let out = input
+            .view()
+            .into_shape((
+                shape[0..access_axis].iter().product::<usize>(),
+                shape[access_axis..].iter().product::<usize>(),
+            ))
+            .unwrap()
+            .into_dyn();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "access_flatten",
+            "",
+            &vec!["t"],
+        );
+
+        let main_code = format!(
+            "
+#include <assert.h>
+
+{}
+{}
+{}
+{}
+
+int main() {{
+  access_flatten(out, a);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(((float*)a_flattened)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            c_assignment_string("", "a", DType::Fp32, &input.view()),
+            c_assignment_string("", "a_flattened", DType::Fp32, &out.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(out.shape()).view()
+            ),
+            code,
+            out.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "access-flatten-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "access-flatten-test-{}",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
