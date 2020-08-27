@@ -4,6 +4,16 @@ use std::process::Command;
 /// This test runs essentially the following commands (from the project root):
 /**
   ```sh
+  # Run Glenside.
+  # The input consists of two files: a .glenside file, which is Glenside source,
+  # and a .json file which contains type information about the Glenside program.
+  # The output is a design named "conv2d" (first argument), which is defined by
+  # two files:
+  # conv2d.c: A file containing the function conv2d(...), which implements the
+  # convolution.
+  # conv2d-hw-design.json: A JSON description of the resulting hardware.
+  # The other arguments tell Glenside how hard to search, and what kind of
+  # design to search for.
   cargo run demo \
       conv2d \
       data/conv2d/conv2d.glenside \
@@ -15,17 +25,32 @@ use std::process::Command;
       --node-limit 500000 \
       --find-monolithic-designs '(64,64)'
 
-    gcc -g -Werror \
+  # Compile the resulting code.
+  # We compile the test harness provided with Glenside. The test harness simply
+  # defines some test data, runs the generated conv2d(...), and then checks that
+  # the output matches the expected output (which is generated using Relay/TVM;
+  # see generate.py).
+  # We also compile with a systolic array emulator. During conv2d codegen,
+  # Glenside generates systolic array calls which will call to the on-chip
+  # systolic array. Here, though, we emulate the systolic array with simple C
+  # code.
+  # We use -I. so that the generated conv2d.c is found, as it is #included by
+  # the test harness.
+  gcc -g -Werror \
       data/conv2d/conv2d-test-harness.c \
       data/codegen-mlp/rtml_systolic_array_weight_stationary.c \
       -o conv2d-test \
       -I.
 
-    ./conv2d-test
 
-    # Step through the code if you want to see what's happening
-    lldb conv2d-test
-    gdb conv2d-test
+  # Run!
+  # Scroll up through the result and you can see log messages when the systolic
+  # arrays are run.
+  ./conv2d-test
+
+  # Step through the code if you want to see what's happening.
+  lldb conv2d-test
+  gdb conv2d-test
   ```
   TODO(@gussmith23) I need a way to keep this in sync with the actual code
  */
