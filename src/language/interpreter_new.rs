@@ -222,6 +222,7 @@ where
             };
 
             match compute_type {
+                ComputeType::Softmax => todo!(),
                 ComputeType::ElementwiseMul => Value::Access(Access {
                     access_axis: access.access_axis,
                     tensor: access

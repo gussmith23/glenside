@@ -236,6 +236,8 @@ pub enum ComputeType {
     /// Takes the max across all elements in each item. Reduces any item shape
     /// to a scalar.
     ReduceMax,
+    /// Computes softmax over an access regardless of access axis.
+    Softmax,
 }
 impl FromStr for ComputeType {
     type Err = ();
@@ -247,6 +249,7 @@ impl FromStr for ComputeType {
             "relu" => Ok(ComputeType::ReLU),
             "elementwise-add" => Ok(ComputeType::ElementwiseAdd),
             "elementwise-mul" => Ok(ComputeType::ElementwiseMul),
+            "softmax" => Ok(ComputeType::Softmax),
             _ => Err(()),
         }
     }
@@ -263,6 +266,7 @@ impl Display for ComputeType {
                 ComputeType::ReLU => "relu",
                 ComputeType::ElementwiseAdd => "elementwise-add",
                 ComputeType::ElementwiseMul => "elementwise-mul",
+                ComputeType::Softmax => "softmax",
             }
         )
     }
@@ -1383,6 +1387,25 @@ impl egg::Analysis<Language> for MyAnalysis {
                 }
 
                 match compute_type {
+                    self::ComputeType::Softmax => {
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            // TODO(@gussmith23) Implement zero regions
+                            // It's harmless (I think) if `zero_regions` defaults to
+                            // empty, but for it to be useful, we need to implement it
+                            // for each operator.
+                            zero_regions: {
+                                if !a0.zero_regions.is_empty() {
+                                    warn!(
+                                        "Throwing away zero region analysis data on line {}",
+                                        std::line!()
+                                    );
+                                }
+                                HashMap::default()
+                            },
+                            shape: a0.shape.clone(),
+                            item_shape: a0.item_shape.clone(),
+                        })
+                    }
                     self::ComputeType::ElementwiseAdd | self::ComputeType::ElementwiseMul => {
                         assert!(a0.item_shape.ndim() >= 1);
                         MyAnalysisData::AccessPattern(AccessPatternData {
@@ -3471,5 +3494,41 @@ mod tests {
         let mut egraph =
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn compute_softmax_0() {
+        let program = "
+         (compute softmax (access (access-tensor t-3-32-32) 2))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_softmax_1() {
+        let program = "
+         (compute softmax (access (access-tensor t-3-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[3, 32, 32]));
+            }
+            _ => panic!(),
+        }
     }
 }
