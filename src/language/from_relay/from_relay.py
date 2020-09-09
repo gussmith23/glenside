@@ -41,8 +41,13 @@ def _recursive_helper(expr):
         The glenside text-format implementing the expr."""
     assert issubclass(type(expr), tvm.ir.RelayExpr)
 
-    if False:
-        pass
+    if isinstance(expr, tvm.relay.Var):
+        return "(access-tensor {})".format(expr.name_hint)
+    if isinstance(expr, tvm.relay.Call):
+        if expr.op == tvm.ir.Op.get("nn.softmax"):
+            assert len(expr.args) == 1
+            return "(compute softmax {})".format(
+                _recursive_helper(expr.args[0]))
     else:
         sys.stderr.write("Cannot parse expression of type {}\n".format(
             type(expr)))

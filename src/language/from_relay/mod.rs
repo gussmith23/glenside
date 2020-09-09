@@ -82,6 +82,20 @@ mod tests {
             }
         };
     }
+
+    test!(
+        softmax,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
+  nn.softmax(%x) /* ty=Tensor[(3), float32] */
+}
+"#,
+        r#"
+(compute softmax (access-tensor x))
+"#
+    );
+
     test!(
         mobilenet,
         r#"
