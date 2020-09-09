@@ -2,6 +2,8 @@
 mod tests {
     use crate::language::{Language, MyAnalysis};
     use egg::{EGraph, Pattern, RecExpr, Searcher};
+    use serde_json::{from_str, Value};
+    use std::collections::HashMap;
     use std::io::Write;
     use std::process::Command;
     use std::str::FromStr;
@@ -43,10 +45,36 @@ mod tests {
                     std::str::from_utf8(output.stderr.as_slice())
                         .expect("Could not convert stderr to UTF8")
                 );
-                let glenside_str = String::from_utf8(output.stdout).unwrap();
-                let expr = RecExpr::from_str(glenside_str.as_str())
-                    .expect("Could not parse glenside expression");
-                let mut egraph = EGraph::new(MyAnalysis::default());
+
+                let json_output: Value =
+                    from_str(String::from_utf8(output.stdout).unwrap().as_str()).unwrap();
+                let glenside_str = json_output.get("program").unwrap().as_str().unwrap();
+                let expr =
+                    RecExpr::from_str(glenside_str).expect("Could not parse glenside expression");
+
+                // Parse shape dict
+                let mut shapes = HashMap::default();
+                for (key, value) in json_output
+                    .get("shapes")
+                    .unwrap()
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                {
+                    shapes.insert(
+                        key.clone(),
+                        value
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|v| v.as_u64().unwrap() as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                }
+
+                let mut egraph = EGraph::new(MyAnalysis {
+                    name_to_shape: shapes,
+                });
                 let id = egraph.add_expr(&expr);
 
                 let pattern = $glenside_str.parse::<Pattern<Language>>().unwrap();

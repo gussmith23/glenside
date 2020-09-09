@@ -2,6 +2,7 @@
 import sys
 import tvm
 from tvm import relay
+import json
 
 
 def glenside_from_ir_module(module):
@@ -14,10 +15,16 @@ def glenside_from_ir_module(module):
 
     Returns
     -------
-    glenside_str : String
-        The glenside text-format implementing the module."""
+    (glenside_str, shapes) : (String, Map[String, List[int]])
+        glenside_str is the glenside text-format implementing the module.
+        shapes is a map from tensor variable name to tensor shape."""
 
-    return _recursive_helper(module['main'].body)
+    shapes = {
+        var.name_hint: tuple(int(val) for val in var.checked_type.shape)
+        for var in module['main'].params
+    }
+
+    return (_recursive_helper(module['main'].body), shapes)
 
 
 def _recursive_helper(expr):
@@ -60,5 +67,5 @@ if __name__ == "__main__":
     parsed = parser.parse_args(sys.argv[1:])
 
     relay_in = parsed.infile.read()
-    out = glenside_from_ir_module(tvm.parser.fromtext(relay_in))
-    parsed.outfile.write(out)
+    out, shapes = glenside_from_ir_module(tvm.parser.fromtext(relay_in))
+    parsed.outfile.write(json.dumps({'program': out, 'shapes': shapes}))
