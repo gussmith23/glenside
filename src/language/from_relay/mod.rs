@@ -6,7 +6,12 @@ mod tests {
     use std::process::Command;
     use std::str::FromStr;
 
-    macro_rules! from_relay_test {
+    /// Creates a Relay-to-Glenside test
+    /// $test_name: the name of the created test
+    /// $relay_str: A string containing the Relay program to be converted
+    /// $glenside_str: A string containing the expected resulting Glenside
+    ///     expression
+    macro_rules! test {
         ($test_name:ident, $relay_str:expr, $glenside_str:expr) => {
             #[test]
             fn $test_name() {
@@ -49,7 +54,7 @@ mod tests {
             }
         };
     }
-    from_relay_test!(
+    test!(
         mobilenet,
         r#"
 #[version = "0.0.5"]
