@@ -1,4 +1,5 @@
 """Tools (and script) to convert Relay to Glenside"""
+import sys
 import tvm
 from tvm import relay
 
@@ -15,7 +16,8 @@ def glenside_from_ir_module(module):
     -------
     glenside_str : String
         The glenside text-format implementing the module."""
-    return "unimplemented"
+
+    return _recursive_helper(module['main'].body)
 
 
 def _recursive_helper(expr):
@@ -30,7 +32,16 @@ def _recursive_helper(expr):
     -------
     glenside_str : String
         The glenside text-format implementing the expr."""
-    assert issubclass(expr, tvm.ir.RelayExpr)
+    assert issubclass(type(expr), tvm.ir.RelayExpr)
+
+    if False:
+        pass
+    else:
+        sys.stderr.write("Cannot parse expression of type {}\n".format(
+            type(expr)))
+        if isinstance(expr, tvm.relay.Call):
+            sys.stderr.write("Call to operator: {}\n".format(expr.op))
+        exit(1)
 
 
 if __name__ == "__main__":
