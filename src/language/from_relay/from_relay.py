@@ -42,6 +42,7 @@ def _recursive_helper(expr):
     assert issubclass(type(expr), tvm.ir.RelayExpr)
 
     if isinstance(expr, tvm.relay.Var):
+        assert expr.name_hint
         return "(access-tensor {})".format(expr.name_hint)
     if isinstance(expr, tvm.relay.Call):
         if expr.op == tvm.ir.Op.get("nn.softmax"):
