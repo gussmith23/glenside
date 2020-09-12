@@ -1976,7 +1976,7 @@ int main() {{
 
         let input = ndarray::ArrayD::from_shape_vec(
             shape.clone(),
-            (0..shape.iter().product::<usize>()).collect(),
+            (0i64..shape.iter().map(|v| *v as i64).product::<i64>()).collect(),
         )
         .unwrap();
 
