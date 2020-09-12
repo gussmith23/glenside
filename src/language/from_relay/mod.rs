@@ -157,6 +157,20 @@ mod tests {
     }
 
     test!(
+        bias_add,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3), float32], %y: Tensor[(3), float32]) -> Tensor[(3), float32] {
+  nn.bias_add(%x, %y, axis=0) /* ty=Tensor[(3), float32] */
+}
+"#,
+        r#"
+(compute elementwise-add (access-pair (access (access-tensor x) 0) (access (access-tensor y) 0)))
+"#
+    );
+
+    test!(
         softmax_0,
         1e-10,
         r#"

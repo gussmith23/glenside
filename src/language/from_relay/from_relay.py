@@ -47,14 +47,52 @@ def _recursive_helper(expr):
     if isinstance(expr, tvm.relay.Call):
         if expr.op == tvm.ir.Op.get("nn.softmax"):
             assert len(expr.args) == 1
+            assert 'axis' in expr.attrs.keys()
+            # Axis argument other than -1 not implemented.
+            assert expr.attrs.axis == -1
             return "(compute softmax {})".format(
-                _recursive_helper(expr.args[0]))
-    else:
-        sys.stderr.write("Cannot parse expression of type {}\n".format(
-            type(expr)))
-        if isinstance(expr, tvm.relay.Call):
-            sys.stderr.write("Call to operator: {}\n".format(expr.op))
-        exit(1)
+                _access(expr.args[0],
+                        len(expr.args[0].checked_type.shape) - 1))
+        if expr.op == tvm.ir.Op.get("nn.bias_add"):
+            assert len(expr.args) == 2
+            assert 'axis' in expr.attrs.keys()
+            return _elementwise_add(expr.args[0], expr.args[1])
+
+    # If we make it here, we haven't yet implemented parsing for the expression.
+    sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
+    if isinstance(expr, tvm.relay.Call):
+        sys.stderr.write("Call to operator: {}\n".format(expr.op))
+    exit(1)
+
+
+def _elementwise_add(a, b):
+    """Generate elementwise addition
+
+    Parameters
+    ----------
+    a, b : tvm.ir.RelayExpr
+        The inputs to add."""
+    return "(compute elementwise-add (access-pair {} {}))" \
+        .format(_access(a, 0), _access(b, 0))
+
+
+def _access(expr, axis):
+    """Access expression at an axis
+
+    Parameters
+    ----------
+    expr : tvm.ir.RelayExpr
+        The inputs to add.
+
+    axis : int
+        The axis to access at.
+
+    Returns
+    -------
+    out_code : String
+        (access <code generated for expr> <axis)
+    """
+    return "(access {} {})".format(_recursive_helper(expr), axis)
 
 
 if __name__ == "__main__":
