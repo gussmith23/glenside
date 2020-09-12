@@ -23,6 +23,7 @@ serde_json = "1.0"
 test-logger = "0.1.0"
 clap = "2.33.1"
 rand = "0.7.3"
+ndarray-rand = "0.11.0"
 
 [dependencies.egg]
 rev = "46de9eb1e05b6e86a9ee0b0fd03000b1b039f107"

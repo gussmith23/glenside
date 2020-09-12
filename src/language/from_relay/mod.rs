@@ -1,7 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use crate::language::interpreter::interpret;
     use crate::language::{Language, MyAnalysis};
+    use approx::AbsDiffEq;
     use egg::{EGraph, Pattern, RecExpr, Searcher};
+    use ndarray_npy::{read_npy, write_npy};
+    use ndarray_rand::{rand_distr::Uniform, RandomExt};
+    use rand::Rng;
     use serde_json::{from_str, Value};
     use std::collections::HashMap;
     use std::io::Write;
@@ -9,12 +14,17 @@ mod tests {
     use std::str::FromStr;
 
     /// Creates a Relay-to-Glenside test
+    /// The test does the following:
+    ///  1. Converts $relay_str to glenside by running the from_relay.py script
+    ///  2. Inserts the resulting Glenside code into an egraph
+    ///  3. Searches the egraph for $glenside_str to ensure the expected program
+    ///     exists
     /// $test_name: the name of the created test
     /// $relay_str: A string containing the Relay program to be converted
     /// $glenside_str: A string containing the expected resulting Glenside
     ///     expression
     macro_rules! test {
-        ($test_name:ident, $relay_str:expr, $glenside_str:expr) => {
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr) => {
             #[test]
             fn $test_name() {
                 let script_filepath = format!(
@@ -73,18 +83,82 @@ mod tests {
                 }
 
                 let mut egraph = EGraph::new(MyAnalysis {
-                    name_to_shape: shapes,
+                    name_to_shape: shapes.clone(),
                 });
                 let id = egraph.add_expr(&expr);
 
                 let pattern = $glenside_str.parse::<Pattern<Language>>().unwrap();
                 assert!(pattern.search_eclass(&egraph, id).is_some());
+
+                // Run interpreters and compare output.
+                let script_filepath = format!(
+                    "{}/src/language/from_relay/run_relay.py",
+                    env!("CARGO_MANIFEST_DIR")
+                );
+                // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
+                // Output filename
+                let output_filepath = std::env::temp_dir().with_file_name(format!(
+                    "output-{}.npy",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                ));
+
+                let mut cmd = Command::new("python3");
+                let cmd = cmd
+                    .arg(script_filepath)
+                    .arg(&output_filepath)
+                    .stdin(std::process::Stdio::piped());
+                let mut env = HashMap::default();
+                for (name, shape) in shapes.iter() {
+                    // TODO(@gussmith23) output type assumption
+                    let value =
+                        ndarray::ArrayD::<f32>::random(shape.clone(), Uniform::new(-1f32, 1f32));
+                    env.insert(name.as_str(), value.clone());
+                    let filepath = std::env::temp_dir().with_file_name(format!(
+                        "arg-{}.npy",
+                        rand::thread_rng()
+                            .sample_iter(&rand::distributions::Alphanumeric)
+                            .take(30)
+                            .collect::<String>()
+                    ));
+                    write_npy(&filepath, &value).unwrap();
+                    cmd.arg(filepath);
+                }
+
+                let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
+                proc.stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all($relay_str.as_bytes())
+                    .unwrap();
+                let output = proc.wait_with_output().unwrap();
+                // Check that it ran.
+                assert!(
+                    output.status.success(),
+                    "Failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+                    output.status.code(),
+                    std::str::from_utf8(output.stdout.as_slice())
+                        .expect("Could not convert stderr to UTF8"),
+                    std::str::from_utf8(output.stderr.as_slice())
+                        .expect("Could not convert stderr to UTF8")
+                );
+
+                // TODO(@gussmith23) output type assumption
+                let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+                let interpreter_output = match interpret(&expr, expr.as_ref().len() - 1, &env) {
+                    crate::language::interpreter::Value::Access(a) => a.tensor,
+                    _ => panic!(),
+                };
+                assert!(relay_output.abs_diff_eq(&interpreter_output, $tol));
             }
         };
     }
 
     test!(
         softmax_0,
+        1e-10,
         r#"
 #[version = "0.0.5"]
 def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
@@ -98,6 +172,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 
     test!(
         softmax_1,
+        1e-10,
         r#"
 #[version = "0.0.5"]
 def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
@@ -112,6 +187,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 
     test!(
         mobilenet,
+        1e-10,
         r#"
 #[version = "0.0.5"]
 def @main(%data: Tensor[(1, 3, 224, 224), float32], %conv_block_1_conv_weight: Tensor[(32, 3, 3, 3), float32], %conv_block_1_bn_gamma: Tensor[(32), float32], %conv_block_1_bn_beta: Tensor[(32), float32], %conv_block_1_bn_moving_mean: Tensor[(32), float32], %conv_block_1_bn_moving_var: Tensor[(32), float32], %separable_conv_block_1_weight: Tensor[(32, 1, 3, 3), float32], %separable_conv_block_1_bn1_gamma: Tensor[(32), float32], %separable_conv_block_1_bn1_beta: Tensor[(32), float32], %separable_conv_block_1_bn1_moving_mean: Tensor[(32), float32], %separable_conv_block_1_bn1_moving_var: Tensor[(32), float32], %separable_conv_block_1_conv2_weight: Tensor[(64, 32, 1, 1), float32], %separable_conv_block_1_bn2_gamma: Tensor[(64), float32], %separable_conv_block_1_bn2_beta: Tensor[(64), float32], %separable_conv_block_1_bn2_moving_mean: Tensor[(64), float32], %separable_conv_block_1_bn2_moving_var: Tensor[(64), float32], %separable_conv_block_2_weight: Tensor[(64, 1, 3, 3), float32], %separable_conv_block_2_bn1_gamma: Tensor[(64), float32], %separable_conv_block_2_bn1_beta: Tensor[(64), float32], %separable_conv_block_2_bn1_moving_mean: Tensor[(64), float32], %separable_conv_block_2_bn1_moving_var: Tensor[(64), float32], %separable_conv_block_2_conv2_weight: Tensor[(128, 64, 1, 1), float32], %separable_conv_block_2_bn2_gamma: Tensor[(128), float32], %separable_conv_block_2_bn2_beta: Tensor[(128), float32], %separable_conv_block_2_bn2_moving_mean: Tensor[(128), float32], %separable_conv_block_2_bn2_moving_var: Tensor[(128), float32], %separable_conv_block_3_weight: Tensor[(128, 1, 3, 3), float32], %separable_conv_block_3_bn1_gamma: Tensor[(128), float32], %separable_conv_block_3_bn1_beta: Tensor[(128), float32], %separable_conv_block_3_bn1_moving_mean: Tensor[(128), float32], %separable_conv_block_3_bn1_moving_var: Tensor[(128), float32], %separable_conv_block_3_conv2_weight: Tensor[(128, 128, 1, 1), float32], %separable_conv_block_3_bn2_gamma: Tensor[(128), float32], %separable_conv_block_3_bn2_beta: Tensor[(128), float32], %separable_conv_block_3_bn2_moving_mean: Tensor[(128), float32], %separable_conv_block_3_bn2_moving_var: Tensor[(128), float32], %separable_conv_block_4_weight: Tensor[(128, 1, 3, 3), float32], %separable_conv_block_4_bn1_gamma: Tensor[(128), float32], %separable_conv_block_4_bn1_beta: Tensor[(128), float32], %separable_conv_block_4_bn1_moving_mean: Tensor[(128), float32], %separable_conv_block_4_bn1_moving_var: Tensor[(128), float32], %separable_conv_block_4_conv2_weight: Tensor[(256, 128, 1, 1), float32], %separable_conv_block_4_bn2_gamma: Tensor[(256), float32], %separable_conv_block_4_bn2_beta: Tensor[(256), float32], %separable_conv_block_4_bn2_moving_mean: Tensor[(256), float32], %separable_conv_block_4_bn2_moving_var: Tensor[(256), float32], %separable_conv_block_5_weight: Tensor[(256, 1, 3, 3), float32], %separable_conv_block_5_bn1_gamma: Tensor[(256), float32], %separable_conv_block_5_bn1_beta: Tensor[(256), float32], %separable_conv_block_5_bn1_moving_mean: Tensor[(256), float32], %separable_conv_block_5_bn1_moving_var: Tensor[(256), float32], %separable_conv_block_5_conv2_weight: Tensor[(256, 256, 1, 1), float32], %separable_conv_block_5_bn2_gamma: Tensor[(256), float32], %separable_conv_block_5_bn2_beta: Tensor[(256), float32], %separable_conv_block_5_bn2_moving_mean: Tensor[(256), float32], %separable_conv_block_5_bn2_moving_var: Tensor[(256), float32], %separable_conv_block_6_weight: Tensor[(256, 1, 3, 3), float32], %separable_conv_block_6_bn1_gamma: Tensor[(256), float32], %separable_conv_block_6_bn1_beta: Tensor[(256), float32], %separable_conv_block_6_bn1_moving_mean: Tensor[(256), float32], %separable_conv_block_6_bn1_moving_var: Tensor[(256), float32], %separable_conv_block_6_conv2_weight: Tensor[(512, 256, 1, 1), float32], %separable_conv_block_6_bn2_gamma: Tensor[(512), float32], %separable_conv_block_6_bn2_beta: Tensor[(512), float32], %separable_conv_block_6_bn2_moving_mean: Tensor[(512), float32], %separable_conv_block_6_bn2_moving_var: Tensor[(512), float32], %separable_conv_block_7_weight: Tensor[(512, 1, 3, 3), float32], %separable_conv_block_7_bn1_gamma: Tensor[(512), float32], %separable_conv_block_7_bn1_beta: Tensor[(512), float32], %separable_conv_block_7_bn1_moving_mean: Tensor[(512), float32], %separable_conv_block_7_bn1_moving_var: Tensor[(512), float32], %separable_conv_block_7_conv2_weight: Tensor[(512, 512, 1, 1), float32], %separable_conv_block_7_bn2_gamma: Tensor[(512), float32], %separable_conv_block_7_bn2_beta: Tensor[(512), float32], %separable_conv_block_7_bn2_moving_mean: Tensor[(512), float32], %separable_conv_block_7_bn2_moving_var: Tensor[(512), float32], %separable_conv_block_8_weight: Tensor[(512, 1, 3, 3), float32], %separable_conv_block_8_bn1_gamma: Tensor[(512), float32], %separable_conv_block_8_bn1_beta: Tensor[(512), float32], %separable_conv_block_8_bn1_moving_mean: Tensor[(512), float32], %separable_conv_block_8_bn1_moving_var: Tensor[(512), float32], %separable_conv_block_8_conv2_weight: Tensor[(512, 512, 1, 1), float32], %separable_conv_block_8_bn2_gamma: Tensor[(512), float32], %separable_conv_block_8_bn2_beta: Tensor[(512), float32], %separable_conv_block_8_bn2_moving_mean: Tensor[(512), float32], %separable_conv_block_8_bn2_moving_var: Tensor[(512), float32], %separable_conv_block_9_weight: Tensor[(512, 1, 3, 3), float32], %separable_conv_block_9_bn1_gamma: Tensor[(512), float32], %separable_conv_block_9_bn1_beta: Tensor[(512), float32], %separable_conv_block_9_bn1_moving_mean: Tensor[(512), float32], %separable_conv_block_9_bn1_moving_var: Tensor[(512), float32], %separable_conv_block_9_conv2_weight: Tensor[(512, 512, 1, 1), float32], %separable_conv_block_9_bn2_gamma: Tensor[(512), float32], %separable_conv_block_9_bn2_beta: Tensor[(512), float32], %separable_conv_block_9_bn2_moving_mean: Tensor[(512), float32], %separable_conv_block_9_bn2_moving_var: Tensor[(512), float32], %separable_conv_block_10_weight: Tensor[(512, 1, 3, 3), float32], %separable_conv_block_10_bn1_gamma: Tensor[(512), float32], %separable_conv_block_10_bn1_beta: Tensor[(512), float32], %separable_conv_block_10_bn1_moving_mean: Tensor[(512), float32], %separable_conv_block_10_bn1_moving_var: Tensor[(512), float32], %separable_conv_block_10_conv2_weight: Tensor[(512, 512, 1, 1), float32], %separable_conv_block_10_bn2_gamma: Tensor[(512), float32], %separable_conv_block_10_bn2_beta: Tensor[(512), float32], %separable_conv_block_10_bn2_moving_mean: Tensor[(512), float32], %separable_conv_block_10_bn2_moving_var: Tensor[(512), float32], %separable_conv_block_11_weight: Tensor[(512, 1, 3, 3), float32], %separable_conv_block_11_bn1_gamma: Tensor[(512), float32], %separable_conv_block_11_bn1_beta: Tensor[(512), float32], %separable_conv_block_11_bn1_moving_mean: Tensor[(512), float32], %separable_conv_block_11_bn1_moving_var: Tensor[(512), float32], %separable_conv_block_11_conv2_weight: Tensor[(512, 512, 1, 1), float32], %separable_conv_block_11_bn2_gamma: Tensor[(512), float32], %separable_conv_block_11_bn2_beta: Tensor[(512), float32], %separable_conv_block_11_bn2_moving_mean: Tensor[(512), float32], %separable_conv_block_11_bn2_moving_var: Tensor[(512), float32], %separable_conv_block_12_weight: Tensor[(512, 1, 3, 3), float32], %separable_conv_block_12_bn1_gamma: Tensor[(512), float32], %separable_conv_block_12_bn1_beta: Tensor[(512), float32], %separable_conv_block_12_bn1_moving_mean: Tensor[(512), float32], %separable_conv_block_12_bn1_moving_var: Tensor[(512), float32], %separable_conv_block_12_conv2_weight: Tensor[(1024, 512, 1, 1), float32], %separable_conv_block_12_bn2_gamma: Tensor[(1024), float32], %separable_conv_block_12_bn2_beta: Tensor[(1024), float32], %separable_conv_block_12_bn2_moving_mean: Tensor[(1024), float32], %separable_conv_block_12_bn2_moving_var: Tensor[(1024), float32], %separable_conv_block_13_weight: Tensor[(1024, 1, 3, 3), float32], %separable_conv_block_13_bn1_gamma: Tensor[(1024), float32], %separable_conv_block_13_bn1_beta: Tensor[(1024), float32], %separable_conv_block_13_bn1_moving_mean: Tensor[(1024), float32], %separable_conv_block_13_bn1_moving_var: Tensor[(1024), float32], %separable_conv_block_13_conv2_weight: Tensor[(1024, 1024, 1, 1), float32], %separable_conv_block_13_bn2_gamma: Tensor[(1024), float32], %separable_conv_block_13_bn2_beta: Tensor[(1024), float32], %separable_conv_block_13_bn2_moving_mean: Tensor[(1024), float32], %separable_conv_block_13_bn2_moving_var: Tensor[(1024), float32], %fc_weight: Tensor[(1000, 1024), float32], %fc_bias: Tensor[(1000), float32]) -> Tensor[(1, 1000), float32] {
