@@ -2,6 +2,7 @@ use super::language::{ComputeType, Language, PadType};
 use egg::RecExpr;
 use itertools::Itertools;
 use ndarray::{s, Array, ArrayD, Dimension, IxDyn, Zip};
+use num_traits::Pow;
 use std::collections::hash_map::HashMap;
 use std::iter::FromIterator;
 
@@ -34,10 +35,13 @@ pub fn interpret<DataType>(
 where
     DataType: Copy
         + std::ops::Mul<Output = DataType>
+        + std::ops::Div<Output = DataType>
+        + std::iter::Sum
         + num_traits::identities::One
         + num_traits::identities::Zero
         + std::cmp::PartialOrd
-        + num_traits::Bounded,
+        + num_traits::Bounded
+        + Exp,
 {
     match &expr.as_ref()[index] {
         &Language::AccessTranspose([access_id, list_id]) => {
@@ -222,7 +226,27 @@ where
             };
 
             match compute_type {
-                ComputeType::Softmax => todo!(),
+                ComputeType::Softmax => {
+                    assert_eq!(
+                        access.access_axis,
+                        access.tensor.ndim() - 1,
+                        "Softmax over any axis other than the last is not implemented",
+                    );
+
+                    let shape = access.tensor.shape();
+                    let mut exps = ndarray::Zip::from(&access.tensor).apply_collect(|v| v.exp());
+                    let denominators = exps
+                        .sum_axis(ndarray::Axis(access.tensor.ndim() - 1))
+                        .insert_axis(ndarray::Axis(access.tensor.ndim() - 1));
+                    ndarray::Zip::from(&mut exps)
+                        .and(&denominators.broadcast(shape).unwrap())
+                        .apply(|v, denom| *v = *v / *denom);
+
+                    Value::Access(Access {
+                        access_axis: access.access_axis,
+                        tensor: exps,
+                    })
+                }
                 ComputeType::ElementwiseMul => Value::Access(Access {
                     access_axis: access.access_axis,
                     tensor: access
@@ -674,9 +698,40 @@ where
     }
 }
 
+/// Trait for types which implement the exponential function.
+pub trait Exp {
+    /// Calculate exponential function
+    fn exp(self) -> Self;
+}
+
+impl Exp for f64 {
+    /// ```
+    /// assert_eq!(1.234f64.exp(), 3.43494186080076);
+    /// ```
+    fn exp(self) -> Self {
+        Pow::pow(std::f64::consts::E, self)
+    }
+}
+
+impl Exp for f32 {
+    /// ```
+    /// assert_eq!(1.234f32.exp(), 3.4349418);
+    /// ```
+    fn exp(self) -> Self {
+        Pow::pow(std::f32::consts::E, self)
+    }
+}
+
+impl Exp for i64 {
+    fn exp(self) -> Self {
+        unreachable!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::AbsDiffEq;
     use ndarray::array;
     use std::str::FromStr;
 
@@ -1339,7 +1394,7 @@ mod tests {
     #[test]
     fn pad_type() {
         let expr = RecExpr::<Language>::from_str("zero-padding").unwrap();
-        match interpret::<i32>(&expr, expr.as_ref().len() - 1, &Environment::default()) {
+        match interpret::<i64>(&expr, expr.as_ref().len() - 1, &Environment::default()) {
             Value::PadType(PadType::ZeroPadding) => (),
             _ => panic!(),
         };
@@ -1877,5 +1932,30 @@ mod tests {
         )
         .unwrap();
         interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    fn compute_softmax() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[0.4597965, 0.8250755], [0.14535584, 0.16271448]].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str("(compute softmax (access (access-tensor t) 1))")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert!(tensor.abs_diff_eq(
+                    &array![[0.40968227, 0.5903177], [0.49566042, 0.5043395]].into_dyn(),
+                    1e-7
+                ));
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
     }
 }

@@ -92,7 +92,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 }
 "#,
         r#"
-(compute softmax (access-tensor x))
+(compute softmax (access (access-tensor x) 0))
 "#
     );
 
@@ -106,7 +106,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 }
 "#,
         r#"
-(compute softmax (compute softmax (access-tensor x)))
+(compute softmax (access (compute softmax (access (access-tensor x) 0)) 0))
 "#
     );
 

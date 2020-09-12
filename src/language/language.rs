@@ -236,7 +236,8 @@ pub enum ComputeType {
     /// Takes the max across all elements in each item. Reduces any item shape
     /// to a scalar.
     ReduceMax,
-    /// Computes softmax over an access regardless of access axis.
+    /// Computes softmax. Currently expects access axis to be 0. Unsure how to
+    /// define softmax for other access patterns.
     Softmax,
 }
 impl FromStr for ComputeType {
@@ -1388,6 +1389,11 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 match compute_type {
                     self::ComputeType::Softmax => {
+                        assert_eq!(
+                            a0.item_shape.ndim(),
+                            1,
+                            "Softmax is only implemented for axis=-1"
+                        );
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             // TODO(@gussmith23) Implement zero regions
                             // It's harmless (I think) if `zero_regions` defaults to
@@ -3497,7 +3503,31 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn compute_softmax_0() {
+        let program = "
+         (compute softmax (access (access-tensor t-3-32-32) 3))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        egraph.add_expr(&program);
+    }
+
+    #[test]
+    #[should_panic]
+    fn compute_softmax_1() {
+        let program = "
+         (compute softmax (access (access-tensor t-3-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn compute_softmax_2() {
         let program = "
          (compute softmax (access (access-tensor t-3-32-32) 2))
          "
@@ -3509,24 +3539,6 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32]));
                 assert_eq!(a.item_shape, IxDyn(&[32]));
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_softmax_1() {
-        let program = "
-         (compute softmax (access (access-tensor t-3-32-32) 0))
-         "
-        .parse()
-        .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        let id = egraph.add_expr(&program);
-        match &egraph[id].data {
-            MyAnalysisData::AccessPattern(a) => {
-                assert_eq!(a.shape, IxDyn(&[]));
-                assert_eq!(a.item_shape, IxDyn(&[3, 32, 32]));
             }
             _ => panic!(),
         }
