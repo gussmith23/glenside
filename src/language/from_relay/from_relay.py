@@ -51,7 +51,7 @@ def _recursive_helper(expr):
             # Axis argument other than -1 not implemented.
             assert expr.attrs.axis == -1
             return "(compute softmax {})".format(
-                _access(expr.args[0],
+                _access(_recursive_helper(expr.args[0]),
                         len(expr.args[0].checked_type.shape) - 1))
         if expr.op == tvm.ir.Op.get("nn.bias_add"):
             assert len(expr.args) == 2
@@ -70,7 +70,7 @@ def _elementwise_add(a, b):
 
     Parameters
     ----------
-    a, b : tvm.ir.RelayExpr
+    a, b : String
         The inputs to add."""
     return "(compute elementwise-add (access-pair {} {}))" \
         .format(_access(a, 0), _access(b, 0))
@@ -81,7 +81,7 @@ def _access(expr, axis):
 
     Parameters
     ----------
-    expr : tvm.ir.RelayExpr
+    expr : String
         The inputs to add.
 
     axis : int
@@ -92,7 +92,7 @@ def _access(expr, axis):
     out_code : String
         (access <code generated for expr> <axis)
     """
-    return "(access {} {})".format(_recursive_helper(expr), axis)
+    return "(access {} {})".format(expr, axis)
 
 
 if __name__ == "__main__":
