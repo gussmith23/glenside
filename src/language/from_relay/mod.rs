@@ -91,6 +91,10 @@ mod tests {
                     );
                 }
 
+                // TODO(@gussmith23) Include some simple simplifying rewrites
+                // If we add some very basic rewrites here, then $glenside_str
+                // won't need to exactly match what's actually produced by
+                // from_relay.py. It can be simpler (e.g. collapsing accesses).
                 let mut egraph = EGraph::new(MyAnalysis {
                     name_to_shape: shapes.clone(),
                 });
