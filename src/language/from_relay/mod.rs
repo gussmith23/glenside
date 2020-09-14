@@ -151,7 +151,12 @@ mod tests {
                     crate::language::interpreter::Value::Access(a) => a.tensor,
                     _ => panic!(),
                 };
-                assert!(relay_output.abs_diff_eq(&interpreter_output, $tol));
+                assert!(
+                    relay_output.abs_diff_eq(&interpreter_output, $tol),
+                    "{:?}\nvs.\n{:?}",
+                    relay_output,
+                    interpreter_output
+                );
             }
         };
     }
