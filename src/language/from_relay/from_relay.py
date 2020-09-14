@@ -54,8 +54,35 @@ def _recursive_helper(expr):
                         len(expr.args[0].checked_type.shape) - 1))
         if expr.op == tvm.ir.Op.get("nn.bias_add"):
             assert len(expr.args) == 2
+
+            # We need to broadcast the bias up to the correct size.
+            # In Relay, this is done automatically.
+            # In Glenside, this is done explicitly, in two steps:
+            # 1. Insert the missing axes into the bias tensor, so that the bias
+            #    tensor has the same number of dimensions as the data tensor
+            # 2. Broadcast the bias tensor so that it has the same shape as the
+            #    data tensor.
             assert 'axis' in expr.attrs.keys()
-            return _elementwise_add(expr.args[0], expr.args[1])
+            assert len(expr.args[1].checked_type.shape) == 1, \
+                "Only supporting vector biases at the moment"
+
+            data = _recursive_helper(expr.args[0])
+            bias = _recursive_helper(expr.args[1])
+
+            # Insert axes before
+            for _ in range(expr.attrs.axis):
+                bias = "(access-insert-axis {} 0)".format(bias)
+
+            # Insert axes after
+            for x in range(expr.attrs.axis + 1,
+                           len(expr.args[0].checked_type.shape)):
+                bias = "(access-insert-axis {} {})".format(bias, x)
+
+            # Broadcast
+            bias = "(access-broadcast {} (get-access-shape {}))".format(
+                bias, data)
+
+            return _elementwise_add(data, bias)
 
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))

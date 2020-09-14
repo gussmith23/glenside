@@ -185,16 +185,52 @@ mod tests {
     }
 
     test!(
-        bias_add,
+        bias_add_axis_0,
         1e-60,
         r#"
 #[version = "0.0.5"]
-def @main(%x: Tensor[(3), float32], %y: Tensor[(3), float32]) -> Tensor[(3), float32] {
-  nn.bias_add(%x, %y, axis=0) /* ty=Tensor[(3), float32] */
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=0)
 }
 "#,
         r#"
-(compute elementwise-add (access-pair (access (access-tensor x) 0) (access (access-tensor y) 0)))
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 1)
+    (get-access-shape (access-tensor x))
+   )
+   0
+  )
+ )
+)
+"#
+    );
+
+    test!(
+        bias_add_axis_1,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=1)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 0)
+    (get-access-shape (access-tensor x))
+   )
+   0
+  )
+ )
+)
 "#
     );
 
