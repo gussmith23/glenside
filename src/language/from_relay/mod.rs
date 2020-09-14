@@ -177,7 +177,7 @@ def @main(%x: Tensor[(3), float32], %y: Tensor[(3), float32]) -> Tensor[(3), flo
 
     test!(
         softmax_0,
-        1e-10,
+        1e-7,
         r#"
 #[version = "0.0.5"]
 def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
@@ -191,7 +191,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 
     test!(
         softmax_1,
-        1e-10,
+        1e-7,
         r#"
 #[version = "0.0.5"]
 def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
