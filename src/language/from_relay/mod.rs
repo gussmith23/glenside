@@ -6,7 +6,7 @@ mod tests {
     use egg::{EGraph, Pattern, RecExpr, Searcher};
     use ndarray_npy::{read_npy, write_npy};
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
-    use rand::Rng;
+    use rand::{rngs::SmallRng, Rng, SeedableRng};
     use serde_json::{from_str, Value};
     use std::collections::HashMap;
     use std::io::Write;
@@ -27,6 +27,10 @@ mod tests {
         ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr) => {
             #[test]
             fn $test_name() {
+                // Random number generator for generating random tensors.
+                const SEED: u64 = 23;
+                let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+
                 let script_filepath = format!(
                     "{}/src/language/from_relay/from_relay.py",
                     env!("CARGO_MANIFEST_DIR")
@@ -97,6 +101,11 @@ mod tests {
                 );
                 // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
                 // Output filename
+                // TODO(@gussmith23) Do we want this RNG to use SEED?
+                // I initially attempted to do this, but was running into issues
+                // (I think the same filename kept being generated b/c I wasn't
+                // using the RNG carefully...but maybe there's also something
+                // wrong w/ how I'm reading files!)
                 let output_filepath = std::env::temp_dir().with_file_name(format!(
                     "output-{}.npy",
                     rand::thread_rng()
@@ -113,8 +122,11 @@ mod tests {
                 let mut env = HashMap::default();
                 for (name, shape) in shapes.iter() {
                     // TODO(@gussmith23) output type assumption
-                    let value =
-                        ndarray::ArrayD::<f32>::random(shape.clone(), Uniform::new(-1f32, 1f32));
+                    let value = ndarray::ArrayD::<f32>::random_using(
+                        shape.clone(),
+                        Uniform::new(-1f32, 1f32),
+                        &mut tensor_rng,
+                    );
                     env.insert(name.as_str(), value.clone());
                     let filepath = std::env::temp_dir().with_file_name(format!(
                         "arg-{}.npy",
