@@ -19,10 +19,9 @@ def glenside_from_ir_module(module):
         glenside_str is the glenside text-format implementing the module.
         shapes is a map from tensor variable name to tensor shape."""
 
-    shapes = {
-        var.name_hint: tuple(int(val) for val in var.checked_type.shape)
-        for var in module['main'].params
-    }
+    shapes = [(var.name_hint,
+               tuple(int(val) for val in var.checked_type.shape))
+              for var in module['main'].params]
 
     return (_recursive_helper(module['main'].body), shapes)
 

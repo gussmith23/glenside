@@ -73,16 +73,16 @@ mod tests {
 
                 // Parse shape dict
                 let mut shapes = HashMap::default();
-                for (key, value) in json_output
+                for val in json_output
                     .get("shapes")
                     .unwrap()
-                    .as_object()
+                    .as_array()
                     .unwrap()
                     .iter()
                 {
                     shapes.insert(
-                        key.clone(),
-                        value
+                        val[0].as_str().unwrap().to_owned(),
+                        val[1]
                             .as_array()
                             .unwrap()
                             .iter()
