@@ -108,6 +108,23 @@ def _recursive_helper(expr):
             return '(access-flatten {})' \
                 .format(_access(_recursive_helper(expr.args[0]), 1))
 
+        if expr.op == tvm.ir.Op.get("nn.global_avg_pool2d"):
+            assert len(expr.args) == 1
+            assert _ndim(expr.args[0]) == 4
+            assert expr.attrs.layout == 'NCHW', \
+                'Other layouts not yet supported'
+            if expr.attrs.layout == 'NCHW':
+                # Compute the mean
+                out = '(compute reduce-mean {})' \
+                    .format(_access(_recursive_helper(expr.args[0]), 2))
+                # Insert the last two dimensions back
+                out = '(access-insert-axis (access-insert-axis {} 2) 3)' \
+                    .format(out)
+                # Re-access at correct location
+                out = _access(out, 2)
+                return out
+            else:
+                assert False, 'unreachable'
 
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))

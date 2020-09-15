@@ -208,6 +208,29 @@ mod tests {
     }
 
     test!(
+        global_avg_pool2d,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1), float32] {
+  nn.global_avg_pool2d(%x) /* ty=Tensor[(1, 3, 1, 1), float32] */
+}
+"#,
+        r#"
+(access
+ (access-insert-axis
+  (access-insert-axis
+   (compute reduce-mean (access (access-tensor x) 2))
+   2
+  )
+  3
+ )
+ 2
+)
+"#
+    );
+
+    test!(
         batch_flatten,
         1e-60,
         r#"
