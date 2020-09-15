@@ -52,6 +52,7 @@ mod tests {
                 let mut proc = cmd
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
                     .spawn()
                     .ok()
                     .expect("Failed to spawn process");
@@ -148,7 +149,9 @@ mod tests {
                         cmd.arg($optional_arg);
                     }
                     cmd.arg(&output_filepath);
-                    cmd.stdin(std::process::Stdio::piped());
+                    cmd.stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped());
                     let mut env = HashMap::default();
                     for (name, shape) in shapes.iter() {
                         // TODO(@gussmith23) output type assumption
