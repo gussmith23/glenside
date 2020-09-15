@@ -11,8 +11,7 @@ parser.add_argument('--relay_filepath',
                     nargs=1,
                     type=argparse.FileType('rb'),
                     default=sys.stdin)
-parser.add_argument('npy_out_filepath',
-                    type=argparse.FileType('wb'))
+parser.add_argument('npy_out_filepath', type=argparse.FileType('wb'))
 parser.add_argument('npy_arg_filepath',
                     nargs='*',
                     type=argparse.FileType('rb'))
