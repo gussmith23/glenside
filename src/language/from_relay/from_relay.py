@@ -102,6 +102,13 @@ def _recursive_helper(expr):
                 .format(_access(_recursive_helper(expr.args[0]), 1),
                         _access(_recursive_helper(expr.args[1]), 1))
 
+        if expr.op == tvm.ir.Op.get("nn.batch_flatten"):
+            assert len(expr.args) == 1
+            assert _ndim(expr.args[0]) >= 1
+            return '(access-flatten {})' \
+                .format(_access(_recursive_helper(expr.args[0]), 1))
+
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):

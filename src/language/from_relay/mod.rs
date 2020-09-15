@@ -208,6 +208,20 @@ mod tests {
     }
 
     test!(
+        batch_flatten,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(2, 3, 3, 4, 100), float32]) -> Tensor[(2, 3600), float32] {
+  nn.batch_flatten(%x)
+}
+"#,
+        r#"
+(access-flatten (access (access-tensor x) 1))
+"#
+    );
+
+    test!(
         dense,
         1e-5,
         r#"
