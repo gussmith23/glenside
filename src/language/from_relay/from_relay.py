@@ -126,6 +126,11 @@ def _recursive_helper(expr):
             else:
                 assert False, 'unreachable'
 
+        if expr.op == tvm.ir.Op.get("nn.relu"):
+            assert len(expr.args) == 1
+            return '(compute relu {})' \
+                .format(_recursive_helper(expr.args[0]))
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):

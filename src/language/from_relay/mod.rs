@@ -208,6 +208,20 @@ mod tests {
     }
 
     test!(
+        relu,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  nn.relu(%x)
+}
+"#,
+        r#"
+(compute relu (access-tensor x))
+"#
+    );
+
+    test!(
         global_avg_pool2d,
         1e-60,
         r#"
