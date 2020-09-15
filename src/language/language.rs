@@ -239,6 +239,9 @@ pub enum ComputeType {
     /// Computes softmax. Currently expects access axis to be 0. Unsure how to
     /// define softmax for other access patterns.
     Softmax,
+    /// For an item shape of `a1 x a2 x ...`, returns an item shape of `1` where
+    /// the returned scalar is the mean of the `a1 x a2 x ...`-shaped tensor.
+    ReduceMean,
 }
 impl FromStr for ComputeType {
     type Err = ();
@@ -251,6 +254,7 @@ impl FromStr for ComputeType {
             "elementwise-add" => Ok(ComputeType::ElementwiseAdd),
             "elementwise-mul" => Ok(ComputeType::ElementwiseMul),
             "softmax" => Ok(ComputeType::Softmax),
+            "reduce-mean" => Ok(ComputeType::ReduceMean),
             _ => Err(()),
         }
     }
@@ -268,6 +272,7 @@ impl Display for ComputeType {
                 ComputeType::ElementwiseAdd => "elementwise-add",
                 ComputeType::ElementwiseMul => "elementwise-mul",
                 ComputeType::Softmax => "softmax",
+                ComputeType::ReduceMean => "reduce-mean",
             }
         )
     }
@@ -1388,6 +1393,25 @@ impl egg::Analysis<Language> for MyAnalysis {
                 }
 
                 match compute_type {
+                    self::ComputeType::ReduceMean => {
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            // TODO(@gussmith23) Implement zero regions
+                            // It's harmless (I think) if `zero_regions` defaults to
+                            // empty, but for it to be useful, we need to implement it
+                            // for each operator.
+                            zero_regions: {
+                                if !a0.zero_regions.is_empty() {
+                                    warn!(
+                                        "Throwing away zero region analysis data on line {}",
+                                        std::line!()
+                                    );
+                                }
+                                HashMap::default()
+                            },
+                            shape: a0.shape.clone(),
+                            item_shape: ndarray::IxDyn(&[]),
+                        })
+                    }
                     self::ComputeType::Softmax => {
                         assert_eq!(
                             a0.item_shape.ndim(),
@@ -3539,6 +3563,42 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32]));
                 assert_eq!(a.item_shape, IxDyn(&[32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_0() {
+        let program = "
+         (compute reduce-mean (access (access-tensor t-3-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_1() {
+        let program = "
+         (compute reduce-mean (access (access-tensor t-3-32-32) 2))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[3, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }

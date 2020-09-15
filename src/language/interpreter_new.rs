@@ -2,9 +2,11 @@ use super::language::{ComputeType, Language, PadType};
 use egg::RecExpr;
 use itertools::Itertools;
 use ndarray::{s, Array, ArrayD, Dimension, IxDyn, Zip};
+use num_traits::cast::AsPrimitive;
 use num_traits::Pow;
 use std::collections::hash_map::HashMap;
 use std::iter::FromIterator;
+use std::ops::Div;
 
 pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
@@ -27,7 +29,7 @@ pub type Environment<'a, DataType> = HashMap<&'a str, ArrayD<DataType>>;
 // TODO(@gussmith23) Interpreter stack overflows on large programs
 // If I want to interpret something like a full resnet, then I will have to
 // figure out a way around the stack overflows.
-pub fn interpret<DataType>(
+pub fn interpret<DataType: 'static>(
     expr: &RecExpr<Language>,
     index: usize,
     env: &Environment<DataType>,
@@ -41,7 +43,9 @@ where
         + num_traits::identities::Zero
         + std::cmp::PartialOrd
         + num_traits::Bounded
-        + Exp,
+        + Exp
+        + ndarray::ScalarOperand,
+    usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
         &Language::AccessFlatten(access_id) => {
@@ -249,6 +253,33 @@ where
             };
 
             match compute_type {
+                ComputeType::ReduceMean => Value::Access(Access {
+                    tensor: access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            access.tensor.shape()[..access.access_axis]
+                                .iter()
+                                .cloned()
+                                .chain(std::iter::once(
+                                    access.tensor.shape()[access.access_axis..]
+                                        .iter()
+                                        .cloned()
+                                        .product(),
+                                ))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        )
+                        .unwrap()
+                        .sum_axis(ndarray::Axis(access.access_axis))
+                        .div(
+                            access.tensor.shape()[access.access_axis..]
+                                .iter()
+                                .product::<usize>()
+                                .as_(),
+                        ),
+                    access_axis: access.access_axis,
+                }),
                 ComputeType::Softmax => {
                     assert_eq!(
                         access.access_axis,
@@ -2108,6 +2139,123 @@ mod tests {
                     )
                     .unwrap(),
                 );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 0))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::arr0((1f64 + 2f64 + 3f64 + 4f64 + 5f64 + 6f64 + 7f64 + 8f64) / 8f64)
+                        .into_dyn(),
+                );
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 1))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        (1f64 + 2f64 + 3f64 + 4f64) / 4f64,
+                        (5f64 + 6f64 + 7f64 + 8f64) / 4f64
+                    ]
+                    .into_dyn(),
+                );
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 2))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        [(1f64 + 2f64) / 2f64, (3f64 + 4f64) / 2f64],
+                        [(5f64 + 6f64) / 2f64, (7f64 + 8f64) / 2f64]
+                    ]
+                    .into_dyn(),
+                );
+                assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 3))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+                );
+                assert_eq!(access_axis, 3);
             }
             _ => panic!(),
         }
