@@ -208,6 +208,52 @@ mod tests {
     }
 
     test!(
+        conv2d,
+        1e-5,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3), float32]) -> Tensor[(1, 8, 17, 12), float32] {
+  nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 8, 17, 12), float32] */
+}
+"#,
+        r#"
+(access-transpose
+ (compute dot-product
+  (access-cartesian-product
+   (access (access-tensor weights) 1)
+   (access
+    (access-squeeze
+     (access-squeeze
+      (access-windows
+       (access
+        (access-pad
+         (access-pad
+          (access-tensor data)
+          zero-padding
+          2 1 3
+         )
+         zero-padding
+         3 2 4
+        )
+        4
+       )
+       (shape 1 3 3 3)
+       (shape 1 1 2 3)
+      )
+      4
+     )
+     1
+    )
+    3
+   )
+  )
+ )
+ (list 1 0 2 3)
+)
+"#
+    );
+
+    test!(
         multiply,
         1e-60,
         r#"

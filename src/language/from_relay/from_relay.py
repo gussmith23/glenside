@@ -171,6 +171,80 @@ def _recursive_helper(expr):
             else:
                 assert False, 'unreachable'
 
+        if expr.op == tvm.ir.Op.get('nn.conv2d'):
+            assert len(expr.args) == 2
+            assert _ndim(expr.args[0]) == 4
+            assert _ndim(expr.args[1]) == 4
+            assert len(expr.attrs.padding) == 4
+            assert [int(v) for v in expr.attrs.dilation] == [1, 1]
+            assert expr.attrs.groups == 1
+            assert expr.attrs.channels == None
+            assert expr.attrs.kernel_size == None
+            assert expr.attrs.data_layout == 'NCHW'
+            assert expr.attrs.kernel_layout == 'OIHW'
+            assert expr.attrs.out_layout == ''
+            assert expr.attrs.out_dtype == ''
+
+            data = _recursive_helper(expr.args[0])
+            weights = _recursive_helper(expr.args[1])
+
+            stride = [int(v) for v in expr.attrs.strides]
+            pad = [int(v) for v in expr.attrs.padding]
+            data_layout = expr.attrs.data_layout
+            kernel_layout = expr.attrs.kernel_layout
+
+            # TODO(@gussmith23) Layout assumption
+            assert kernel_layout == 'OIHW'
+            # it's not actually the "weight shape" exactly. it's the shape of
+            # ONE weight, with batch dim = 1.
+            weights_shape = "(shape 1 {})" \
+                .format(" ".join(str(v) for v in expr.args[1].checked_type.shape[1:]))
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            data = "(access-pad {} zero-padding 2 {} {})" \
+                .format(data, pad[0], pad[2])
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            data = "(access-pad {} zero-padding 3 {} {})" \
+                .format(data, pad[1], pad[3])
+
+            # Access windows expects access to access last dimension
+            data = _access(data, 4)
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            assert kernel_layout == 'OIHW'
+            stride_list = "(shape 1 1 {} {})" \
+                .format(stride[0], stride[1])
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            assert kernel_layout == 'OIHW'
+            data = "(access-windows {} {} {})" \
+                .format(data, weights_shape, stride_list)
+
+            # TODO(@gussmith23) Layout assumption
+            # Squeeze input channels (axis 1) and kernel batch (axis 4)
+            assert data_layout == 'NCHW'
+            data = "(access-squeeze (access-squeeze {} 4) 1)" \
+                .format(data)
+
+            data = _access(data, 3)
+
+            weights = _access(weights, 1)
+
+            data = "(compute dot-product (access-cartesian-product {} {}))" \
+                .format(weights, data)
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            # Transpose to NCHW
+            data = "(access-transpose {} (list 1 0 2 3))".format(data)
+
+            return data
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):
