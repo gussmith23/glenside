@@ -178,8 +178,6 @@ def _recursive_helper(expr):
             assert len(expr.attrs.padding) == 4
             assert [int(v) for v in expr.attrs.dilation] == [1, 1]
             assert expr.attrs.groups == 1
-            assert expr.attrs.channels == None
-            assert expr.attrs.kernel_size == None
             assert expr.attrs.data_layout == 'NCHW'
             assert expr.attrs.kernel_layout == 'OIHW'
             assert expr.attrs.out_layout == ''
