@@ -131,7 +131,8 @@ def _recursive_helper(expr):
             return '(compute relu {})' \
                 .format(_recursive_helper(expr.args[0]))
 
-        if expr.op == tvm.ir.Op.get('add'):
+        if expr.op == tvm.ir.Op.get('add') \
+           or expr.op == tvm.ir.Op.get('multiply'):
             assert len(expr.args) == 2
             a = _recursive_helper(expr.args[0])
             a_shape = [int(v) for v in expr.args[0].checked_type.shape]
@@ -163,13 +164,29 @@ def _recursive_helper(expr):
                 b = "(access-broadcast {} (get-access-shape {}))" \
                     .format(b, a)
 
-            return _elementwise_add(a, b)
+            if expr.op == tvm.ir.Op.get('add'):
+                return _elementwise_add(a, b)
+            elif expr.op == tvm.ir.Op.get('multiply'):
+                return _elementwise_mul(a, b)
+            else:
+                assert False, 'unreachable'
 
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):
         sys.stderr.write("Call to operator: {}\n".format(expr.op))
     exit(1)
+
+
+def _elementwise_mul(a, b):
+    """Generate elementwise multiplication
+
+    Parameters
+    ----------
+    a, b : String
+        The inputs to multiply."""
+    return "(compute elementwise-mul (access-pair {} {}))" \
+        .format(_access(a, 0), _access(b, 0))
 
 
 def _elementwise_add(a, b):
