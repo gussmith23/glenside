@@ -5,6 +5,11 @@ from tvm import relay
 import json
 
 
+def _ndim(expr):
+    '''Return number of dimensions of a Relay expression'''
+    return len(expr.checked_type.shape)
+
+
 def glenside_from_ir_module(module):
     """Convert TVM IRModule to Glenside text format
 
@@ -84,6 +89,21 @@ def _recursive_helper(expr):
 
             return _elementwise_add(data, bias)
 
+        if expr.op == tvm.ir.Op.get("nn.dense"):
+            assert len(expr.args) == 2
+            assert expr.attrs.units == None, \
+                'Hidden units not yet supported'
+            assert expr.attrs.out_dtype == '', \
+                'out_dtype not yet supported'
+            assert _ndim(expr.args[0]) == 2, \
+                'First arg to dense should have 2 dimensions for now'
+            assert _ndim(expr.args[1]) == 2, \
+                'Second arg to dense should have 2 dimensions for now'
+
+            return '(compute dot-product (access-cartesian-product {} {}))' \
+                .format(_access(_recursive_helper(expr.args[0]), 1),
+                        _access(_recursive_helper(expr.args[1]), 1))
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):
@@ -134,8 +154,20 @@ if __name__ == "__main__":
                         nargs='?',
                         type=argparse.FileType('w'),
                         default=sys.stdout)
+    parser.add_argument(
+        '--dense',
+        action='store_true',
+        help='Temporary band-aid b/c nn.dense Relay parser is broken')
     parsed = parser.parse_args(sys.argv[1:])
 
-    relay_in = parsed.infile.read()
-    out, shapes = glenside_from_ir_module(tvm.parser.fromtext(relay_in))
+    if parsed.dense:
+        data = relay.var('data', shape=(16, 32), dtype='float32')
+        weights = relay.var('weights', shape=(64, 32), dtype='float32')
+        module = tvm.IRModule.from_expr(
+            relay.Function([data, weights], relay.nn.dense(data, weights)))
+        out, shapes = glenside_from_ir_module(module)
+    else:
+        relay_in = parsed.infile.read()
+        out, shapes = glenside_from_ir_module(tvm.parser.fromtext(relay_in))
+
     parsed.outfile.write(json.dumps({'program': out, 'shapes': shapes}))

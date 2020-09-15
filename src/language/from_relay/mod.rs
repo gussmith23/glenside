@@ -25,6 +25,9 @@ mod tests {
     ///     expression
     macro_rules! test {
         ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr) => {
+            test!($test_name, $tol, $relay_str, $glenside_str, "");
+        };
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal) => {
             #[test]
             fn $test_name() {
                 // The number of times to run each program and compare their
@@ -41,8 +44,12 @@ mod tests {
                     env!("CARGO_MANIFEST_DIR")
                 );
                 // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
-                let mut proc = Command::new("python3")
-                    .arg(script_filepath)
+                let mut cmd = Command::new("python3");
+                cmd.arg(script_filepath);
+                if ($optional_arg.len() > 0) {
+                    cmd.arg($optional_arg);
+                }
+                let mut proc = cmd
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
                     .spawn()
@@ -136,10 +143,12 @@ mod tests {
                     ));
 
                     let mut cmd = Command::new("python3");
-                    let cmd = cmd
-                        .arg(script_filepath)
-                        .arg(&output_filepath)
-                        .stdin(std::process::Stdio::piped());
+                    cmd.arg(script_filepath);
+                    if $optional_arg.len() > 0 {
+                        cmd.arg($optional_arg);
+                    }
+                    cmd.arg(&output_filepath);
+                    cmd.stdin(std::process::Stdio::piped());
                     let mut env = HashMap::default();
                     for (name, shape) in shapes.iter() {
                         // TODO(@gussmith23) output type assumption
@@ -194,6 +203,24 @@ mod tests {
             }
         };
     }
+
+    test!(
+        dense,
+        1e-5,
+        r#"
+TODO(@gussmith23) Relay parser for nn.dense is broken
+This is unused until the parser works.
+"#,
+        r#"
+(compute dot-product
+ (access-cartesian-product
+  (access (access-tensor data) 1)
+  (access (access-tensor weights) 1)
+ )
+)
+"#,
+        "--dense"
+    );
 
     test!(
         bias_add_axis_0,
