@@ -72,7 +72,9 @@ mod tests {
                     RecExpr::from_str(glenside_str).expect("Could not parse glenside expression");
 
                 // Parse shape dict
-                let mut shapes = HashMap::default();
+                // Shapes and env are basically the same; shapes is ordered.
+                let mut shapes = Vec::default();
+                let mut env = HashMap::default();
                 for val in json_output
                     .get("shapes")
                     .unwrap()
@@ -80,7 +82,16 @@ mod tests {
                     .unwrap()
                     .iter()
                 {
-                    shapes.insert(
+                    shapes.push((
+                        val[0].as_str().unwrap().to_owned(),
+                        val[1]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|v| v.as_u64().unwrap() as usize)
+                            .collect::<Vec<_>>(),
+                    ));
+                    env.insert(
                         val[0].as_str().unwrap().to_owned(),
                         val[1]
                             .as_array()
@@ -96,7 +107,7 @@ mod tests {
                 // won't need to exactly match what's actually produced by
                 // from_relay.py. It can be simpler (e.g. collapsing accesses).
                 let mut egraph = EGraph::new(MyAnalysis {
-                    name_to_shape: shapes.clone(),
+                    name_to_shape: env.clone(),
                 });
                 let id = egraph.add_expr(&expr);
 
