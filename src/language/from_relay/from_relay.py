@@ -131,6 +131,40 @@ def _recursive_helper(expr):
             return '(compute relu {})' \
                 .format(_recursive_helper(expr.args[0]))
 
+        if expr.op == tvm.ir.Op.get('add'):
+            assert len(expr.args) == 2
+            a = _recursive_helper(expr.args[0])
+            a_shape = [int(v) for v in expr.args[0].checked_type.shape]
+            b = _recursive_helper(expr.args[1])
+            b_shape = [int(v) for v in expr.args[1].checked_type.shape]
+
+            # Make the number of dimensions match
+            while len(a_shape) < len(b_shape):
+                a = '(access-insert-axis {} 0)'.format(a)
+                a_shape = [1] + a_shape
+            while len(b_shape) < len(a_shape):
+                b = '(access-insert-axis {} 0)'.format(b)
+                b_shape = [1] + b_shape
+
+            # Cannot handle complex broadcasts.
+            # That is, cannot handle broadcasts where dim an in shape a must be
+            # broadcast up to dimension bn, while simultaneously dimension bm
+            # in shape b must be broadcast up to dimension am.
+            # This is a limitation of access-broadcast which will take some
+            # rethinking to fix.
+            assert all(map(lambda t: t[0] <= t[1], zip(a_shape, b_shape))) \
+                or \
+                all(map(lambda t: t[0] >= t[1], zip(a_shape, b_shape)))
+
+            if any(map(lambda t: t[0] < t[1], zip(a_shape, b_shape))):
+                a = "(access-broadcast {} (get-access-shape {}))" \
+                    .format(a, b)
+            elif any(map(lambda t: t[0] > t[1], zip(a_shape, b_shape))):
+                b = "(access-broadcast {} (get-access-shape {}))" \
+                    .format(b, a)
+
+            return _elementwise_add(a, b)
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):
