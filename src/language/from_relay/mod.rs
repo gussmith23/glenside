@@ -64,7 +64,7 @@ mod tests {
                 // Check that it ran.
                 assert!(
                     output.status.success(),
-                    "Failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+                    "Relay to Glenside conversion failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
                     output.status.code(),
                     std::str::from_utf8(output.stdout.as_slice())
                         .expect("Could not convert stderr to UTF8"),
@@ -179,7 +179,7 @@ mod tests {
                     // Check that it ran.
                     assert!(
                         output.status.success(),
-                        "Failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+                        "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
                         output.status.code(),
                         std::str::from_utf8(output.stdout.as_slice())
                             .expect("Could not convert stderr to UTF8"),
