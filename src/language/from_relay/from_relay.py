@@ -91,8 +91,6 @@ def _recursive_helper(expr):
 
         if expr.op == tvm.ir.Op.get("nn.dense"):
             assert len(expr.args) == 2
-            assert expr.attrs.units == None, \
-                'Hidden units not yet supported'
             assert expr.attrs.out_dtype == '', \
                 'out_dtype not yet supported'
             assert _ndim(expr.args[0]) == 2, \
