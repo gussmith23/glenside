@@ -44,6 +44,29 @@ where
         + Exp,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessFlatten(access_id) => {
+            let mut access = match interpret(expr, access_id as usize, env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+
+            let shape = if access.access_axis <= 0 || access.access_axis >= access.tensor.ndim() {
+                vec![access.tensor.shape().iter().product::<usize>()]
+            } else {
+                vec![
+                    access.tensor.shape()[..access.access_axis]
+                        .iter()
+                        .product::<usize>(),
+                    access.tensor.shape()[access.access_axis..]
+                        .iter()
+                        .product::<usize>(),
+                ]
+            };
+
+            access.tensor = access.tensor.into_shape(shape).unwrap().into_dyn();
+
+            Value::Access(access)
+        }
         &Language::AccessTranspose([access_id, list_id]) => {
             let mut access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -690,7 +713,6 @@ where
         | &Language::BsgSystolicArray(_)
         | &Language::SystolicArray(_)
         | &Language::AccessReshape(_)
-        | &Language::AccessFlatten(_)
         | &Language::AccessShape(_)
         | &Language::AccessSlice(_)
         | &Language::AccessConcatenate(_)
@@ -1954,6 +1976,138 @@ mod tests {
                     1e-7
                 ));
                 assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 0))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2 * 2 * 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 1))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2, 2 * 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 2))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2 * 2, 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 5))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2 * 2 * 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
             }
             _ => panic!(),
         }
