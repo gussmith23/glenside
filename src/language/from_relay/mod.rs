@@ -208,6 +208,20 @@ mod tests {
     }
 
     test!(
+        expand_dims,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1, 1, 32, 32), float32] {
+  expand_dims(%data, axis=2, num_newaxis=3) /* ty=Tensor[(1, 3, 1, 1, 1, 32, 32), float32] */
+}
+"#,
+        r#"
+(access-insert-axis (access-insert-axis (access-insert-axis (access-tensor data) 2) 2) 2)
+"#
+    );
+
+    test!(
         max_pool2d,
         1e-60,
         r#"

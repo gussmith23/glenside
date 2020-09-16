@@ -293,6 +293,17 @@ def _recursive_helper(expr):
 
             return data
 
+        if expr.op == tvm.ir.Op.get('expand_dims'):
+            assert len(expr.args) == 1
+
+            data = _recursive_helper(expr.args[0])
+
+            for _ in range(int(expr.attrs.num_newaxis)):
+                data = '(access-insert-axis {} {})' \
+                    .format(data, int(expr.attrs.axis))
+
+            return data
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):
