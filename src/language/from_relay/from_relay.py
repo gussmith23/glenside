@@ -243,6 +243,56 @@ def _recursive_helper(expr):
 
             return data
 
+        if expr.op == tvm.ir.Op.get('nn.max_pool2d'):
+            assert len(expr.args) == 1
+            assert _ndim(expr.args[0]) == 4
+            assert len(expr.attrs.pool_size) == 2
+            assert len(expr.attrs.padding) == 4
+            assert len(expr.attrs.strides) == 2
+            assert expr.attrs.layout == 'NCHW'
+            assert expr.attrs.ceil_mode == False
+
+            data_layout = expr.attrs.layout
+            data = _recursive_helper(expr.args[0])
+            stride = [int(v) for v in expr.attrs.strides]
+            pad = [int(v) for v in expr.attrs.padding]
+            pool_size = [int(v) for v in expr.attrs.pool_size]
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            data = "(access-pad {} min-padding 2 {} {})" \
+                .format(data, pad[0], pad[2])
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            data = "(access-pad {} min-padding 3 {} {})" \
+                .format(data, pad[1], pad[3])
+
+            # Access windows expects access to access last dimension
+            data = _access(data, 4)
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            stride_list = "(shape 1 1 {} {})" \
+                .format(stride[0], stride[1])
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            pool_window_shape = '(shape 1 1 {} {})' \
+                .format(pool_size[0], pool_size[1])
+
+            # TODO(@gussmith23) Layout assumption
+            assert data_layout == 'NCHW'
+            data = "(access-windows {} {} {})" \
+                .format(data, pool_window_shape, stride_list)
+
+            # Compute over window dimensions
+            data = _access(data, 4)
+
+            data = '(compute reduce-max {})'.format(data)
+
+            return data
+
     # If we make it here, we haven't yet implemented parsing for the expression.
     sys.stderr.write("Cannot parse expression of type {}\n".format(type(expr)))
     if isinstance(expr, tvm.relay.Call):
