@@ -313,6 +313,27 @@ where
                         tensor: exps,
                     })
                 }
+                ComputeType::ElementwiseDiv => Value::Access(Access {
+                    access_axis: access.access_axis,
+                    tensor: access
+                        .tensor
+                        .axis_iter(ndarray::Axis(access.access_axis))
+                        .fold(
+                            ndarray::ArrayBase::ones(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .chain(
+                                        access.tensor.shape()[access.access_axis + 1..]
+                                            .iter()
+                                            .cloned(),
+                                    )
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            ),
+                            |acc, t| acc / t,
+                        ),
+                }),
                 ComputeType::ElementwiseMul => Value::Access(Access {
                     access_axis: access.access_axis,
                     tensor: access
@@ -2301,6 +2322,36 @@ mod tests {
                     .into_dyn()
                 );
                 assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_elementwise_div() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 1]], [[-5, 6], [1, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute elementwise-div
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![[1 / -5 / -9, -2 / 6 / 10], [3 / 1 / 11, 1 / 8 / 12]].into_dyn()
+                );
             }
             _ => panic!(),
         }

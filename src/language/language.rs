@@ -233,6 +233,7 @@ pub enum ComputeType {
     /// Expects item shape of `a x b1 x .. x bn`. Performs an elementwise
     /// multiplication of the `a` tensors of size `b1 x .. x bn`.
     ElementwiseMul,
+    ElementwiseDiv,
     /// Takes the max across all elements in each item. Reduces any item shape
     /// to a scalar.
     ReduceMax,
@@ -253,6 +254,7 @@ impl FromStr for ComputeType {
             "relu" => Ok(ComputeType::ReLU),
             "elementwise-add" => Ok(ComputeType::ElementwiseAdd),
             "elementwise-mul" => Ok(ComputeType::ElementwiseMul),
+            "elementwise-div" => Ok(ComputeType::ElementwiseDiv),
             "softmax" => Ok(ComputeType::Softmax),
             "reduce-mean" => Ok(ComputeType::ReduceMean),
             _ => Err(()),
@@ -271,6 +273,7 @@ impl Display for ComputeType {
                 ComputeType::ReLU => "relu",
                 ComputeType::ElementwiseAdd => "elementwise-add",
                 ComputeType::ElementwiseMul => "elementwise-mul",
+                ComputeType::ElementwiseDiv => "elementwise-div",
                 ComputeType::Softmax => "softmax",
                 ComputeType::ReduceMean => "reduce-mean",
             }
@@ -1449,7 +1452,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: a0.item_shape.clone(),
                         })
                     }
-                    self::ComputeType::ElementwiseAdd | self::ComputeType::ElementwiseMul => {
+                    self::ComputeType::ElementwiseAdd
+                    | self::ComputeType::ElementwiseMul
+                    | self::ComputeType::ElementwiseDiv => {
                         assert!(a0.item_shape.ndim() >= 1);
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             // TODO(@gussmith23) Implement zero regions
@@ -3630,6 +3635,24 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[35]));
                 assert_eq!(a.item_shape, IxDyn(&[32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_elementwise_div() {
+        let program = "
+         (compute elementwise-div (access (access-tensor t-3-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
             }
             _ => panic!(),
         }
