@@ -218,28 +218,40 @@ where
                 _ => panic!(),
             };
 
-            match pad_type {
-                PadType::ZeroPadding => {
-                    let mut before_shape = access.tensor.shape().to_vec();
-                    before_shape[axis] = pad_before;
-                    let mut after_shape = access.tensor.shape().to_vec();
-                    after_shape[axis] = pad_after;
+            let mut before_shape = access.tensor.shape().to_vec();
+            before_shape[axis] = pad_before;
+            let mut after_shape = access.tensor.shape().to_vec();
+            after_shape[axis] = pad_after;
 
-                    Value::Access(Access {
-                        tensor: ndarray::stack(
-                            ndarray::Axis(axis),
-                            &[
-                                // TODO(@gussmith) What's going on here...
-                                ndarray::ArrayD::zeros(before_shape).to_owned().view(),
-                                access.tensor.clone().view(),
-                                ndarray::ArrayD::zeros(after_shape).to_owned().view(),
-                            ],
+            Value::Access(Access {
+                tensor: ndarray::stack(
+                    ndarray::Axis(axis),
+                    &[
+                        // TODO(@gussmith) What's going on here...
+                        ndarray::ArrayD::from_elem(
+                            before_shape,
+                            match &pad_type {
+                                PadType::ZeroPadding => DataType::zero(),
+                                PadType::MinPadding => DataType::min_value(),
+                            },
                         )
-                        .unwrap(),
-                        access_axis: access.access_axis,
-                    })
-                }
-            }
+                        .to_owned()
+                        .view(),
+                        access.tensor.clone().view(),
+                        ndarray::ArrayD::from_elem(
+                            after_shape,
+                            match &pad_type {
+                                PadType::ZeroPadding => DataType::zero(),
+                                PadType::MinPadding => DataType::min_value(),
+                            },
+                        )
+                        .to_owned()
+                        .view(),
+                    ],
+                )
+                .unwrap(),
+                access_axis: access.access_axis,
+            })
         }
         Language::ComputeType(t) => Value::ComputeType(t.clone()),
         &Language::Compute([compute_type_id, access_id]) => {
@@ -2256,6 +2268,39 @@ mod tests {
                     array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
                 );
                 assert_eq!(access_axis, 3);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pad_min_padding() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-pad (access-tensor t) min-padding 0 2 4)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN],
+                        [1., 2.],
+                        [3., 4.],
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN]
+                    ]
+                    .into_dyn()
+                );
+                assert_eq!(access_axis, 0);
             }
             _ => panic!(),
         }

@@ -923,6 +923,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                         .join(""),
                     pad_value = match pad_type {
                         PadType::ZeroPadding => "0",
+                        PadType::MinPadding => todo!(),
                     },
                     in_name = access_var_name,
                     in_index = (0..new_shape.len())

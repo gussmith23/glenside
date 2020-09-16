@@ -283,12 +283,15 @@ impl Display for ComputeType {
 pub enum PadType {
     /// Pad with zeroes.
     ZeroPadding,
+    /// Pad with minimum representable number in the number system.
+    MinPadding,
 }
 impl FromStr for PadType {
     type Err = ();
     fn from_str(input: &str) -> Result<PadType, Self::Err> {
         match input {
             "zero-padding" => Ok(PadType::ZeroPadding),
+            "min-padding" => Ok(PadType::MinPadding),
             _ => Err(()),
         }
     }
@@ -300,6 +303,7 @@ impl Display for PadType {
             "{}",
             match self {
                 PadType::ZeroPadding => "zero-padding",
+                PadType::MinPadding => "min-padding",
             }
         )
     }
@@ -1112,6 +1116,15 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 // Update zero regions
                 match pad_type {
+                    crate::language::PadType::MinPadding => {
+                        if !access.zero_regions.is_empty() {
+                            warn!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                            access.zero_regions = HashMap::default();
+                        }
+                    }
                     crate::language::PadType::ZeroPadding => {
                         if !access.zero_regions.contains_key(&axis) {
                             access.zero_regions.insert(axis, BoolVecRangeSet::default());
@@ -3599,6 +3612,24 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[3, 32]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pad_min_padding() {
+        let program = "
+         (access-pad (access (access-tensor t-32-32) 1) min-padding 0 1 2)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[35]));
+                assert_eq!(a.item_shape, IxDyn(&[32]));
             }
             _ => panic!(),
         }
