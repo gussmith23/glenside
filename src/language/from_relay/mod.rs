@@ -451,7 +451,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
     // print(mod.astext())
     // ```
     test!(
-        mobilenet,
+        mobilenet_simplified_for_inference,
         1e-10,
         r#"
 #[version = "0.0.5"]
