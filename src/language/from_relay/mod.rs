@@ -227,6 +227,20 @@ mod tests {
     }
 
     test!(
+        negative,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  negative(%x)
+}
+"#,
+        r#"
+(compute negative (access-tensor x))
+"#
+    );
+
+    test!(
         sqrt,
         1e-60,
         r#"
