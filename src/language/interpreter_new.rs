@@ -38,6 +38,7 @@ where
     DataType: Copy
         + std::ops::Mul<Output = DataType>
         + std::ops::Div<Output = DataType>
+        + std::ops::Neg<Output = DataType>
         + std::iter::Sum
         + num_traits::identities::One
         + num_traits::identities::Zero
@@ -453,6 +454,10 @@ where
                         tensor: reshaped,
                     })
                 }
+                ComputeType::Negative => Value::Access(Access {
+                    tensor: access.tensor.mapv(|v| v.neg()),
+                    access_axis: access.access_axis,
+                }),
                 ComputeType::Sqrt => Value::Access(Access {
                     tensor: access.tensor.mapv(|v| v.sqrt()),
                     access_axis: access.access_axis,
@@ -2539,6 +2544,46 @@ mod tests {
                         [[9f64.sqrt(), 10f64.sqrt()], [11f64.sqrt(), 12f64.sqrt()]],
                     ]
                     .into_dyn(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_negative() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1f32, -2f32], [3f32, 1f32]],
+                [[-5f32, 6f32], [1f32, 8f32]],
+                [[-9f32, 10f32], [11f32, 12f32]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute negative
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![
+                        [[-1f32, 2f32], [-3f32, -1f32]],
+                        [[5f32, -6f32], [-1f32, -8f32]],
+                        [[9f32, -10f32], [-11f32, -12f32]],
+                    ]
+                    .into_dyn()
                 );
             }
             _ => panic!(),
