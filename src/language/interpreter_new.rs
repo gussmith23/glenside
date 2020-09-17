@@ -855,6 +855,7 @@ pub trait Exp {
 
 impl Exp for f64 {
     /// ```
+    /// use glenside::language::interpreter::Exp;
     /// assert_eq!(1.234f64.exp(), 3.43494186080076);
     /// ```
     fn exp(self) -> Self {
@@ -864,6 +865,7 @@ impl Exp for f64 {
 
 impl Exp for f32 {
     /// ```
+    /// use glenside::language::interpreter::Exp;
     /// assert_eq!(1.234f32.exp(), 3.4349418);
     /// ```
     fn exp(self) -> Self {
@@ -872,6 +874,10 @@ impl Exp for f32 {
 }
 
 impl Exp for i64 {
+    /// ```should_panic
+    /// use glenside::language::interpreter::Exp;
+    /// 0i64.exp();
+    /// ```
     fn exp(self) -> Self {
         unreachable!()
     }
