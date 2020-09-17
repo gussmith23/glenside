@@ -208,6 +208,20 @@ mod tests {
     }
 
     test!(
+        constant_0,
+        1e-600,
+        r#"
+#[version = "0.0.5"]
+def @main() -> float32 {
+  0.01639530062675476f
+}
+"#,
+        r#"
+(access-literal (literal 0.01639530062675476))
+"#
+    );
+
+    test!(
         divide,
         1e-60,
         r#"

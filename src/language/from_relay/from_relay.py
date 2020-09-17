@@ -48,6 +48,11 @@ def _recursive_helper(expr):
     if isinstance(expr, tvm.relay.Var):
         assert expr.name_hint
         return "(access-tensor {})".format(expr.name_hint)
+    elif isinstance(expr, tvm.relay.Constant):
+        assert(expr.data.shape == ())
+        return '(access-literal (literal {}))' \
+            .format(float(expr.data.asnumpy()))
+
     elif isinstance(expr, tvm.relay.Call):
         if expr.op == tvm.ir.Op.get("nn.softmax"):
             assert len(expr.args) == 1
