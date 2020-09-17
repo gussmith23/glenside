@@ -2,6 +2,7 @@ use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::warn;
 use ndarray::{s, Dimension, Ix, IxDyn};
+use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::FromIterator;
@@ -207,7 +208,24 @@ define_language! {
         // corresponding dimension in <shape> or be 1.
         "access-broadcast" = AccessBroadcast([Id; 2]),
 
+        // (access-literal <literal: Literal>)
+        // Access a literal. This may be able to be folded in to some other
+        // access pattern, later on. It fits in with access-tensor as a "access
+        // pattern constructor"; it takes something that isn't an access pattern
+        // and converts it to an access pattern.
+        "access-literal" = AccessLiteral(Id),
+
+        // (literal <val: Float64>)
+        // A literal value. Can only represent 0-dimensional values for now, but
+        // in the future, we can and should support array constants.
+        "literal" = Literal(Id),
+
+
         Usize(usize),
+
+        // Important that this go after usize, so that usizes are parsed as
+        // usizes, not as floats.
+        NotNanFloat64(NotNan<f64>),
 
         // pad-type: zero-padding
         // (No other options right now)
@@ -315,6 +333,7 @@ impl Display for PadType {
 // TODO(@gussmith23) Pick a better analysis name.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MyAnalysisData {
+    Literal(ndarray::ArrayD<f64>),
     Legacy(MyAnalysisDataLegacyData),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
@@ -909,6 +928,22 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &AccessLiteral(id) => match &egraph[id].data {
+                MyAnalysisData::Literal(t) => MyAnalysisData::AccessPattern(AccessPatternData {
+                    zero_regions: {
+                        warn!("Zero regions unimplemented on line {}", std::line!());
+                        HashMap::default()
+                    },
+                    shape: IxDyn(&[]),
+                    item_shape: IxDyn(t.shape()),
+                }),
+                _ => panic!(),
+            },
+            &NotNanFloat64(v) => MyAnalysisData::Literal(ndarray::arr0(v.into_inner()).into_dyn()),
+            &Literal(id) => match &egraph[id].data {
+                t @ MyAnalysisData::Literal(_) => t.clone(),
+                _ => panic!(),
+            },
             &AccessTranspose([access_id, list_id]) => {
                 let access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
@@ -3653,6 +3688,41 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[]));
                 assert_eq!(a.item_shape, IxDyn(&[32, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn literal_0() {
+        let program = "
+         (literal 0.1234)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::Literal(t) => {
+                assert_eq!(*t, ndarray::arr0(0.1234).into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_literal() {
+        let program = "
+         (access-literal (literal 0.1234))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }

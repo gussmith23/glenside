@@ -339,6 +339,9 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             }
             &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::GetAccessShape(_)
+            | &Language::Literal(_)
+            | &Language::AccessLiteral(_)
+            | &Language::NotNanFloat64(_)
             | &Language::AccessBroadcast(_)
             | &Language::AccessInsertAxis(_)
             | &Language::AccessPair(_)
@@ -1329,6 +1332,8 @@ if (i{i} < {dim_len}) {{
             out_var_name
         }
         &Language::GetAccessShape(_)
+        | &Language::Literal(_)
+        | &Language::NotNanFloat64(_)
         | Language::List(_)
         | &Language::AccessBroadcast(_)
         | &Language::AccessInsertAxis(_)
@@ -1350,6 +1355,7 @@ if (i{i} < {dim_len}) {{
         | &Language::ElementwiseAdd(_)
         | &Language::BsgSystolicArray(_)
         | &Language::AccessShape(_)
+        | &Language::AccessLiteral(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
     }
 }

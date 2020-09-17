@@ -44,10 +44,25 @@ where
         + std::cmp::PartialOrd
         + num_traits::Bounded
         + Exp
+        + FromNotNanFloat64Literal
         + ndarray::ScalarOperand,
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessLiteral(id) => match interpret(expr, id as usize, env) {
+            Value::Tensor(t) => Value::Access(Access {
+                tensor: t,
+                access_axis: 0,
+            }),
+            _ => panic!(),
+        },
+        &Language::Literal(id) => match interpret(expr, id as usize, env) {
+            t @ Value::Tensor(_) => t,
+            _ => panic!(),
+        },
+        &Language::NotNanFloat64(v) => Value::Tensor(
+            ndarray::arr0(DataType::from_not_nan_float_64_literal(v.into())).into_dyn(),
+        ),
         &Language::AccessFlatten(access_id) => {
             let mut access = match interpret(expr, access_id as usize, env) {
                 Value::Access(a) => a,
@@ -781,6 +796,54 @@ where
         | &Language::AccessSlice(_)
         | &Language::AccessConcatenate(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
+    }
+}
+
+/// Trait for types which can be converted to from Glenside literals.
+pub trait FromNotNanFloat64Literal {
+    /// Convert from ordered_float::NotNan<f64>
+    fn from_not_nan_float_64_literal(value: ordered_float::NotNan<f64>) -> Self;
+}
+
+impl FromNotNanFloat64Literal for f64 {
+    /// ```
+    /// use glenside::language::interpreter::FromNotNanFloat64Literal;
+    /// assert_eq!(
+    ///     f64::from_not_nan_float_64_literal(
+    ///         ordered_float::NotNan::new(std::f64::consts::PI).unwrap()
+    ///     ),
+    ///     std::f64::consts::PI
+    /// );
+    /// ```
+    fn from_not_nan_float_64_literal(value: ordered_float::NotNan<f64>) -> Self {
+        value.into_inner()
+    }
+}
+
+impl FromNotNanFloat64Literal for f32 {
+    /// ```
+    /// use glenside::language::interpreter::FromNotNanFloat64Literal;
+    /// assert_eq!(
+    ///     f32::from_not_nan_float_64_literal(
+    ///         ordered_float::NotNan::new(std::f64::consts::PI).unwrap()
+    ///     ),
+    ///     std::f64::consts::PI as f32
+    /// );
+    /// ```
+    fn from_not_nan_float_64_literal(value: ordered_float::NotNan<f64>) -> Self {
+        value.into_inner() as f32
+    }
+}
+
+impl FromNotNanFloat64Literal for i64 {
+    /// ```should_panic
+    /// use glenside::language::interpreter::FromNotNanFloat64Literal;
+    /// i64::from_not_nan_float_64_literal(
+    ///     ordered_float::NotNan::new(std::f64::consts::PI).unwrap(),
+    /// );
+    /// ```
+    fn from_not_nan_float_64_literal(_value: ordered_float::NotNan<f64>) -> Self {
+        unreachable!()
     }
 }
 
@@ -2361,6 +2424,34 @@ mod tests {
                     ]
                     .into_dyn()
                 );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn literal_0() {
+        let expr = RecExpr::<Language>::from_str("(literal 0.1234)").unwrap();
+
+        match interpret::<f64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+            Value::Tensor(t) => {
+                assert_eq!(t, ndarray::arr0(0.1234).into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_literal() {
+        let expr = RecExpr::<Language>::from_str("(access-literal (literal 0.1234))").unwrap();
+
+        match interpret::<f64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, ndarray::arr0(0.1234).into_dyn());
+                assert_eq!(access_axis, 0);
             }
             _ => panic!(),
         }

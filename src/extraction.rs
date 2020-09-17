@@ -45,6 +45,9 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             }
 
             Language::Symbol(_)
+            | Language::AccessLiteral(_)
+            | Language::Literal(_)
+            | Language::NotNanFloat64(_)
             | Language::SystolicArray(_)
             | Language::Usize(_)
             | Language::AccessSlice(_)
@@ -111,6 +114,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             // Extracting various access patterns is essential.
             AccessWindows(_)
             | Access(_)
+            | AccessLiteral(_)
             | AccessTranspose(_)
             | AccessCartesianProduct(_)
             | AccessReshape(_)
@@ -127,7 +131,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             // Other glenside constructs that are necessary.
             Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
             | List(_) | GetAccessShape(_) | AccessShape(_) | Usize(_) | PadType(_)
-            | ComputeType(_) | Symbol(_) => 1,
+            | ComputeType(_) | Symbol(_) | Literal(_) | NotNanFloat64(_) => 1,
             // Old constructs that are no longer used
             MoveAxis(_) | CartesianProduct(_) | MapDotProduct(_) | Slice(_) | Concatenate(_)
             | ElementwiseAdd(_) | BsgSystolicArray(_) => std::usize::MAX,
