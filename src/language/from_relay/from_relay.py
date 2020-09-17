@@ -132,7 +132,8 @@ def _recursive_helper(expr):
                 .format(_recursive_helper(expr.args[0]))
 
         if expr.op == tvm.ir.Op.get('add') \
-           or expr.op == tvm.ir.Op.get('multiply'):
+           or expr.op == tvm.ir.Op.get('multiply') \
+           or expr.op == tvm.ir.Op.get('divide'):
             assert len(expr.args) == 2
             a = _recursive_helper(expr.args[0])
             a_shape = [int(v) for v in expr.args[0].checked_type.shape]
@@ -168,6 +169,8 @@ def _recursive_helper(expr):
                 return _elementwise_add(a, b)
             elif expr.op == tvm.ir.Op.get('multiply'):
                 return _elementwise_mul(a, b)
+            elif expr.op == tvm.ir.Op.get('divide'):
+                return _elementwise_div(a, b)
             else:
                 assert False, 'unreachable'
 
@@ -309,6 +312,17 @@ def _recursive_helper(expr):
     if isinstance(expr, tvm.relay.Call):
         sys.stderr.write("Call to operator: {}\n".format(expr.op))
     exit(1)
+
+
+def _elementwise_div(a, b):
+    """Generate elementwise division
+
+    Parameters
+    ----------
+    a, b : String
+        The inputs to divide."""
+    return "(compute elementwise-div (access-pair {} {}))" \
+        .format(_access(a, 0), _access(b, 0))
 
 
 def _elementwise_mul(a, b):

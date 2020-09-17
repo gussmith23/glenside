@@ -208,6 +208,25 @@ mod tests {
     }
 
     test!(
+        divide,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  divide(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-div
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (get-access-shape (access-tensor y))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#
+    );
+
+    test!(
         expand_dims,
         1e-60,
         r#"
