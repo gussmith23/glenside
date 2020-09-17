@@ -44,6 +44,7 @@ where
         + std::cmp::PartialOrd
         + num_traits::Bounded
         + Exp
+        + Sqrt
         + FromNotNanFloat64Literal
         + ndarray::ScalarOperand,
     usize: num_traits::cast::AsPrimitive<DataType>,
@@ -452,6 +453,10 @@ where
                         tensor: reshaped,
                     })
                 }
+                ComputeType::Sqrt => Value::Access(Access {
+                    tensor: access.tensor.mapv(|v| v.sqrt()),
+                    access_axis: access.access_axis,
+                }),
                 ComputeType::ReLU => Value::Access(Access {
                     tensor: access.tensor.mapv(|v| {
                         if v >= DataType::zero() {
@@ -880,6 +885,43 @@ impl Exp for i64 {
     /// ```
     fn exp(self) -> Self {
         unreachable!()
+    }
+}
+
+/// Trait for types which implement square root.
+/// TODO(@gussmith23) Does this already exist somewhere?
+pub trait Sqrt {
+    /// Calculate square root.
+    fn sqrt(self) -> Self;
+}
+
+impl Sqrt for f64 {
+    /// ```
+    /// use glenside::language::interpreter::Sqrt;
+    /// assert_eq!(1.234f64.sqrt(), 1.1108555261599053);
+    /// ```
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
+
+impl Sqrt for f32 {
+    /// ```
+    /// use glenside::language::interpreter::Sqrt;
+    /// assert_eq!(1.234f32.sqrt(), 1.1108555);
+    /// ```
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
+
+impl Sqrt for i64 {
+    /// ```should_panic
+    /// use glenside::language::interpreter::Sqrt;
+    /// 5i64.sqrt();
+    /// ```
+    fn sqrt(self) -> Self {
+        panic!()
     }
 }
 
@@ -2458,6 +2500,46 @@ mod tests {
             }) => {
                 assert_eq!(tensor, ndarray::arr0(0.1234).into_dyn());
                 assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_sqrt() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1f64, 2f64], [3f64, 0f64]],
+                [[5f64, 6f64], [0f64, 8f64]],
+                [[9f64, 10f64], [11f64, 12f64]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute sqrt
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![
+                        [[1f64.sqrt(), 2f64.sqrt()], [3f64.sqrt(), 0f64.sqrt()]],
+                        [[5f64.sqrt(), 6f64.sqrt()], [0f64.sqrt(), 8f64.sqrt()]],
+                        [[9f64.sqrt(), 10f64.sqrt()], [11f64.sqrt(), 12f64.sqrt()]],
+                    ]
+                    .into_dyn(),
+                );
             }
             _ => panic!(),
         }

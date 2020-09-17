@@ -227,6 +227,23 @@ mod tests {
     }
 
     test!(
+        sqrt,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  sqrt(%x)
+}
+"#,
+        r#"
+(compute sqrt (access-tensor x))
+"#,
+        "",
+        // TODO(@gussmith23) Hardcoding test to f32
+        Uniform::new(0f32, 1f32)
+    );
+
+    test!(
         constant_0,
         1e-600,
         r#"

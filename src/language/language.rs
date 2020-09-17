@@ -242,6 +242,7 @@ pub enum ComputeType {
     DotProduct,
     ReduceSum,
     ReLU,
+    Sqrt,
     /// Expects item shape of `a x b1 x .. x bn`. Performs an elementwise
     /// addition of the `a` tensors of size `b1 x .. x bn`.
     /// TODO(@gussmith) Multiple-arg compute feels clunky and ad-hoc.
@@ -270,6 +271,7 @@ impl FromStr for ComputeType {
             "reduce-sum" => Ok(ComputeType::ReduceSum),
             "reduce-max" => Ok(ComputeType::ReduceMax),
             "relu" => Ok(ComputeType::ReLU),
+            "sqrt" => Ok(ComputeType::Sqrt),
             "elementwise-add" => Ok(ComputeType::ElementwiseAdd),
             "elementwise-mul" => Ok(ComputeType::ElementwiseMul),
             "elementwise-div" => Ok(ComputeType::ElementwiseDiv),
@@ -289,6 +291,7 @@ impl Display for ComputeType {
                 ComputeType::ReduceSum => "reduce-sum",
                 ComputeType::ReduceMax => "reduce-max",
                 ComputeType::ReLU => "relu",
+                ComputeType::Sqrt => "sqrt",
                 ComputeType::ElementwiseAdd => "elementwise-add",
                 ComputeType::ElementwiseMul => "elementwise-mul",
                 ComputeType::ElementwiseDiv => "elementwise-div",
@@ -1558,7 +1561,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: IxDyn(&[]),
                         })
                     }
-                    self::ComputeType::ReLU => {
+                    self::ComputeType::ReLU | self::ComputeType::Sqrt => {
                         // TODO(@gussmith23) Implement zero_regions
                         if !a0.zero_regions.is_empty() {
                             warn!(
@@ -3723,6 +3726,24 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_sqrt() {
+        let program = "
+         (compute sqrt (access (access-tensor t-32-32) 0))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[32, 32]));
             }
             _ => panic!(),
         }

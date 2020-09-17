@@ -131,10 +131,15 @@ def _recursive_helper(expr):
             else:
                 assert False, 'unreachable'
 
-        elif expr.op == tvm.ir.Op.get("nn.relu"):
+        elif expr.op == tvm.ir.Op.get("nn.relu") \
+             or expr.op == tvm.ir.Op.get('sqrt'):
             assert len(expr.args) == 1
-            return '(compute relu {})' \
-                .format(_recursive_helper(expr.args[0]))
+            if expr.op == tvm.ir.Op.get("nn.relu"):
+                return '(compute relu {})' \
+                    .format(_recursive_helper(expr.args[0]))
+            elif expr.op == tvm.ir.Op.get('sqrt'):
+                return '(compute sqrt {})' \
+                    .format(_recursive_helper(expr.args[0]))
 
         elif expr.op == tvm.ir.Op.get('add') \
            or expr.op == tvm.ir.Op.get('multiply') \
