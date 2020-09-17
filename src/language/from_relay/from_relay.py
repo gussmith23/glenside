@@ -48,7 +48,7 @@ def _recursive_helper(expr):
     if isinstance(expr, tvm.relay.Var):
         assert expr.name_hint
         return "(access-tensor {})".format(expr.name_hint)
-    if isinstance(expr, tvm.relay.Call):
+    elif isinstance(expr, tvm.relay.Call):
         if expr.op == tvm.ir.Op.get("nn.softmax"):
             assert len(expr.args) == 1
             assert 'axis' in expr.attrs.keys()
@@ -57,7 +57,7 @@ def _recursive_helper(expr):
             return "(compute softmax {})".format(
                 _access(_recursive_helper(expr.args[0]),
                         len(expr.args[0].checked_type.shape) - 1))
-        if expr.op == tvm.ir.Op.get("nn.bias_add"):
+        elif expr.op == tvm.ir.Op.get("nn.bias_add"):
             assert len(expr.args) == 2
 
             # We need to broadcast the bias up to the correct size.
@@ -89,7 +89,7 @@ def _recursive_helper(expr):
 
             return _elementwise_add(data, bias)
 
-        if expr.op == tvm.ir.Op.get("nn.dense"):
+        elif expr.op == tvm.ir.Op.get("nn.dense"):
             assert len(expr.args) == 2
             assert expr.attrs.out_dtype == '', \
                 'out_dtype not yet supported'
@@ -102,13 +102,13 @@ def _recursive_helper(expr):
                 .format(_access(_recursive_helper(expr.args[0]), 1),
                         _access(_recursive_helper(expr.args[1]), 1))
 
-        if expr.op == tvm.ir.Op.get("nn.batch_flatten"):
+        elif expr.op == tvm.ir.Op.get("nn.batch_flatten"):
             assert len(expr.args) == 1
             assert _ndim(expr.args[0]) >= 1
             return '(access-flatten {})' \
                 .format(_access(_recursive_helper(expr.args[0]), 1))
 
-        if expr.op == tvm.ir.Op.get("nn.global_avg_pool2d"):
+        elif expr.op == tvm.ir.Op.get("nn.global_avg_pool2d"):
             assert len(expr.args) == 1
             assert _ndim(expr.args[0]) == 4
             assert expr.attrs.layout == 'NCHW', \
@@ -126,12 +126,12 @@ def _recursive_helper(expr):
             else:
                 assert False, 'unreachable'
 
-        if expr.op == tvm.ir.Op.get("nn.relu"):
+        elif expr.op == tvm.ir.Op.get("nn.relu"):
             assert len(expr.args) == 1
             return '(compute relu {})' \
                 .format(_recursive_helper(expr.args[0]))
 
-        if expr.op == tvm.ir.Op.get('add') \
+        elif expr.op == tvm.ir.Op.get('add') \
            or expr.op == tvm.ir.Op.get('multiply') \
            or expr.op == tvm.ir.Op.get('divide'):
             assert len(expr.args) == 2
@@ -174,7 +174,7 @@ def _recursive_helper(expr):
             else:
                 assert False, 'unreachable'
 
-        if expr.op == tvm.ir.Op.get('nn.conv2d'):
+        elif expr.op == tvm.ir.Op.get('nn.conv2d'):
             assert len(expr.args) == 2
             assert _ndim(expr.args[0]) == 4
             assert _ndim(expr.args[1]) == 4
@@ -246,7 +246,7 @@ def _recursive_helper(expr):
 
             return data
 
-        if expr.op == tvm.ir.Op.get('nn.max_pool2d'):
+        elif expr.op == tvm.ir.Op.get('nn.max_pool2d'):
             assert len(expr.args) == 1
             assert _ndim(expr.args[0]) == 4
             assert len(expr.attrs.pool_size) == 2
@@ -296,7 +296,7 @@ def _recursive_helper(expr):
 
             return data
 
-        if expr.op == tvm.ir.Op.get('expand_dims'):
+        elif expr.op == tvm.ir.Op.get('expand_dims'):
             assert len(expr.args) == 1
 
             data = _recursive_helper(expr.args[0])
