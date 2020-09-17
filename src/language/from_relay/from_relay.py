@@ -49,7 +49,7 @@ def _recursive_helper(expr):
         assert expr.name_hint
         return "(access-tensor {})".format(expr.name_hint)
     elif isinstance(expr, tvm.relay.Constant):
-        assert(expr.data.shape == ())
+        assert expr.data.shape == ()
         return '(access-literal (literal {}))' \
             .format(float(expr.data.asnumpy()))
 
