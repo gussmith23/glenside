@@ -318,19 +318,19 @@ where
                     tensor: access
                         .tensor
                         .axis_iter(ndarray::Axis(access.access_axis))
+                        // This is like a hacky version of fold_first. Struggled
+                        // to use fold_first because it will expect the function
+                        // to return an ArrayView, which is not what you want
+                        // (or not even possible?)
+                        .skip(1)
                         .fold(
-                            ndarray::ArrayBase::ones(
-                                access.tensor.shape()[..access.access_axis]
-                                    .iter()
-                                    .cloned()
-                                    .chain(
-                                        access.tensor.shape()[access.access_axis + 1..]
-                                            .iter()
-                                            .cloned(),
-                                    )
-                                    .collect::<Vec<_>>()
-                                    .as_slice(),
-                            ),
+                            // TODO(@gussmith23) More efficient way to do this?
+                            access
+                                .tensor
+                                .axis_iter(ndarray::Axis(access.access_axis))
+                                .next()
+                                .expect("Cannot divide 0 arguments")
+                                .into_owned(),
                             |acc, t| acc / t,
                         ),
                 }),
@@ -2332,7 +2332,12 @@ mod tests {
         let mut env = Environment::new();
         env.insert(
             "t",
-            array![[[1, -2], [3, 1]], [[-5, 6], [1, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+            array![
+                [[1f32, -2f32], [3f32, 1f32]],
+                [[-5f32, 6f32], [1f32, 8f32]],
+                [[-9f32, 10f32], [11f32, 12f32]],
+            ]
+            .into_dyn(),
         );
 
         let expr = RecExpr::<Language>::from_str(
@@ -2350,7 +2355,11 @@ mod tests {
                 assert_eq!(access_axis, 0);
                 assert_eq!(
                     tensor,
-                    array![[1 / -5 / -9, -2 / 6 / 10], [3 / 1 / 11, 1 / 8 / 12]].into_dyn()
+                    array![
+                        [1f32 / -5f32 / -9f32, -2f32 / 6f32 / 10f32],
+                        [3f32 / 1f32 / 11f32, 1f32 / 8f32 / 12f32]
+                    ]
+                    .into_dyn()
                 );
             }
             _ => panic!(),
