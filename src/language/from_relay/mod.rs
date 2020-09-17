@@ -25,9 +25,28 @@ mod tests {
     ///     expression
     macro_rules! test {
         ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr) => {
-            test!($test_name, $tol, $relay_str, $glenside_str, "");
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                "",
+                Uniform::new(-1f32, 1f32)
+            );
         };
         ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                $optional_arg,
+                Uniform::new(-1f32, 1f32)
+            );
+        };
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr) => {
             #[test]
             fn $test_name() {
                 // The number of times to run each program and compare their
@@ -157,7 +176,7 @@ mod tests {
                         // TODO(@gussmith23) output type assumption
                         let value = ndarray::ArrayD::<f32>::random_using(
                             shape.clone(),
-                            Uniform::new(-1f32, 1f32),
+                            $distribution,
                             &mut tensor_rng,
                         );
                         env.insert(name.as_str(), value.clone());
