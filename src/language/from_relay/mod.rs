@@ -1,3 +1,6 @@
+// TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
+#[cfg(feature = "tvm")]
+
 #[cfg(test)]
 mod tests {
     use crate::language::interpreter::interpret;

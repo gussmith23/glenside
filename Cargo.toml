@@ -8,6 +8,7 @@ edition = "2018"
 
 [features]
 run-on-github-actions = []
+tvm = []
 
 defaults = []
 
