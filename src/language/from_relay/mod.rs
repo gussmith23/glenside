@@ -1,11 +1,16 @@
 // TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
 #[cfg(feature = "use-tvm")]
 use crate::language::Language;
-use egg::RecExpr;
+use egg::{Id, RecExpr};
 use std::convert::TryInto;
 use tvm::ir::as_text;
 use tvm::ir::module::IRModule;
+use tvm::ir::relay::Expr;
+use tvm::ir::tir::IntImm;
 use tvm::runtime::IsObjectRef;
+
+use super::ComputeType;
+use super::PadType;
 
 /// Get shape from type
 pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
@@ -51,17 +56,22 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
         names_and_shapes.push((var.name_hint().as_str().unwrap().to_string(), t));
     }
     println!("{:?}", names_and_shapes);
-    recursive_helper(func.body.clone());
-    panic!()
+    let mut expr = RecExpr::default();
+    let _id = recursive_helper(func.body.clone(), &mut expr);
+
+    (expr, names_and_shapes)
 }
 
-fn recursive_helper(expr: tvm::ir::relay::Expr) {
-    if let Ok(_var) = expr.clone().downcast::<tvm::ir::relay::Var>() {
-        println!("var: {}", as_text(expr));
-    } else if let Ok(_constant) = expr.clone().downcast::<tvm::ir::relay::Constant>() {
-        println!("constant: {}", as_text(expr));
-    } else if let Ok(call) = expr.clone().downcast::<tvm::ir::relay::Call>() {
-        println!("call: {}", as_text(expr));
+fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> Id {
+    if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
+        println!("var: {}", as_text(relay_expr));
+        let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
+        glenside_expr.add(Language::AccessTensor(symbol_id))
+    } else if let Ok(_constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
+        println!("constant: {}", as_text(relay_expr));
+        todo!()
+    } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
+        println!("call: {}", as_text(relay_expr));
         if let Ok(primitive_op) = call
             .op
             .clone()
@@ -77,20 +87,192 @@ fn recursive_helper(expr: tvm::ir::relay::Expr) {
                         .downcast::<tvm::ir::relay::attrs::nn::Conv2DAttrs>()
                         .unwrap();
 
-                    // TODO Left off here. I can't figure out why some of the
-                    // fields aren't working. Are they just straight-up not
-                    // initialized? It could be! Because it's not happening
-                    // through the python frontend, they might just not get sane
-                    // defaults.
-                    println!("{}", attrs.kernel_size.len());
+                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let data_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    assert_eq!(data_shape.len(), 4);
+                    let weights_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+                    let weights_shape =
+                        shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+                    assert_eq!(weights_shape.len(), 4);
 
-                    // assert len(expr.args) == 1
-                    //     assert 'axis' in expr.attrs.keys()
-                    //     # Axis argument other than -1 not implemented.
-                    // assert expr.attrs.axis == -1
-                    //     return "(compute softmax {})".format(
-                    //         _access(_recursive_helper(expr.args[0]),
-                    //                 len(expr.args[0].checked_type.shape) - 1))
+                    assert_eq!(
+                        attrs.data_layout, "NCHW",
+                        "NCHW is the only layout supported at the moment"
+                    );
+                    assert_eq!(
+                        attrs.kernel_layout, "OIHW",
+                        "OIHW is the only layout supported at the moment"
+                    );
+
+                    assert_eq!(attrs.padding.len(), 4);
+                    assert_eq!(attrs.dilation.len(), 2);
+                    assert_eq!(
+                        attrs
+                            .dilation
+                            .get(0)
+                            .unwrap()
+                            .downcast::<tvm::ir::tir::IntImm>()
+                            .unwrap()
+                            .value,
+                        1
+                    );
+                    assert_eq!(
+                        attrs
+                            .dilation
+                            .get(1)
+                            .unwrap()
+                            .downcast::<tvm::ir::tir::IntImm>()
+                            .unwrap()
+                            .value,
+                        1
+                    );
+                    assert_eq!(attrs.groups, 1);
+                    assert_eq!(attrs.out_layout, "");
+                    assert_eq!(
+                        attrs.out_dtype,
+                        // TODO(@gussmith23) How to actually constrain this?
+                        tvm::DataType::new(3, 0, 0)
+                    );
+
+                    let usize_1_id = glenside_expr.add(Language::Usize(1));
+
+                    let mut list = Vec::default();
+                    list.push(usize_1_id);
+                    for v in weights_shape[1..].iter() {
+                        list.push(glenside_expr.add(Language::Usize(*v as usize)));
+                    }
+                    let weights_shape_id =
+                        glenside_expr.add(Language::Shape(Box::from(list.as_slice())));
+
+                    let pad_axis_id = glenside_expr.add(Language::Usize(2));
+                    let pad_before_id = glenside_expr.add(Language::Usize(
+                        attrs
+                            .padding
+                            .get(0)
+                            .unwrap()
+                            .downcast::<IntImm>()
+                            .unwrap()
+                            .value as usize,
+                    ));
+                    let pad_after_id = glenside_expr.add(Language::Usize(
+                        attrs
+                            .padding
+                            .get(2)
+                            .unwrap()
+                            .downcast::<IntImm>()
+                            .unwrap()
+                            .value as usize,
+                    ));
+                    let zero_padding_id =
+                        glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                    let data_id = glenside_expr.add(Language::AccessPad([
+                        data_id,
+                        zero_padding_id,
+                        pad_axis_id,
+                        pad_before_id,
+                        pad_after_id,
+                    ]));
+
+                    let pad_axis_id = glenside_expr.add(Language::Usize(3));
+                    let pad_before_id = glenside_expr.add(Language::Usize(
+                        attrs
+                            .padding
+                            .get(1)
+                            .unwrap()
+                            .downcast::<IntImm>()
+                            .unwrap()
+                            .value as usize,
+                    ));
+                    let pad_after_id = glenside_expr.add(Language::Usize(
+                        attrs
+                            .padding
+                            .get(3)
+                            .unwrap()
+                            .downcast::<IntImm>()
+                            .unwrap()
+                            .value as usize,
+                    ));
+                    let zero_padding_id =
+                        glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                    let data_id = glenside_expr.add(Language::AccessPad([
+                        data_id,
+                        zero_padding_id,
+                        pad_axis_id,
+                        pad_before_id,
+                        pad_after_id,
+                    ]));
+
+                    let access_axis_id = glenside_expr.add(Language::Usize(4));
+                    let data_id = glenside_expr.add(Language::Access([data_id, access_axis_id]));
+
+                    let mut stride_list = Vec::default();
+                    stride_list.push(glenside_expr.add(Language::Usize(1)));
+                    stride_list.push(glenside_expr.add(Language::Usize(1)));
+                    stride_list.push(
+                        glenside_expr.add(Language::Usize(
+                            attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        )),
+                    );
+                    stride_list.push(
+                        glenside_expr.add(Language::Usize(
+                            attrs
+                                .strides
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        )),
+                    );
+                    let stride_shape_id =
+                        glenside_expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
+                    let data_id = glenside_expr.add(Language::AccessWindows([
+                        data_id,
+                        weights_shape_id,
+                        stride_shape_id,
+                    ]));
+
+                    let squeeze_axis_id = glenside_expr.add(Language::Usize(4));
+                    let data_id =
+                        glenside_expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+                    let squeeze_axis_id = glenside_expr.add(Language::Usize(1));
+                    let data_id =
+                        glenside_expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+
+                    let access_axis_id = glenside_expr.add(Language::Usize(3));
+                    let data_id = glenside_expr.add(Language::Access([data_id, access_axis_id]));
+
+                    let access_axis_id = glenside_expr.add(Language::Usize(1));
+                    let weights_id =
+                        glenside_expr.add(Language::Access([weights_id, access_axis_id]));
+
+                    let data_id =
+                        glenside_expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+
+                    let compute_type_id =
+                        glenside_expr.add(Language::ComputeType(ComputeType::DotProduct));
+                    let data_id = glenside_expr.add(Language::Compute([compute_type_id, data_id]));
+
+                    let mut transpose_list = Vec::default();
+                    transpose_list.push(glenside_expr.add(Language::Usize(1)));
+                    transpose_list.push(glenside_expr.add(Language::Usize(0)));
+                    transpose_list.push(glenside_expr.add(Language::Usize(2)));
+                    transpose_list.push(glenside_expr.add(Language::Usize(3)));
+                    let transpose_list_id =
+                        glenside_expr.add(Language::List(Box::from(transpose_list)));
+
+                    let data_id =
+                        glenside_expr.add(Language::AccessTranspose([data_id, transpose_list_id]));
+
+                    data_id
                 }
                 _ => todo!(),
             }
