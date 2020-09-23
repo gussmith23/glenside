@@ -153,12 +153,12 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             "float32".parse().unwrap(),
             "Only float32x1 constants supported for now",
         );
-        // TODO(@gussmith23) These are broken at the moment
-        // assert_eq!(
-        //     constant.data.size(),
-        //     Some(4),
-        //     "Only scalar constants supported for now"
-        // );
+        assert_eq!(
+            constant.data.size(),
+            4,
+            "Only scalar constants supported for now"
+        );
+        // TODO(@gussmith23) This is broken at the moment
         // assert_eq!(
         //     constant.data.shape().unwrap().len(),
         //     0,
