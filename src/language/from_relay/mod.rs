@@ -950,23 +950,25 @@ def @main(%x: Tensor[(2, 3, 3, 4, 100), float32]) -> Tensor[(2, 3600), float32] 
 "#
     );
 
-    test!(
-        dense,
-        1e-5,
-        r#"
-TODO(@gussmith23) Relay parser for nn.dense is broken
-This is unused until the parser works.
-"#,
-        r#"
-(compute dot-product
- (access-cartesian-product
-  (access (access-tensor data) 1)
-  (access (access-tensor weights) 1)
- )
-)
-"#,
-        "--dense"
-    );
+    // TODO(@gussmith23) Uncomment when they fix relay parser
+//     test!(
+//         dense,
+//         1e-5,
+//         r#"
+// #[version = "0.0.5"]
+// def @main(%data: Tensor[(16, 32), float32], %weights: Tensor[(64, 32), float32]) -> Tensor[(16, 64), float32] {
+//   nn.dense(%data, %weights) /* ty=Tensor[(16, 64), float32] */
+// }
+// "#,
+//         r#"
+// (compute dot-product
+//  (access-cartesian-product
+//   (access (access-tensor data) 1)
+//   (access (access-tensor weights) 1)
+//  )
+// )
+// "#,
+//     );
 
     test!(
         bias_add_axis_0,
