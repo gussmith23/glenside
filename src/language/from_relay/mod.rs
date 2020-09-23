@@ -207,6 +207,26 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "expand_dims" => {
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::ExpandDimsAttrs>()
+                        .unwrap();
+                    assert_eq!(call.args.len(), 1);
+
+                    let mut data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+
+                    for _ in 0..attrs.num_newaxis {
+                        data_id = access_insert_axis(
+                            glenside_expr,
+                            data_id,
+                            attrs.axis.try_into().unwrap(),
+                        )
+                    }
+
+                    data_id
+                }
                 "nn.dense" => {
                     let attrs = call
                         .attrs
