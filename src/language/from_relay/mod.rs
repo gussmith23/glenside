@@ -207,6 +207,57 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "add" | "multiply" | "divide" => {
+                    assert_eq!(call.args.len(), 2);
+                    let mut a_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let mut a_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    let mut b_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+                    let mut b_shape =
+                        shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+
+                    while a_shape.len() < b_shape.len() {
+                        a_id = access_insert_axis(glenside_expr, a_id, 0);
+                        a_shape.insert(0, 1);
+                    }
+
+                    while b_shape.len() < a_shape.len() {
+                        b_id = access_insert_axis(glenside_expr, b_id, 0);
+                        b_shape.insert(0, 1);
+                    }
+
+                    assert!(a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a <= b).all(|v| v) ||
+                            a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a >= b).all(|v| v),
+                            "Can only handle simple broadcasts; all dims of a must be <= all dims of b (or vice-versa)");
+                    if a_shape
+                        .iter()
+                        .zip(b_shape.iter())
+                        .map(|(a, b)| a < b)
+                        .any(|v| v)
+                    {
+                        let get_access_shape_id = glenside_expr.add(Language::GetAccessShape(b_id));
+                        a_id = glenside_expr
+                            .add(Language::AccessBroadcast([a_id, get_access_shape_id]));
+                    } else if a_shape
+                        .iter()
+                        .zip(b_shape.iter())
+                        .map(|(a, b)| a > b)
+                        .any(|v| v)
+                    {
+                        let get_access_shape_id = glenside_expr.add(Language::GetAccessShape(a_id));
+                        b_id = glenside_expr
+                            .add(Language::AccessBroadcast([b_id, get_access_shape_id]));
+                    }
+
+                    let pair_id = access_pair(glenside_expr, a_id, b_id, 0);
+
+                    match primitive_op.name.as_str().unwrap() {
+                        "add" => compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id),
+                        "multiply" => compute(glenside_expr, ComputeType::ElementwiseMul, pair_id),
+                        "divide" => compute(glenside_expr, ComputeType::ElementwiseDiv, pair_id),
+                        _ => unreachable!(),
+                    }
+                }
                 "nn.batch_flatten" => {
                     assert_eq!(call.args.len(), 1);
                     assert!(
