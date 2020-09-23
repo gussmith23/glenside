@@ -2,11 +2,13 @@
 #[cfg(feature = "use-tvm")]
 use crate::language::Language;
 use egg::{Id, RecExpr};
+use ordered_float::NotNan;
 use std::convert::TryInto;
 use tvm::ir::as_text;
 use tvm::ir::module::IRModule;
 use tvm::ir::relay::Expr;
 use tvm::ir::tir::IntImm;
+use tvm::ir::ty::TensorType;
 use tvm::runtime::IsObjectRef;
 
 use super::ComputeType;
@@ -72,9 +74,43 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
         println!("var: {}", as_text(relay_expr));
         let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
         glenside_expr.add(Language::AccessTensor(symbol_id))
-    } else if let Ok(_constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
-        println!("constant: {}", as_text(relay_expr));
-        todo!()
+    } else if let Ok(constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
+        let tuple_type = constant
+            .clone()
+            .upcast::<Expr>()
+            .checked_type
+            .clone()
+            .downcast::<TensorType>()
+            .unwrap();
+        assert_eq!(
+            tuple_type.shape.len(),
+            0,
+            "Only scalar constants supported for now"
+        );
+        assert_eq!(
+            tuple_type.dtype,
+            "float32".parse().unwrap(),
+            "Only float32x1 constants supported for now",
+        );
+        assert_eq!(
+            constant.data.size(),
+            Some(1),
+            "Only scalar constants supported for now"
+        );
+        assert_eq!(
+            constant.data.shape().unwrap().len(),
+            0,
+            "Only scalar constants supported for now"
+        );
+        assert_eq!(
+            constant.data.dtype(),
+            "float32".parse().unwrap(),
+            "Only float32x1 constants supported for now",
+        );
+        let value: f32 = constant.data.to_vec().unwrap()[0];
+        let literal_id = glenside_expr.add(Language::NotNanFloat64(NotNan::<f64>::new(value as f64).unwrap()));
+        let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
+        access_literal_id
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         println!("call: {}", as_text(relay_expr));
         if let Ok(primitive_op) = call
