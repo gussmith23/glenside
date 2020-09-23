@@ -92,23 +92,29 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             "float32".parse().unwrap(),
             "Only float32x1 constants supported for now",
         );
-        assert_eq!(
-            constant.data.size(),
-            Some(1),
-            "Only scalar constants supported for now"
-        );
-        assert_eq!(
-            constant.data.shape().unwrap().len(),
-            0,
-            "Only scalar constants supported for now"
-        );
+        // TODO(@gussmith23) These are broken at the moment
+        // assert_eq!(
+        //     constant.data.size(),
+        //     Some(4),
+        //     "Only scalar constants supported for now"
+        // );
+        // assert_eq!(
+        //     constant.data.shape().unwrap().len(),
+        //     0,
+        //     "Only scalar constants supported for now"
+        // );
         assert_eq!(
             constant.data.dtype(),
             "float32".parse().unwrap(),
             "Only float32x1 constants supported for now",
         );
-        let value: f32 = constant.data.to_vec().unwrap()[0];
-        let literal_id = glenside_expr.add(Language::NotNanFloat64(NotNan::<f64>::new(value as f64).unwrap()));
+        // TODO(@gussmith23) This is a hack
+        // Jared and Max are working on ndarray at the moment.
+        let value: f32 = unsafe { *(constant.data.as_dltensor().data as *const f32) };
+        let literal_id = glenside_expr.add(Language::NotNanFloat64(
+            NotNan::<f64>::new(value as f64).unwrap(),
+        ));
+        let literal_id = glenside_expr.add(Language::Literal(literal_id));
         let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
         access_literal_id
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
