@@ -27,9 +27,25 @@ use super::PadType;
 /// let id = access(&mut expr, 1, 2);
 /// assert_eq!(expr.pretty(80), "(access (access-tensor a) 2)");
 /// ```
-fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
+pub fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
     let axis_id = expr.add(Language::Usize(axis));
     expr.add(Language::Access([id, axis_id]))
+}
+
+/// Given an access and axis, add access expression accessing access at axis
+///
+/// ```
+/// use std::str::FromStr;
+/// use glenside::language::from_relay::access_insert_axis;
+/// use egg::RecExpr;
+///
+/// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
+/// let id = access_insert_axis(&mut expr, 1, 2);
+/// assert_eq!(expr.pretty(80), "(access-insert-axis (access-tensor a) 2)");
+/// ```
+pub fn access_insert_axis(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
+    let axis_id = expr.add(Language::Usize(axis));
+    expr.add(Language::AccessInsertAxis([id, axis_id]))
 }
 
 /// Given the input access and compute type, add compute expression
@@ -47,7 +63,7 @@ fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
 ///     "(compute relu (access (access-tensor a) 2))"
 /// );
 /// ```
-fn compute(expr: &mut RecExpr<Language>, compute_type: ComputeType, access_id: Id) -> Id {
+pub fn compute(expr: &mut RecExpr<Language>, compute_type: ComputeType, access_id: Id) -> Id {
     let compute_type_id = expr.add(Language::ComputeType(compute_type));
     expr.add(Language::Compute([compute_type_id, access_id]))
 }
@@ -71,7 +87,12 @@ fn compute(expr: &mut RecExpr<Language>, compute_type: ComputeType, access_id: I
 ///     "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))"
 /// );
 /// ```
-fn access_pair(expr: &mut RecExpr<Language>, access_a_id: Id, access_b_id: Id, axis: usize) -> Id {
+pub fn access_pair(
+    expr: &mut RecExpr<Language>,
+    access_a_id: Id,
+    access_b_id: Id,
+    axis: usize,
+) -> Id {
     let a_id = access(expr, access_a_id, axis);
     let b_id = access(expr, access_b_id, axis);
     expr.add(Language::AccessPair([a_id, b_id]))
