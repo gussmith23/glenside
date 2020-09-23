@@ -62,7 +62,6 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
         let t = shape_from_type(var.type_annotation.clone());
         names_and_shapes.push((var.name_hint().as_str().unwrap().to_string(), t));
     }
-    println!("{:?}", names_and_shapes);
     let mut expr = RecExpr::default();
     let _id = recursive_helper(func.body.clone(), &mut expr);
 
@@ -71,7 +70,6 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
 
 fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> Id {
     if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
-        println!("var: {}", as_text(relay_expr));
         let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
         glenside_expr.add(Language::AccessTensor(symbol_id))
     } else if let Ok(constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
@@ -118,7 +116,6 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
         let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
         access_literal_id
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
-        println!("call: {}", as_text(relay_expr));
         if let Ok(primitive_op) = call
             .op
             .clone()
