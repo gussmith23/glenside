@@ -186,6 +186,63 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.bias_add" => {
+                    assert_eq!(call.args.len(), 2);
+                    assert_eq!(
+                        call.args
+                            .get(1)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len(),
+                        1,
+                        "Only supporting vector biases at the moment"
+                    );
+
+                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let mut bias_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::BiasAddAttrs>()
+                        .unwrap();
+
+                    // Insert axes before
+                    for _ in 0..attrs.axis {
+                        let zero_id = glenside_expr.add(Language::Usize(0));
+                        bias_id = glenside_expr.add(Language::AccessInsertAxis([bias_id, zero_id]));
+                    }
+
+                    // Insert axes after
+                    for axis in (attrs.axis + 1) as i64
+                        ..call
+                            .args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len()
+                    {
+                        let axis_id = glenside_expr.add(Language::Usize(axis as usize));
+                        bias_id = glenside_expr.add(Language::AccessInsertAxis([bias_id, axis_id]));
+                    }
+
+                    let get_shape_id = glenside_expr.add(Language::GetAccessShape(data_id));
+                    let bias_id =
+                        glenside_expr.add(Language::AccessBroadcast([bias_id, get_shape_id]));
+
+                    let data_id = access_pair(glenside_expr, data_id, bias_id, 0);
+                    let data_id = compute(glenside_expr, ComputeType::ElementwiseAdd, data_id);
+
+                    data_id
+                }
                 "nn.conv2d" => {
                     assert_eq!(call.args.len(), 2);
                     let attrs = call
