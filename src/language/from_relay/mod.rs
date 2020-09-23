@@ -186,6 +186,25 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.batch_flatten" => {
+                    assert_eq!(call.args.len(), 1);
+                    assert!(
+                        call.args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len()
+                            >= 1
+                    );
+
+                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let data_id = access(glenside_expr, data_id, 1);
+                    glenside_expr.add(Language::AccessFlatten(data_id))
+                }
                 "nn.bias_add" => {
                     assert_eq!(call.args.len(), 2);
                     assert_eq!(
