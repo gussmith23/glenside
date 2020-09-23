@@ -213,6 +213,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
                         .unwrap();
+                    assert_eq!(call.args.len(), 2);
                     assert_eq!(
                         attrs.out_dtype,
                         call.args
