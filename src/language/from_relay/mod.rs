@@ -14,6 +14,69 @@ use tvm::runtime::IsObjectRef;
 use super::ComputeType;
 use super::PadType;
 
+// TODO(@gussmith23) Give glenside-expression-creation helpers a new home
+
+/// Given an access and axis, add access expression accessing access at axis
+///
+/// ```
+/// use std::str::FromStr;
+/// use glenside::language::from_relay::access;
+/// use egg::RecExpr;
+///
+/// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
+/// let id = access(&mut expr, 1, 2);
+/// assert_eq!(expr.pretty(80), "(access (access-tensor a) 2)");
+/// ```
+fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
+    let axis_id = expr.add(Language::Usize(axis));
+    expr.add(Language::Access([id, axis_id]))
+}
+
+/// Given the input access and compute type, add compute expression
+///
+/// ```
+/// use egg::RecExpr;
+/// use glenside::language::from_relay::compute;
+/// use glenside::language::ComputeType;
+/// use std::str::FromStr;
+///
+/// let mut expr = RecExpr::from_str("(access (access-tensor a) 2)").unwrap();
+/// let id = compute(&mut expr, ComputeType::ReLU, 3);
+/// assert_eq!(
+///     expr.pretty(80),
+///     "(compute relu (access (access-tensor a) 2))"
+/// );
+/// ```
+fn compute(expr: &mut RecExpr<Language>, compute_type: ComputeType, access_id: Id) -> Id {
+    let compute_type_id = expr.add(Language::ComputeType(compute_type));
+    expr.add(Language::Compute([compute_type_id, access_id]))
+}
+
+/// Given input accesses and an axis, re-accesses and pairs both accesses
+///
+/// ```
+/// use egg::RecExpr;
+/// use glenside::language::from_relay::access_pair;
+/// use glenside::language::from_relay::access;
+/// use glenside::language::Language;
+///
+/// let mut expr = RecExpr::default();
+/// let a_id = expr.add(Language::Symbol("a".to_string()));
+/// let a_id = expr.add(Language::AccessTensor(a_id));
+/// let b_id = expr.add(Language::Symbol("b".to_string()));
+/// let b_id = expr.add(Language::AccessTensor(b_id));
+/// let id = access_pair(&mut expr, a_id, b_id, 2);
+/// assert_eq!(
+///     expr.pretty(80),
+///     "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))"
+/// );
+/// ```
+fn access_pair(expr: &mut RecExpr<Language>, access_a_id: Id, access_b_id: Id, axis: usize) -> Id {
+    let a_id = access(expr, access_a_id, axis);
+    let b_id = access(expr, access_b_id, axis);
+    expr.add(Language::AccessPair([a_id, b_id]))
+}
+
 /// Get shape from type
 pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
     let tensor_type = t
