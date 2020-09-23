@@ -207,6 +207,61 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.dense" => {
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
+                        .unwrap();
+                    assert_eq!(
+                        attrs.out_dtype,
+                        call.args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .dtype,
+                        "Changing out_dtype not yet supported"
+                    );
+                    assert_eq!(
+                        call.args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len(),
+                        2,
+                        "Only supporting dense matrix multiplication of tensors with 2 dimensions"
+                    );
+                    assert_eq!(
+                        call.args
+                            .get(1)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len(),
+                        2,
+                        "Only supporting dense matrix multiplication of tensors with 2 dimensions"
+                    );
+
+                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let weights_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+
+                    let data_id = access(glenside_expr, data_id, 1);
+                    let weights_id = access(glenside_expr, weights_id, 1);
+
+                    let data_id =
+                        glenside_expr.add(Language::AccessCartesianProduct([data_id, weights_id]));
+                    compute(glenside_expr, ComputeType::DotProduct, data_id)
+                }
                 "add" | "multiply" | "divide" => {
                     assert_eq!(call.args.len(), 2);
                     let mut a_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
