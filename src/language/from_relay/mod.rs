@@ -258,6 +258,134 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.max_pool2d" => {
+                    assert_eq!(call.args.len(), 1);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::MaxPool2DAttrs>()
+                        .unwrap();
+                    assert_eq!(
+                        call.args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len(),
+                        4
+                    );
+                    assert_eq!(attrs.pool_size.len(), 2);
+                    assert_eq!(attrs.padding.len(), 4);
+                    assert_eq!(attrs.strides.len(), 2);
+                    assert_eq!(attrs.ceil_mode, false);
+
+                    match attrs.layout.as_str().unwrap() {
+                        "NCHW" => {
+                            let data_id =
+                                recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                            let data_id = access_pad(
+                                glenside_expr,
+                                data_id,
+                                PadType::MinPadding,
+                                2,
+                                attrs
+                                    .padding
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .padding
+                                    .get(2)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            );
+                            let data_id = access_pad(
+                                glenside_expr,
+                                data_id,
+                                PadType::MinPadding,
+                                3,
+                                attrs
+                                    .padding
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .padding
+                                    .get(3)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            );
+                            let data_id = access(glenside_expr, data_id, 4);
+
+                            let stride_shape_id = shape(
+                                glenside_expr,
+                                vec![
+                                    1,
+                                    1,
+                                    attrs
+                                        .strides
+                                        .get(0)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                    attrs
+                                        .strides
+                                        .get(1)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                ],
+                            );
+                            let pool_window_shape_id = shape(
+                                glenside_expr,
+                                vec![
+                                    1,
+                                    1,
+                                    attrs
+                                        .pool_size
+                                        .get(0)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                    attrs
+                                        .pool_size
+                                        .get(1)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                ],
+                            );
+
+                            let data_id = glenside_expr.add(Language::AccessWindows([
+                                data_id,
+                                pool_window_shape_id,
+                                stride_shape_id,
+                            ]));
+
+                            let data_id = access(glenside_expr, data_id, 4);
+
+                            let data_id = compute(glenside_expr, ComputeType::ReduceMax, data_id);
+
+                            data_id
+                        }
+                        other @ _ => todo!("layout {} not supported", other),
+                    }
+                }
                 "nn.global_avg_pool2d" => {
                     let attrs = call
                         .attrs
