@@ -207,6 +207,32 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.global_avg_pool2d" => {
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::GlobalPool2DAttrs>()
+                        .unwrap();
+                    assert_eq!(call.args.len(), 1);
+                    assert_eq!(
+                        attrs.layout, "NCHW",
+                        "NCHW is the only layout currently supported"
+                    );
+
+                    match attrs.layout.as_str().unwrap() {
+                        "NCHW" => {
+                            let data_id =
+                                recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                            let data_id = access(glenside_expr, data_id, 2);
+                            let data_id = compute(glenside_expr, ComputeType::ReduceMean, data_id);
+                            let data_id = access_insert_axis(glenside_expr, data_id, 2);
+                            let data_id = access_insert_axis(glenside_expr, data_id, 3);
+                            let data_id = access(glenside_expr, data_id, 2);
+                            data_id
+                        }
+                        _ => todo!("layout not currently supported"),
+                    }
+                }
                 "expand_dims" => {
                     let attrs = call
                         .attrs
