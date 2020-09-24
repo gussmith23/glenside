@@ -258,6 +258,38 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.softmax" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
+                        .unwrap();
+                    match attrs.axis {
+                        -1 => {
+                            let data_id = access(
+                                glenside_expr,
+                                data_id,
+                                (call
+                                    .args
+                                    .get(0)
+                                    .unwrap()
+                                    .checked_type
+                                    .clone()
+                                    .downcast::<TensorType>()
+                                    .unwrap()
+                                    .shape
+                                    .len()
+                                    - 1)
+                                .try_into()
+                                .unwrap(),
+                            );
+                            compute(glenside_expr, ComputeType::Softmax, data_id)
+                        }
+                        other @ _ => todo!("Softmax with axis value {} not yet supported", other),
+                    }
+                }
                 "nn.relu" | "sqrt" | "negative" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
