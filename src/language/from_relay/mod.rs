@@ -3,6 +3,7 @@
 use crate::language::Language;
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
+use tvm::DataType;
 use std::convert::TryInto;
 use tvm::ir::as_text;
 use tvm::ir::module::*;
@@ -487,14 +488,8 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                     assert_eq!(call.args.len(), 2);
                     assert_eq!(
                         attrs.out_dtype,
-                        call.args
-                            .get(0)
-                            .unwrap()
-                            .checked_type
-                            .clone()
-                            .downcast::<TensorType>()
-                            .unwrap()
-                            .dtype,
+                        // This datatype seems to indicate "null"?
+                        DataType::new(3, 0 ,0),
                         "Changing out_dtype not yet supported"
                     );
                     assert_eq!(
