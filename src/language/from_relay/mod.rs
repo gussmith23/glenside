@@ -258,6 +258,20 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.relu" | "sqrt" | "negative" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    compute(
+                        glenside_expr,
+                        match primitive_op.name.as_str().unwrap() {
+                            "nn.relu" => ComputeType::ReLU,
+                            "sqrt" => ComputeType::Sqrt,
+                            "negative" => ComputeType::Negative,
+                            _ => unreachable!(),
+                        },
+                        data_id,
+                    )
+                }
                 "nn.max_pool2d" => {
                     assert_eq!(call.args.len(), 1);
                     let attrs = call
