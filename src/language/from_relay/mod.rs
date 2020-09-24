@@ -16,6 +16,39 @@ use super::PadType;
 
 // TODO(@gussmith23) Give glenside-expression-creation helpers a new home
 
+/// Pad an access
+///
+/// ```
+/// use std::str::FromStr;
+/// use glenside::language::from_relay::access_pad;
+/// use glenside::language::PadType;
+/// use egg::RecExpr;
+///
+/// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
+/// let id = access_pad(&mut expr, 1, PadType::ZeroPadding, 2, 3, 4 );
+/// assert_eq!(expr.pretty(80), "(access-pad (access-tensor a) zero-padding 2 3 4)");
+/// ```
+pub fn access_pad(
+    expr: &mut RecExpr<Language>,
+    id: Id,
+    pad_type: PadType,
+    axis: usize,
+    pad_before: usize,
+    pad_after: usize,
+) -> Id {
+    let axis_id = expr.add(Language::Usize(axis));
+    let pad_before_id = expr.add(Language::Usize(pad_before));
+    let pad_after_id = expr.add(Language::Usize(pad_after));
+    let pad_type_id = expr.add(Language::PadType(pad_type));
+    expr.add(Language::AccessPad([
+        id,
+        pad_type_id,
+        axis_id,
+        pad_before_id,
+        pad_after_id,
+    ]))
+}
+
 /// Given an access and axis, add access expression accessing access at axis
 ///
 /// ```
