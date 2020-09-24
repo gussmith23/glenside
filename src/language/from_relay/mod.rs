@@ -5,7 +5,6 @@ use egg::{Id, RecExpr};
 use ordered_float::NotNan;
 use tvm::DataType;
 use std::convert::TryInto;
-use tvm::ir::as_text;
 use tvm::ir::module::*;
 use tvm::ir::relay::*;
 use tvm::ir::tir::*;
