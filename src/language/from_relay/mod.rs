@@ -16,6 +16,24 @@ use super::PadType;
 
 // TODO(@gussmith23) Give glenside-expression-creation helpers a new home
 
+/// Create a shape
+///
+/// ```
+/// use glenside::language::from_relay::shape;
+/// use egg::RecExpr;
+///
+/// let mut expr = RecExpr::default();
+/// let id = shape(&mut expr, vec![1, 2, 3, 4]);
+/// assert_eq!(expr.pretty(80), "(shape 1 2 3 4)");
+/// ```
+pub fn shape(expr: &mut RecExpr<Language>, vals: Vec<usize>) -> Id {
+    let mut ids = Vec::default();
+    for val in vals {
+        ids.push(expr.add(Language::Usize(val)));
+    }
+    expr.add(Language::Shape(Box::from(ids.as_slice())))
+}
+
 /// Pad an access
 ///
 /// ```
