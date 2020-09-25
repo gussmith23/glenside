@@ -3,13 +3,14 @@
 use crate::language::Language;
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
-use tvm::DataType;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use tvm::ir::module::*;
 use tvm::ir::relay::*;
 use tvm::ir::tir::*;
 use tvm::ir::ty::*;
 use tvm::runtime::IsObjectRef;
+use tvm::DataType;
 
 use super::ComputeType;
 use super::PadType;
@@ -197,13 +198,68 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
         let t = shape_from_type(var.type_annotation.clone());
         names_and_shapes.push((var.name_hint().as_str().unwrap().to_string(), t));
     }
-    let mut expr = RecExpr::default();
-    let _id = recursive_helper(func.body.clone(), &mut expr);
+    let mut glenside_expr = RecExpr::default();
+    let mut worklist = Vec::default();
+    create_worklist(func.body.clone(), &mut worklist);
+    let mut map = HashMap::new();
+    for (i, expr) in worklist.iter().enumerate() {
+        println!("{}/{}", i, worklist.len());
+        println!("{}", tvm::ir::expr::as_text(expr.clone()));
+        map.insert(
+            expr.clone(),
+            compile_expression(expr.clone(), &mut glenside_expr, |expr| {
+                *map.get(&expr).unwrap_or_else(|| {
+                    panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
+                })
+            }),
+        );
+    }
 
-    (expr, names_and_shapes)
+    (glenside_expr, names_and_shapes)
 }
 
-fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> Id {
+/// Generates an ordered list of Relay expressions to compile.
+///
+/// Compiling large Relay expressions with naive recursion overflows the stack,
+/// so we first recursively generate a worklist which we can then iterate over.
+/// The main goal of the worklist is to make sure an expression comes *after*
+/// its children in the worklist; otherwise, we can't compile the expression!
+fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
+    fn add_to_worklist(expr: Expr, worklist: &mut Vec<Expr>) {
+        if !worklist.contains(&expr) {
+            worklist.push(expr.clone());
+        }
+    }
+    if let Ok(_var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
+        add_to_worklist(relay_expr.clone(), worklist);
+    } else if let Ok(_constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
+        add_to_worklist(relay_expr.clone(), worklist);
+    } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
+        for i in 0..call.args.len() {
+            // Recursively add children (and their dependencies) to the worklist
+            create_worklist(call.args.get(i.try_into().unwrap()).unwrap(), worklist);
+        }
+        add_to_worklist(relay_expr.clone(), worklist);
+    } else {
+        todo!()
+    }
+}
+
+/// Compile a Relay expression to a Glenside [`RecExpr`]
+///
+/// `get_compiled_expression` is a function which `compile_expression` can use
+/// to get the [`Id`]s of the expression's children, once they are compiled and
+/// added to the [`RecExpr`]. This can be `compile_expression` itself, for a
+/// naive recursive strategy, or some other function that e.g. accesses a
+/// memoization map. `get_compiled_expression`'s signature may need to be
+/// modified to actually support the naive recursive case.
+///
+fn compile_expression(
+    relay_expr: Expr,
+    glenside_expr: &mut RecExpr<Language>,
+    // TODO(@gussmith23) Do we need to pass the recexpr into this closure?
+    get_compiled_expression: impl Fn(Expr) -> Id,
+) -> Id {
     if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
         let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
         glenside_expr.add(Language::AccessTensor(symbol_id))
@@ -260,7 +316,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
             match primitive_op.name.as_str().unwrap() {
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
-                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let attrs = call
                         .attrs
                         .clone()
@@ -292,7 +348,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                 }
                 "nn.relu" | "sqrt" | "negative" => {
                     assert_eq!(call.args.len(), 1);
-                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     compute(
                         glenside_expr,
                         match primitive_op.name.as_str().unwrap() {
@@ -330,8 +386,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
 
                     match attrs.layout.as_str().unwrap() {
                         "NCHW" => {
-                            let data_id =
-                                recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                            let data_id = get_compiled_expression(call.args.get(0).unwrap());
                             let data_id = access_pad(
                                 glenside_expr,
                                 data_id,
@@ -446,8 +501,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
 
                     match attrs.layout.as_str().unwrap() {
                         "NCHW" => {
-                            let data_id =
-                                recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                            let data_id = get_compiled_expression(call.args.get(0).unwrap());
                             let data_id = access(glenside_expr, data_id, 2);
                             let data_id = compute(glenside_expr, ComputeType::ReduceMean, data_id);
                             let data_id = access_insert_axis(glenside_expr, data_id, 2);
@@ -466,7 +520,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                         .unwrap();
                     assert_eq!(call.args.len(), 1);
 
-                    let mut data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let mut data_id = get_compiled_expression(call.args.get(0).unwrap());
 
                     for _ in 0..attrs.num_newaxis {
                         data_id = access_insert_axis(
@@ -518,8 +572,8 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                         "Only supporting dense matrix multiplication of tensors with 2 dimensions"
                     );
 
-                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
-                    let weights_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let weights_id = get_compiled_expression(call.args.get(1).unwrap());
 
                     let data_id = access(glenside_expr, data_id, 1);
                     let weights_id = access(glenside_expr, weights_id, 1);
@@ -530,10 +584,10 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                 }
                 "add" | "multiply" | "divide" => {
                     assert_eq!(call.args.len(), 2);
-                    let mut a_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let mut a_id = get_compiled_expression(call.args.get(0).unwrap());
                     let mut a_shape =
                         shape_from_type(call.args.get(0).unwrap().checked_type.clone());
-                    let mut b_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+                    let mut b_id = get_compiled_expression(call.args.get(1).unwrap());
                     let mut b_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
 
@@ -594,7 +648,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                             >= 1
                     );
 
-                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_id = access(glenside_expr, data_id, 1);
                     glenside_expr.add(Language::AccessFlatten(data_id))
                 }
@@ -614,8 +668,8 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                         "Only supporting vector biases at the moment"
                     );
 
-                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
-                    let mut bias_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let mut bias_id = get_compiled_expression(call.args.get(1).unwrap());
 
                     let attrs = call
                         .attrs
@@ -663,11 +717,11 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                         .downcast::<tvm::ir::relay::attrs::nn::Conv2DAttrs>()
                         .unwrap();
 
-                    let data_id = recursive_helper(call.args.get(0).unwrap(), glenside_expr);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_shape =
                         shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     assert_eq!(data_shape.len(), 4);
-                    let weights_id = recursive_helper(call.args.get(1).unwrap(), glenside_expr);
+                    let weights_id = get_compiled_expression(call.args.get(1).unwrap());
                     let weights_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
                     assert_eq!(weights_shape.len(), 4);
@@ -1369,7 +1423,6 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 (compute softmax (access (compute softmax (access (access-tensor x) 0)) 0))
 "#
     );
-
 
     // Mobilenet, simplified for inference (so batch norms are removed).
     // Generate with:
