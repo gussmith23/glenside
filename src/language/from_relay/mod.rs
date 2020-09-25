@@ -488,7 +488,7 @@ fn recursive_helper(relay_expr: Expr, glenside_expr: &mut RecExpr<Language>) -> 
                     assert_eq!(
                         attrs.out_dtype,
                         // This datatype seems to indicate "null"?
-                        DataType::new(3, 0 ,0),
+                        DataType::new(3, 0, 0),
                         "Changing out_dtype not yet supported"
                     );
                     assert_eq!(
