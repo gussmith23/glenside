@@ -16,7 +16,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
     let id = expr.as_ref().len() - 1;
     let _conv2d_id =
-        glenside::models::resnet50::conv2d(&mut expr, id as u32, "weights", (1, 1), (1, 1));
+        glenside::models::resnet50::conv2d(&mut expr, id.into(), "weights", (1, 1), (1, 1));
 
     let mut map = HashMap::default();
     // batch, height, width, channels

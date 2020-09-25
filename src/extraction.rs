@@ -292,28 +292,29 @@ mod tests {
 
         let (cost, expr) = ex.find_best(id);
         assert!(cost < std::usize::MAX);
+        // TODO(@gussmith23) Do this check in a more intelligent way.
+        //
+        // For some reason, comparing RecExprs doesn't work anymore, after a
+        // recent egg update. Even if the RecExprs are the same structurally.
         assert_eq!(
-            expr,
-            "
-         (systolic-array 32 32
-          (access
-           (systolic-array 32 32
-            (access (access-tensor v-32) 0)
-            (access (access-tensor t-32-32) 0)
-           )
-           0
-          )
-          (access
-           (systolic-array 32 32
-            (access (access-tensor t-32-32) 1)
-            (access (access-tensor t-32-32) 0)
-           )
-           0
-          )
-         )
-         "
-            .parse()
-            .unwrap()
+            expr.pretty(80),
+            r#"(systolic-array
+  32
+  32
+  (access
+    (systolic-array
+      32
+      32
+      (access (access-tensor v-32) 0)
+      (access (access-tensor t-32-32) 0))
+    0)
+  (access
+    (systolic-array
+      32
+      32
+      (access (access-tensor t-32-32) 1)
+      (access (access-tensor t-32-32) 0))
+    0))"#
         );
     }
 
@@ -354,28 +355,29 @@ mod tests {
         let (cost, best) = ex.find_best(id);
         assert!(cost < std::usize::MAX);
 
+        // TODO(@gussmith23) Do this check in a more intelligent way.
+        //
+        // For some reason, comparing RecExprs doesn't work anymore, after a
+        // recent egg update. Even if the RecExprs are the same structurally.
         assert_eq!(
-            best,
-            "
-         (systolic-array 128 16
-          (access
-           (systolic-array 64 128
-            (access
-             (systolic-array 32 64
-              (access (access-tensor input) 0)
-              (access (access-tensor weight0) 0)
-             )
-             0
-            )
-            (access (access-tensor weight1) 0)
-           )
-           0
-          )
-          (access (access-tensor weight2) 0)
-         )
-         "
-            .parse()
-            .unwrap()
+            best.pretty(80),
+            "(systolic-array
+  128
+  16
+  (access
+    (systolic-array
+      64
+      128
+      (access
+        (systolic-array
+          32
+          64
+          (access (access-tensor input) 0)
+          (access (access-tensor weight0) 0))
+        0)
+      (access (access-tensor weight1) 0))
+    0)
+  (access (access-tensor weight2) 0))"
         );
     }
 }

@@ -1,5 +1,5 @@
 use super::language::{ComputeType, Language, PadType};
-use egg::RecExpr;
+use egg::{Id, RecExpr};
 use itertools::Itertools;
 use ndarray::{s, Array, ArrayD, Dimension, IxDyn, Zip};
 use num_traits::cast::AsPrimitive;
@@ -51,14 +51,14 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
-        &Language::AccessLiteral(id) => match interpret(expr, id as usize, env) {
+        &Language::AccessLiteral(id) => match interpret(expr, id.into(), env) {
             Value::Tensor(t) => Value::Access(Access {
                 tensor: t,
                 access_axis: 0,
             }),
             _ => panic!(),
         },
-        &Language::Literal(id) => match interpret(expr, id as usize, env) {
+        &Language::Literal(id) => match interpret(expr, id.into(), env) {
             t @ Value::Tensor(_) => t,
             _ => panic!(),
         },
@@ -66,7 +66,7 @@ where
             ndarray::arr0(DataType::from_not_nan_float_64_literal(v.into())).into_dyn(),
         ),
         &Language::AccessFlatten(access_id) => {
-            let mut access = match interpret(expr, access_id as usize, env) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
@@ -89,11 +89,11 @@ where
             Value::Access(access)
         }
         &Language::AccessTranspose([access_id, list_id]) => {
-            let mut access = match interpret(expr, access_id as usize, env) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let list = match interpret(expr, list_id as usize, env) {
+            let list = match interpret(expr, list_id.into(), env) {
                 Value::List(l) => l,
                 _ => panic!(),
             };
@@ -103,25 +103,25 @@ where
         }
         Language::List(list) => Value::List(
             list.iter()
-                .map(|id: &u32| match interpret(expr, *id as usize, env) {
+                .map(|id: &Id| match interpret(expr, (*id).into(), env) {
                     Value::Usize(u) => u,
                     _ => panic!(),
                 })
                 .collect::<Vec<_>>(),
         ),
         &Language::GetAccessShape(access_id) => {
-            let access = match interpret(expr, access_id as usize, env) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
             Value::AccessShape(IxDyn(access.tensor.shape()), access.access_axis)
         }
         &Language::AccessBroadcast([access_id, shape_id]) => {
-            let mut access = match interpret(expr, access_id as usize, env) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let shape = match interpret(expr, shape_id as usize, env) {
+            let shape = match interpret(expr, shape_id.into(), env) {
                 Value::AccessShape(s, _) => s,
                 _ => panic!("Expected access shape as second argument to access-broadcast"),
             };
@@ -138,11 +138,11 @@ where
             Value::Access(access)
         }
         &Language::AccessInsertAxis([access_id, axis_id]) => {
-            let mut access = match interpret(expr, access_id as usize, env) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let axis = match interpret(expr, axis_id as usize, env) {
+            let axis = match interpret(expr, axis_id.into(), env) {
                 Value::Usize(u) => u,
                 _ => panic!(),
             };
@@ -158,8 +158,8 @@ where
         }
         &Language::AccessPair([a0_id, a1_id]) => {
             let (a0, a1) = match (
-                interpret(expr, a0_id as usize, env),
-                interpret(expr, a1_id as usize, env),
+                interpret(expr, a0_id.into(), env),
+                interpret(expr, a1_id.into(), env),
             ) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
                 _ => panic!("Expected both arguments to access-pair to be accesses"),
@@ -190,11 +190,11 @@ where
             })
         }
         &Language::AccessSqueeze([access_id, axis_id]) => {
-            let mut access = match interpret(expr, access_id as usize, env) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let axis = match interpret(expr, axis_id as usize, env) {
+            let axis = match interpret(expr, axis_id.into(), env) {
                 Value::Usize(u) => u,
                 _ => panic!(),
             };
@@ -214,23 +214,23 @@ where
         }
         Language::PadType(t) => Value::PadType(*t),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
-            let access = match interpret(expr, access_id as usize, env) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let pad_type = match interpret(expr, pad_type_id as usize, env) {
+            let pad_type = match interpret(expr, pad_type_id.into(), env) {
                 Value::PadType(t) => t,
                 _ => panic!(),
             };
-            let axis = match interpret(expr, axis_id as usize, env) {
+            let axis = match interpret(expr, axis_id.into(), env) {
                 Value::Usize(u) => u,
                 _ => panic!(),
             };
-            let pad_before = match interpret(expr, pad_before_id as usize, env) {
+            let pad_before = match interpret(expr, pad_before_id.into(), env) {
                 Value::Usize(u) => u,
                 _ => panic!(),
             };
-            let pad_after = match interpret(expr, pad_after_id as usize, env) {
+            let pad_after = match interpret(expr, pad_after_id.into(), env) {
                 Value::Usize(u) => u,
                 _ => panic!(),
             };
@@ -272,11 +272,11 @@ where
         }
         Language::ComputeType(t) => Value::ComputeType(t.clone()),
         &Language::Compute([compute_type_id, access_id]) => {
-            let compute_type = match interpret(expr, compute_type_id as usize, env) {
+            let compute_type = match interpret(expr, compute_type_id.into(), env) {
                 Value::ComputeType(t) => t,
                 _ => panic!(),
             };
-            let access = match interpret(expr, access_id as usize, env) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
@@ -523,8 +523,8 @@ where
         }
         &Language::AccessCartesianProduct([a0_id, a1_id]) => {
             let (a0, a1) = match (
-                interpret(expr, a0_id as usize, env),
-                interpret(expr, a1_id as usize, env),
+                interpret(expr, a0_id.into(), env),
+                interpret(expr, a1_id.into(), env),
             ) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
                 _ => panic!(),
@@ -609,11 +609,11 @@ where
             })
         }
         &Language::Access([access_id, dim_id]) => {
-            let access = match interpret(expr, access_id as usize, env) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let dim = match interpret(expr, dim_id as usize, env) {
+            let dim = match interpret(expr, dim_id.into(), env) {
                 Value::Usize(u) => u,
                 _ => panic!(),
             };
@@ -627,15 +627,15 @@ where
             })
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
-            let access = match interpret(expr, access_id as usize, env) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let filters_shape = match interpret(expr, filters_shape_id as usize, env) {
+            let filters_shape = match interpret(expr, filters_shape_id.into(), env) {
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
-            let stride_shape = match interpret(expr, stride_shape_id as usize, env) {
+            let stride_shape = match interpret(expr, stride_shape_id.into(), env) {
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
@@ -723,7 +723,7 @@ where
         }
         Language::Shape(list) => Value::Shape(IxDyn(
             list.iter()
-                .map(|id: &u32| match interpret(expr, *id as usize, env) {
+                .map(|id: &Id| match interpret(expr, (*id).into(), env) {
                     Value::Usize(u) => u,
                     _ => panic!(),
                 })
@@ -731,8 +731,8 @@ where
                 .as_slice(),
         )),
         &Language::SliceShape([shape_id, slice_axis_id]) => match (
-            interpret(expr, shape_id as usize, env),
-            interpret(expr, slice_axis_id as usize, env),
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, slice_axis_id.into(), env),
         ) {
             (Value::Shape(s), Value::Usize(u)) => {
                 Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
@@ -740,8 +740,8 @@ where
             _ => panic!(),
         },
         &Language::ShapeInsertAxis([shape_id, axis_id]) => match (
-            interpret(expr, shape_id as usize, env),
-            interpret(expr, axis_id as usize, env),
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, axis_id.into(), env),
         ) {
             (Value::Shape(s), Value::Usize(u)) => {
                 assert!(u <= s.ndim());
@@ -758,8 +758,8 @@ where
             _ => panic!(),
         },
         &Language::ShapeRemoveAxis([shape_id, axis_id]) => match (
-            interpret(expr, shape_id as usize, env),
-            interpret(expr, axis_id as usize, env),
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, axis_id.into(), env),
         ) {
             (Value::Shape(s), Value::Usize(u)) => {
                 assert!(u < s.ndim(), "Invalid axis in shape-remove-axis");
@@ -774,11 +774,11 @@ where
             }
             _ => panic!(),
         },
-        &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id as usize, env) {
+        &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id.into(), env) {
             Value::Tensor(t) => Value::Shape(IxDyn(t.shape())),
             _ => panic!(),
         },
-        &Language::AccessTensor(tensor_id) => match interpret(expr, tensor_id as usize, env) {
+        &Language::AccessTensor(tensor_id) => match interpret(expr, tensor_id.into(), env) {
             Value::Tensor(t) => Value::Access(Access {
                 tensor: t,
                 // TODO(@gussmith) Arbitrarily picked default access axis

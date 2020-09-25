@@ -1,16 +1,16 @@
 use crate::language::{ComputeType, Language, PadType};
-use egg::RecExpr;
+use egg::{Id, RecExpr};
 
 type Expr = RecExpr<Language>;
 
 pub fn residual_unit(
     expr: &mut Expr,
-    data_id: u32,
+    data_id: Id,
     stride: (usize, usize),
     dim_match: bool,
     bottle_neck: bool,
     name: &str,
-) -> u32 {
+) -> Id {
     if bottle_neck {
         let bn1_id = batch_norm_inference(
             expr,
@@ -85,7 +85,7 @@ pub fn residual_unit(
     }
 }
 
-pub fn access_tensor_literal(expr: &mut Expr, name: &str, access_axis: usize) -> u32 {
+pub fn access_tensor_literal(expr: &mut Expr, name: &str, access_axis: usize) -> Id {
     // <usize>
     let usize_literal_id = expr.add(Language::Usize(access_axis));
     // <tensor>
@@ -99,29 +99,29 @@ pub fn access_tensor_literal(expr: &mut Expr, name: &str, access_axis: usize) ->
 }
 
 /// Computes over an access
-fn compute(expr: &mut Expr, compute_type: ComputeType, access_id: u32) -> u32 {
+fn compute(expr: &mut Expr, compute_type: ComputeType, access_id: Id) -> Id {
     let compute_type_id = expr.add(Language::ComputeType(compute_type));
     expr.add(Language::Compute([compute_type_id, access_id]))
 }
 
 /// Pairs the two accesses before computing over them
-fn compute_pair(expr: &mut Expr, compute_type: ComputeType, a_id: u32, b_id: u32) -> u32 {
+fn compute_pair(expr: &mut Expr, compute_type: ComputeType, a_id: Id, b_id: Id) -> Id {
     let pair_id = expr.add(Language::AccessPair([a_id, b_id]));
     compute(expr, compute_type, pair_id)
 }
 
-fn access_insert_axis(expr: &mut Expr, access_id: u32, axis: usize) -> u32 {
+fn access_insert_axis(expr: &mut Expr, access_id: Id, axis: usize) -> Id {
     let usize_id = expr.add(Language::Usize(axis));
     let insert_axis_id = expr.add(Language::AccessInsertAxis([access_id, usize_id]));
     insert_axis_id
 }
 
-fn get_access_shape(expr: &mut Expr, access_id: u32) -> u32 {
+fn get_access_shape(expr: &mut Expr, access_id: Id) -> Id {
     let get_access_shape_id = expr.add(Language::GetAccessShape(access_id));
     get_access_shape_id
 }
 
-fn access_broadcast(expr: &mut Expr, access_id: u32, shape_id: u32) -> u32 {
+fn access_broadcast(expr: &mut Expr, access_id: Id, shape_id: Id) -> Id {
     expr.add(Language::AccessBroadcast([access_id, shape_id]))
 }
 
@@ -130,12 +130,12 @@ fn access_broadcast(expr: &mut Expr, access_id: u32, shape_id: u32) -> u32 {
 /// the sqrt of the variance (plus epsilon) should be taken.
 pub fn batch_norm_inference(
     expr: &mut Expr,
-    data_id: u32,
+    data_id: Id,
     gamma_name: &str,
     beta_name: &str,
     mean_name: &str,
     var_name: &str,
-) -> u32 {
+) -> Id {
     // TODO(@gussmith) Fix hardcoded access here
     // TODO(@gussmith) It doesn't matter how things are paired in elwise ops!
     // That is, regardless of the access axes of the two inputs, the result will
@@ -186,11 +186,11 @@ pub fn batch_norm_inference(
 
 pub fn conv2d(
     expr: &mut Expr,
-    data_id: u32,
+    data_id: Id,
     weights_name: &str,
     (stride_h, stride_w): (usize, usize),
     (pad_h, pad_w): (usize, usize),
-) -> u32 {
+) -> Id {
     let usize_0_id = expr.add(Language::Usize(0));
     let usize_1_id = expr.add(Language::Usize(1));
     let usize_2_id = expr.add(Language::Usize(2));
@@ -294,18 +294,18 @@ pub fn conv2d(
     data_id
 }
 
-fn relu(expr: &mut Expr, data_id: u32) -> u32 {
+fn relu(expr: &mut Expr, data_id: Id) -> Id {
     compute(expr, ComputeType::ReLU, data_id)
 }
 
 /// h_index/w_index: dimension index of h/w dimensions
 fn _pad(
     expr: &mut Expr,
-    data_id: u32,
+    data_id: Id,
     padding: (usize, usize),
     h_index: usize,
     w_index: usize,
-) -> u32 {
+) -> Id {
     let h_axis_index_id = expr.add(Language::Usize(h_index));
     let w_axis_index_id = expr.add(Language::Usize(w_index));
     let zero_pad_id = expr.add(Language::PadType(PadType::ZeroPadding));
@@ -331,18 +331,18 @@ fn _pad(
     pad_w_id
 }
 
-fn access(expr: &mut Expr, data_id: u32, access_axis: usize) -> u32 {
+fn access(expr: &mut Expr, data_id: Id, access_axis: usize) -> Id {
     let axis_id = expr.add(Language::Usize(access_axis));
     expr.add(Language::Access([data_id, axis_id]))
 }
 
 fn _max_pool2d(
     expr: &mut Expr,
-    data_id: u32,
+    data_id: Id,
     pool_size: (usize, usize),
     strides: (usize, usize),
     padding: (usize, usize),
-) -> u32 {
+) -> Id {
     let usize_1_id = expr.add(Language::Usize(1));
     let usize_pool_size_c_id = expr.add(Language::Usize(1));
     let usize_pool_size_h_id = expr.add(Language::Usize(pool_size.0));
@@ -377,7 +377,7 @@ fn _max_pool2d(
     compute_id
 }
 
-pub fn resnet50_cifar10_nhwc_hwio() -> (RecExpr<Language>, u32) {
+pub fn resnet50_cifar10_nhwc_hwio() -> (RecExpr<Language>, Id) {
     let mut expr = RecExpr::default();
 
     let data = access_tensor_literal(&mut expr, "image", 4);

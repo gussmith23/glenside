@@ -30,7 +30,7 @@ tvm = { path = "/Users/gus/tvm/rust/tvm" }
 
 
 [dependencies.egg]
-rev = "46de9eb1e05b6e86a9ee0b0fd03000b1b039f107"
+rev = "39415f19acdacd6dde62f40cb2bb08f8669acc85"
 git = "https://github.com/mwillsey/egg"
 
 [dependencies.ndarray]

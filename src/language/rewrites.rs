@@ -3174,7 +3174,7 @@ mod tests {
         let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
         let id = expr.as_ref().len() - 1;
         let _conv2d_id =
-            crate::models::resnet50::conv2d(&mut expr, id as u32, "weights", (1, 1), (1, 1));
+            crate::models::resnet50::conv2d(&mut expr, id.into(), "weights", (1, 1), (1, 1));
 
         let mut map = HashMap::default();
         // batch, height, width, channels

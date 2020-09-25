@@ -42,7 +42,7 @@ fn interpret_incomplete_resnet50_cifar10_nhwc_hwio() {
     ] {
         env.insert(var, load_npy(&format!("data/resnet/{}.npy", var)));
     }
-    let result = match interpret(&expr, data as usize, &env) {
+    let result = match interpret(&expr, data.into(), &env) {
         Value::Access(a) => a,
         _ => panic!(),
     };

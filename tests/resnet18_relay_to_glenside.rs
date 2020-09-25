@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use egg::EGraph;
 use glenside::language::MyAnalysis;
+use std::collections::HashMap;
 
 // ResNet18, simplified for inference (so batch norms are removed).
 // Generate with:
