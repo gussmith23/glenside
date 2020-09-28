@@ -203,8 +203,6 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
     create_worklist(func.body.clone(), &mut worklist);
     let mut map = HashMap::new();
     for (i, expr) in worklist.iter().enumerate() {
-        println!("{}/{}", i, worklist.len());
-        println!("{}", tvm::ir::expr::as_text(expr.clone()));
         map.insert(
             expr.clone(),
             compile_expression(expr.clone(), &mut glenside_expr, |expr| {
