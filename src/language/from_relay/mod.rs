@@ -763,6 +763,8 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_shape =
                         shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    // TODO(@gussmith23) Layout assumption
+                    let in_channels = data_shape[1];
                     assert_eq!(data_shape.len(), 4);
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
                     let weights_shape =
@@ -807,7 +809,7 @@ fn compile_expression(
                         tvm::DataType::new(3, 0, 0)
                     );
 
-                    match attrs.groups {
+                    match attrs.groups as usize {
                         1 => {
                             let usize_1_id = glenside_expr.add(Language::Usize(1));
 
@@ -950,6 +952,180 @@ fn compile_expression(
                                 .add(Language::AccessTranspose([data_id, transpose_list_id]));
 
                             data_id
+                        }
+                        // If groups = num input channels (ie in depthwise separable mobilenet convs)
+                        // TODO(@gussmith23) Layout assumption
+                        n if n == in_channels => {
+                            assert_eq!(
+                                attrs.data_layout, "NCHW",
+                                "NCHW is the only layout supported at the moment"
+                            );
+
+                            // First, pad input data.
+                            let pad_axis_id = glenside_expr.add(Language::Usize(2));
+                            let pad_before_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let pad_after_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(2)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let zero_padding_id =
+                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                            let data_id = glenside_expr.add(Language::AccessPad([
+                                data_id,
+                                zero_padding_id,
+                                pad_axis_id,
+                                pad_before_id,
+                                pad_after_id,
+                            ]));
+
+                            let pad_axis_id = glenside_expr.add(Language::Usize(3));
+                            let pad_before_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let pad_after_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(3)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let zero_padding_id =
+                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                            let data_id = glenside_expr.add(Language::AccessPad([
+                                data_id,
+                                zero_padding_id,
+                                pad_axis_id,
+                                pad_before_id,
+                                pad_after_id,
+                            ]));
+
+                            let access_axis_id = glenside_expr.add(Language::Usize(4));
+                            let data_id =
+                                glenside_expr.add(Language::Access([data_id, access_axis_id]));
+
+                            // Kernel size is the same for each group. Each
+                            // kernel's shape is (1,1,kH,kW) where the first 1
+                            // lines up with batch and the second lines up with
+                            // input channels. The fact that the kernel's
+                            // channel size is 1 is what makes this grouped with
+                            // groups=in_channels.
+                            // TODO(@gussmith23) Layout assumption.
+                            let mut list = Vec::default();
+                            list.push(glenside_expr.add(Language::Usize(1)));
+                            list.push(glenside_expr.add(Language::Usize(1)));
+                            for v in weights_shape[2..].iter() {
+                                list.push(glenside_expr.add(Language::Usize(*v as usize)));
+                            }
+                            let weights_shape_id =
+                                glenside_expr.add(Language::Shape(Box::from(list.as_slice())));
+
+                            // Stride is the same for each group.
+                            let mut stride_list = Vec::default();
+                            stride_list.push(glenside_expr.add(Language::Usize(1)));
+                            stride_list.push(glenside_expr.add(Language::Usize(1)));
+                            stride_list.push(
+                                glenside_expr.add(Language::Usize(
+                                    attrs
+                                        .strides
+                                        .get(0)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                )),
+                            );
+                            stride_list.push(
+                                glenside_expr.add(Language::Usize(
+                                    attrs
+                                        .strides
+                                        .get(1)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                )),
+                            );
+                            let stride_shape_id = glenside_expr
+                                .add(Language::Shape(Box::from(stride_list.as_slice())));
+
+                            let mut to_be_concatted = Vec::default();
+
+                            for channel_idx in 0..in_channels {
+                                // Get this group's input channel
+                                // TODO(@gussmith23) layout assumption
+                                let data_id = access_slice(
+                                    glenside_expr,
+                                    data_id,
+                                    1,
+                                    channel_idx.try_into().unwrap(),
+                                    (channel_idx + 1).try_into().unwrap(),
+                                );
+                                let data_id = glenside_expr.add(Language::AccessWindows([
+                                    data_id,
+                                    weights_shape_id,
+                                    stride_shape_id,
+                                ]));
+                                let data_id = access(glenside_expr, data_id, 4);
+                                // Result should be
+                                // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
+
+                                // Get this group's kernel
+                                // TODO(@gussmith23) layout assumption
+                                let weights_id = access_slice(
+                                    glenside_expr,
+                                    weights_id,
+                                    0,
+                                    channel_idx.try_into().unwrap(),
+                                    (channel_idx + 1).try_into().unwrap(),
+                                );
+                                let weights_id = access(glenside_expr, weights_id, 0);
+
+                                let data_id = glenside_expr
+                                    .add(Language::AccessCartesianProduct([weights_id, data_id]));
+                                // Results should be
+                                // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
+
+                                let data_id =
+                                    compute(glenside_expr, ComputeType::DotProduct, data_id);
+                                // Results should be
+                                // [1 1 new_H new_W]
+
+                                to_be_concatted.push(data_id);
+                            }
+
+                            let mut concatted_id = to_be_concatted[0];
+                            for to_be_concatted_id in to_be_concatted[1..].iter() {
+                                // TODO(@gussmith23) Layout assumption
+                                concatted_id = access_concatenate(
+                                    glenside_expr,
+                                    concatted_id,
+                                    *to_be_concatted_id,
+                                    1,
+                                );
+                            }
+
+                            concatted_id
                         }
                         _ => panic!("Groups not implemented for groups={}", attrs.groups),
                     }
