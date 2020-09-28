@@ -1,5 +1,6 @@
 // TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
-#[cfg(feature = "use-tvm")]
+#![cfg(feature = "use-tvm")]
+
 use crate::language::Language;
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;

@@ -1,3 +1,5 @@
+#![cfg(feature = "use-tvm")]
+
 use egg::EGraph;
 use glenside::language::MyAnalysis;
 use std::collections::HashMap;
