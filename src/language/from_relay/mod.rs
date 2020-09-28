@@ -755,7 +755,6 @@ fn compile_expression(
                             .value,
                         1
                     );
-                    assert_eq!(attrs.groups, 1);
                     assert_eq!(attrs.out_layout, "");
                     assert_eq!(
                         attrs.out_dtype,
@@ -763,144 +762,152 @@ fn compile_expression(
                         tvm::DataType::new(3, 0, 0)
                     );
 
-                    let usize_1_id = glenside_expr.add(Language::Usize(1));
+                    match attrs.groups {
+                        1 => {
+                            let usize_1_id = glenside_expr.add(Language::Usize(1));
 
-                    let mut list = Vec::default();
-                    list.push(usize_1_id);
-                    for v in weights_shape[1..].iter() {
-                        list.push(glenside_expr.add(Language::Usize(*v as usize)));
+                            let mut list = Vec::default();
+                            list.push(usize_1_id);
+                            for v in weights_shape[1..].iter() {
+                                list.push(glenside_expr.add(Language::Usize(*v as usize)));
+                            }
+                            let weights_shape_id =
+                                glenside_expr.add(Language::Shape(Box::from(list.as_slice())));
+
+                            let pad_axis_id = glenside_expr.add(Language::Usize(2));
+                            let pad_before_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let pad_after_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(2)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let zero_padding_id =
+                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                            let data_id = glenside_expr.add(Language::AccessPad([
+                                data_id,
+                                zero_padding_id,
+                                pad_axis_id,
+                                pad_before_id,
+                                pad_after_id,
+                            ]));
+
+                            let pad_axis_id = glenside_expr.add(Language::Usize(3));
+                            let pad_before_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let pad_after_id = glenside_expr.add(Language::Usize(
+                                attrs
+                                    .padding
+                                    .get(3)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ));
+                            let zero_padding_id =
+                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                            let data_id = glenside_expr.add(Language::AccessPad([
+                                data_id,
+                                zero_padding_id,
+                                pad_axis_id,
+                                pad_before_id,
+                                pad_after_id,
+                            ]));
+
+                            let access_axis_id = glenside_expr.add(Language::Usize(4));
+                            let data_id =
+                                glenside_expr.add(Language::Access([data_id, access_axis_id]));
+
+                            let mut stride_list = Vec::default();
+                            stride_list.push(glenside_expr.add(Language::Usize(1)));
+                            stride_list.push(glenside_expr.add(Language::Usize(1)));
+                            stride_list.push(
+                                glenside_expr.add(Language::Usize(
+                                    attrs
+                                        .strides
+                                        .get(0)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                )),
+                            );
+                            stride_list.push(
+                                glenside_expr.add(Language::Usize(
+                                    attrs
+                                        .strides
+                                        .get(1)
+                                        .unwrap()
+                                        .downcast::<IntImm>()
+                                        .unwrap()
+                                        .value as usize,
+                                )),
+                            );
+                            let stride_shape_id = glenside_expr
+                                .add(Language::Shape(Box::from(stride_list.as_slice())));
+
+                            let data_id = glenside_expr.add(Language::AccessWindows([
+                                data_id,
+                                weights_shape_id,
+                                stride_shape_id,
+                            ]));
+
+                            let squeeze_axis_id = glenside_expr.add(Language::Usize(4));
+                            let data_id = glenside_expr
+                                .add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+                            let squeeze_axis_id = glenside_expr.add(Language::Usize(1));
+                            let data_id = glenside_expr
+                                .add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+
+                            let access_axis_id = glenside_expr.add(Language::Usize(3));
+                            let data_id =
+                                glenside_expr.add(Language::Access([data_id, access_axis_id]));
+
+                            let access_axis_id = glenside_expr.add(Language::Usize(1));
+                            let weights_id =
+                                glenside_expr.add(Language::Access([weights_id, access_axis_id]));
+
+                            let data_id = glenside_expr
+                                .add(Language::AccessCartesianProduct([weights_id, data_id]));
+
+                            let compute_type_id =
+                                glenside_expr.add(Language::ComputeType(ComputeType::DotProduct));
+                            let data_id =
+                                glenside_expr.add(Language::Compute([compute_type_id, data_id]));
+
+                            let mut transpose_list = Vec::default();
+                            transpose_list.push(glenside_expr.add(Language::Usize(1)));
+                            transpose_list.push(glenside_expr.add(Language::Usize(0)));
+                            transpose_list.push(glenside_expr.add(Language::Usize(2)));
+                            transpose_list.push(glenside_expr.add(Language::Usize(3)));
+                            let transpose_list_id =
+                                glenside_expr.add(Language::List(Box::from(transpose_list)));
+
+                            let data_id = glenside_expr
+                                .add(Language::AccessTranspose([data_id, transpose_list_id]));
+
+                            data_id
+                        }
+                        _ => panic!("Groups not implemented for groups={}", attrs.groups),
                     }
-                    let weights_shape_id =
-                        glenside_expr.add(Language::Shape(Box::from(list.as_slice())));
-
-                    let pad_axis_id = glenside_expr.add(Language::Usize(2));
-                    let pad_before_id = glenside_expr.add(Language::Usize(
-                        attrs
-                            .padding
-                            .get(0)
-                            .unwrap()
-                            .downcast::<IntImm>()
-                            .unwrap()
-                            .value as usize,
-                    ));
-                    let pad_after_id = glenside_expr.add(Language::Usize(
-                        attrs
-                            .padding
-                            .get(2)
-                            .unwrap()
-                            .downcast::<IntImm>()
-                            .unwrap()
-                            .value as usize,
-                    ));
-                    let zero_padding_id =
-                        glenside_expr.add(Language::PadType(PadType::ZeroPadding));
-                    let data_id = glenside_expr.add(Language::AccessPad([
-                        data_id,
-                        zero_padding_id,
-                        pad_axis_id,
-                        pad_before_id,
-                        pad_after_id,
-                    ]));
-
-                    let pad_axis_id = glenside_expr.add(Language::Usize(3));
-                    let pad_before_id = glenside_expr.add(Language::Usize(
-                        attrs
-                            .padding
-                            .get(1)
-                            .unwrap()
-                            .downcast::<IntImm>()
-                            .unwrap()
-                            .value as usize,
-                    ));
-                    let pad_after_id = glenside_expr.add(Language::Usize(
-                        attrs
-                            .padding
-                            .get(3)
-                            .unwrap()
-                            .downcast::<IntImm>()
-                            .unwrap()
-                            .value as usize,
-                    ));
-                    let zero_padding_id =
-                        glenside_expr.add(Language::PadType(PadType::ZeroPadding));
-                    let data_id = glenside_expr.add(Language::AccessPad([
-                        data_id,
-                        zero_padding_id,
-                        pad_axis_id,
-                        pad_before_id,
-                        pad_after_id,
-                    ]));
-
-                    let access_axis_id = glenside_expr.add(Language::Usize(4));
-                    let data_id = glenside_expr.add(Language::Access([data_id, access_axis_id]));
-
-                    let mut stride_list = Vec::default();
-                    stride_list.push(glenside_expr.add(Language::Usize(1)));
-                    stride_list.push(glenside_expr.add(Language::Usize(1)));
-                    stride_list.push(
-                        glenside_expr.add(Language::Usize(
-                            attrs
-                                .strides
-                                .get(0)
-                                .unwrap()
-                                .downcast::<IntImm>()
-                                .unwrap()
-                                .value as usize,
-                        )),
-                    );
-                    stride_list.push(
-                        glenside_expr.add(Language::Usize(
-                            attrs
-                                .strides
-                                .get(1)
-                                .unwrap()
-                                .downcast::<IntImm>()
-                                .unwrap()
-                                .value as usize,
-                        )),
-                    );
-                    let stride_shape_id =
-                        glenside_expr.add(Language::Shape(Box::from(stride_list.as_slice())));
-
-                    let data_id = glenside_expr.add(Language::AccessWindows([
-                        data_id,
-                        weights_shape_id,
-                        stride_shape_id,
-                    ]));
-
-                    let squeeze_axis_id = glenside_expr.add(Language::Usize(4));
-                    let data_id =
-                        glenside_expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
-                    let squeeze_axis_id = glenside_expr.add(Language::Usize(1));
-                    let data_id =
-                        glenside_expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
-
-                    let access_axis_id = glenside_expr.add(Language::Usize(3));
-                    let data_id = glenside_expr.add(Language::Access([data_id, access_axis_id]));
-
-                    let access_axis_id = glenside_expr.add(Language::Usize(1));
-                    let weights_id =
-                        glenside_expr.add(Language::Access([weights_id, access_axis_id]));
-
-                    let data_id =
-                        glenside_expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
-
-                    let compute_type_id =
-                        glenside_expr.add(Language::ComputeType(ComputeType::DotProduct));
-                    let data_id = glenside_expr.add(Language::Compute([compute_type_id, data_id]));
-
-                    let mut transpose_list = Vec::default();
-                    transpose_list.push(glenside_expr.add(Language::Usize(1)));
-                    transpose_list.push(glenside_expr.add(Language::Usize(0)));
-                    transpose_list.push(glenside_expr.add(Language::Usize(2)));
-                    transpose_list.push(glenside_expr.add(Language::Usize(3)));
-                    let transpose_list_id =
-                        glenside_expr.add(Language::List(Box::from(transpose_list)));
-
-                    let data_id =
-                        glenside_expr.add(Language::AccessTranspose([data_id, transpose_list_id]));
-
-                    data_id
                 }
                 _ => todo!(),
             }
