@@ -1,5 +1,5 @@
 // TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
-#![cfg(feature = "use-tvm")]
+#![cfg(feature = "tvm")]
 
 use crate::language::Language;
 use egg::{Id, RecExpr};

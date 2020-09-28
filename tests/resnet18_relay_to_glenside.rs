@@ -1,4 +1,4 @@
-#![cfg(feature = "use-tvm")]
+#![cfg(feature = "tvm")]
 
 use egg::EGraph;
 use glenside::language::MyAnalysis;
