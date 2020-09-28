@@ -17,6 +17,51 @@ use super::PadType;
 
 // TODO(@gussmith23) Give glenside-expression-creation helpers a new home
 
+/// Concatenate accesses
+///
+/// ```
+/// use std::str::FromStr;
+/// use glenside::language::from_relay::access_concatenate;
+/// use egg::RecExpr;
+/// use glenside::language::Language;
+///
+/// let mut expr = RecExpr::default();
+/// let a_id = expr.add(Language::Symbol("a".to_string()));
+/// let a_id = expr.add(Language::AccessTensor(a_id));
+/// let b_id = expr.add(Language::Symbol("b".to_string()));
+/// let b_id = expr.add(Language::AccessTensor(b_id));
+/// let id = access_concatenate(&mut expr, a_id, b_id, 2);
+/// assert_eq!(expr.pretty(80), "(access-concatenate (access-tensor a) (access-tensor b) 2)");
+/// ```
+pub fn access_concatenate(expr: &mut RecExpr<Language>, a_id: Id, b_id: Id, axis: usize) -> Id {
+    let axis_id = expr.add(Language::Usize(axis));
+    expr.add(Language::AccessConcatenate([a_id, b_id, axis_id]))
+}
+
+/// Slice an access
+///
+/// ```
+/// use std::str::FromStr;
+/// use glenside::language::from_relay::access_slice;
+/// use egg::RecExpr;
+///
+/// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
+/// let id = access_slice(&mut expr, 1.into(), 1, 4, 8);
+/// assert_eq!(expr.pretty(80), "(access-slice (access-tensor a) 1 4 8)");
+/// ```
+pub fn access_slice(
+    expr: &mut RecExpr<Language>,
+    id: Id,
+    axis: usize,
+    low: usize,
+    high: usize,
+) -> Id {
+    let axis_id = expr.add(Language::Usize(axis));
+    let low_id = expr.add(Language::Usize(low));
+    let high_id = expr.add(Language::Usize(high));
+    expr.add(Language::AccessSlice([id, axis_id, low_id, high_id]))
+}
+
 /// Create a shape
 ///
 /// ```
