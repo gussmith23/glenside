@@ -247,7 +247,7 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
     let mut worklist = Vec::default();
     create_worklist(func.body.clone(), &mut worklist);
     let mut map = HashMap::new();
-    for (i, expr) in worklist.iter().enumerate() {
+    for expr in worklist {
         map.insert(
             expr.clone(),
             compile_expression(expr.clone(), &mut glenside_expr, |expr| {
