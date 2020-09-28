@@ -89,7 +89,7 @@ pub fn shape(expr: &mut RecExpr<Language>, vals: Vec<usize>) -> Id {
 /// use egg::RecExpr;
 ///
 /// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
-/// let id = access_pad(&mut expr, 1, PadType::ZeroPadding, 2, 3, 4 );
+/// let id = access_pad(&mut expr, 1.into(), PadType::ZeroPadding, 2, 3, 4 );
 /// assert_eq!(expr.pretty(80), "(access-pad (access-tensor a) zero-padding 2 3 4)");
 /// ```
 pub fn access_pad(
@@ -121,7 +121,7 @@ pub fn access_pad(
 /// use egg::RecExpr;
 ///
 /// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
-/// let id = access(&mut expr, 1, 2);
+/// let id = access(&mut expr, 1.into(), 2);
 /// assert_eq!(expr.pretty(80), "(access (access-tensor a) 2)");
 /// ```
 pub fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
@@ -137,7 +137,7 @@ pub fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
 /// use egg::RecExpr;
 ///
 /// let mut expr = RecExpr::from_str("(access-tensor a)").unwrap();
-/// let id = access_insert_axis(&mut expr, 1, 2);
+/// let id = access_insert_axis(&mut expr, 1.into(), 2);
 /// assert_eq!(expr.pretty(80), "(access-insert-axis (access-tensor a) 2)");
 /// ```
 pub fn access_insert_axis(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
@@ -154,7 +154,7 @@ pub fn access_insert_axis(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> 
 /// use std::str::FromStr;
 ///
 /// let mut expr = RecExpr::from_str("(access (access-tensor a) 2)").unwrap();
-/// let id = compute(&mut expr, ComputeType::ReLU, 3);
+/// let id = compute(&mut expr, ComputeType::ReLU, 3.into());
 /// assert_eq!(
 ///     expr.pretty(80),
 ///     "(compute relu (access (access-tensor a) 2))"
