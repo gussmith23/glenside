@@ -23,6 +23,7 @@ pub fn find_all_systolic_array_configurations(
     systolic_arrays
 }
 
+/// A cost function to extract a design using a single size of systolic array.
 pub struct MonolithicCostFunction<'a> {
     pub systolic_array_configuration: (usize, usize),
     pub egraph: &'a EGraph<Language, MyAnalysis>,
