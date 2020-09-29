@@ -51,6 +51,38 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let low = match interpret(expr, low_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let high = match interpret(expr, high_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            let mut slice_info: Vec<ndarray::SliceOrIndex> =
+                std::iter::repeat(ndarray::SliceOrIndex::from(..))
+                    .take(access.tensor.ndim())
+                    .collect();
+            slice_info[axis] = ndarray::SliceOrIndex::from(low..high);
+            let slice_info = ndarray::SliceInfo::new(slice_info).unwrap();
+            access.tensor = access
+                .tensor
+                .into_owned()
+                .slice(slice_info.as_ref())
+                .into_owned();
+
+            Value::Access(access)
+        }
         &Language::AccessConcatenate([a_id, b_id, axis_id]) => {
             let a = match interpret(expr, a_id.into(), env) {
                 Value::Access(a) => a,
@@ -824,7 +856,6 @@ where
         | &Language::SystolicArray(_)
         | &Language::AccessReshape(_)
         | &Language::AccessShape(_)
-        | &Language::AccessSlice(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
@@ -2679,6 +2710,90 @@ mod tests {
             "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
         )
         .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    fn access_slice_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 0 0 1)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 0 0 2)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2], [3, 4]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_slice_2() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 1 1 2)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[2], [4]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_slice_panic_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 0 0 3)")
+                .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_slice_panic_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 2 0 1)")
+                .unwrap();
         interpret(&expr, expr.as_ref().len() - 1, &env);
     }
 }
