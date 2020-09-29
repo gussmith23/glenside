@@ -51,6 +51,27 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessConcatenate([a_id, b_id, axis_id]) => {
+            let a = match interpret(expr, a_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let b = match interpret(expr, b_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            assert_eq!(a.access_axis, b.access_axis);
+
+            Value::Access(Access {
+                tensor: ndarray::stack![ndarray::Axis(axis), a.tensor, b.tensor].into_dyn(),
+                access_axis: a.access_axis,
+            })
+        }
         &Language::AccessLiteral(id) => match interpret(expr, id.into(), env) {
             Value::Tensor(t) => Value::Access(Access {
                 tensor: t,
@@ -804,7 +825,6 @@ where
         | &Language::AccessReshape(_)
         | &Language::AccessShape(_)
         | &Language::AccessSlice(_)
-        | &Language::AccessConcatenate(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
@@ -2588,5 +2608,77 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn access_concatenate_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+        env.insert("n", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2], [1, 2], [3, 4]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_concatenate_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1], [2]].into_dyn());
+        env.insert("n", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 1)",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 1, 2], [2, 3, 4]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_concatenate_panic_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1], [2]].into_dyn());
+        env.insert("n", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 1) 1)",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_concatenate_panic_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1], [2]].into_dyn());
+        env.insert("n", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
     }
 }
