@@ -206,8 +206,8 @@ where
             .unwrap();
 
             Value::Access(Access {
-                tensor: tensor,
-                access_axis: access_axis,
+                tensor,
+                access_axis,
             })
         }
         &Language::AccessSqueeze([access_id, axis_id]) => {
