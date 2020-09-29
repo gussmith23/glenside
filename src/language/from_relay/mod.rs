@@ -723,16 +723,32 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::BiasAddAttrs>()
                         .unwrap();
 
-                    assert!(attrs.axis >= 0, "Not supporting axis < 0 yet");
+                    // Get the axis valaue. If axis is negative, access from the
+                    // back of the shape.
+                    let axis = if attrs.axis >= 0 {
+                        attrs.axis as i64
+                    } else {
+                        (call.args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len() as i64)
+                            + attrs.axis as i64
+                    };
+                    assert!(axis >= 0);
 
                     // Insert axes before
-                    for _ in 0..attrs.axis {
+                    for _ in 0..axis {
                         let zero_id = glenside_expr.add(Language::Usize(0));
                         bias_id = glenside_expr.add(Language::AccessInsertAxis([bias_id, zero_id]));
                     }
 
                     // Insert axes after
-                    for axis in (attrs.axis + 1) as i64
+                    for axis in (axis + 1) as i64
                         ..call
                             .args
                             .get(0)
@@ -1633,6 +1649,56 @@ def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3
   (access
    (access-broadcast
     (access-insert-axis (access-tensor y) 0)
+    (get-access-shape (access-tensor x))
+   )
+   0
+  )
+ )
+)
+"#
+    );
+
+    test!(
+        bias_add_axis_neg_1,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=-1)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 0)
+    (get-access-shape (access-tensor x))
+   )
+   0
+  )
+ )
+)
+"#
+    );
+
+    test!(
+        bias_add_axis_neg_2,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=-2)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 1)
     (get-access-shape (access-tensor x))
    )
    0
