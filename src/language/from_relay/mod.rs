@@ -645,6 +645,8 @@ fn compile_expression(
                         b_shape.insert(0, 1);
                     }
 
+                    assert_eq!(a_shape.len(), b_shape.len());
+
                     assert!(a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a <= b).all(|v| v) ||
                             a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a >= b).all(|v| v),
                             "Can only handle simple broadcasts; all dims of a must be <= all dims of b (or vice-versa)");
@@ -720,6 +722,8 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::BiasAddAttrs>()
                         .unwrap();
+
+                    assert!(attrs.axis >= 0, "Not supporting axis < 0 yet");
 
                     // Insert axes before
                     for _ in 0..attrs.axis {

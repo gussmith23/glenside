@@ -1007,6 +1007,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                 };
 
+                assert_eq!(
+                    access.shape.ndim() + access.item_shape.ndim(),
+                    shape.shape.ndim() + shape.item_shape.ndim(),
+                    "Shape we're broadcasting to should have the same number of dimensions as the shape we're broadcasting from"
+                );
+
                 let new_shape = access
                     .shape
                     .slice()
@@ -1036,6 +1042,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                         std::line!()
                     );
                 }
+
+                assert_eq!(
+                    new_shape.len(),
+                    access.shape.ndim() + access.item_shape.ndim()
+                );
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&new_shape[..access.shape.ndim()]),
