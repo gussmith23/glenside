@@ -24,9 +24,20 @@ pub fn find_all_systolic_array_configurations(
 }
 
 /// A cost function to extract a design using a single size of systolic array.
+///
+/// `INFINITY_VALUE` represents constructs with infinite cost, i.e., constructs
+/// that shouldn't be extracted. To check whether the extracted program does not
+/// contain any un-extractable constructs (i.e. compute statements), you can
+/// check that the cost is less than `INFINITY_VALUE`. You might think we should
+/// instead use [`usize::MAX`] and a saturating add, but this actually has the
+/// potential to cause infinite loops in [`egg::Extractor::find_best()`]!
 pub struct MonolithicCostFunction<'a> {
     pub systolic_array_configuration: (usize, usize),
     pub egraph: &'a EGraph<Language, MyAnalysis>,
+}
+impl<'a> MonolithicCostFunction<'a> {
+    pub const INFINITY_VALUE: <MonolithicCostFunction<'a> as egg::CostFunction<Language>>::Cost =
+        1000000000;
 }
 impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
     type Cost = usize;
@@ -42,7 +53,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
                     MyAnalysis::get_usize(cols_id, self.egraph),
                 ) != self.systolic_array_configuration =>
             {
-                std::usize::MAX
+                Self::INFINITY_VALUE
             }
 
             Language::Symbol(_)
@@ -77,7 +88,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::AccessTranspose(_) => 1,
 
             // Computes cannot be extracted.
-            Language::ComputeType(_) | Language::Compute(_) => std::usize::MAX,
+            Language::ComputeType(_) | Language::Compute(_) => Self::INFINITY_VALUE,
 
             // Old constructs.
             Language::MoveAxis(_)
@@ -89,7 +100,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Concatenate(_) => panic!(),
         };
 
-        enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
+        enode.fold(base_cost, |sum, id| sum + costs(id))
     }
 }
 
@@ -253,7 +264,7 @@ mod tests {
         );
 
         let (cost, _) = ex.find_best(id);
-        assert_eq!(cost, std::usize::MAX);
+        assert!(cost >= MonolithicCostFunction::INFINITY_VALUE);
     }
 
     #[test]
@@ -292,7 +303,7 @@ mod tests {
         );
 
         let (cost, expr) = ex.find_best(id);
-        assert!(cost < std::usize::MAX);
+        assert!(cost < MonolithicCostFunction::INFINITY_VALUE);
         // TODO(@gussmith23) Do this check in a more intelligent way.
         //
         // For some reason, comparing RecExprs doesn't work anymore, after a

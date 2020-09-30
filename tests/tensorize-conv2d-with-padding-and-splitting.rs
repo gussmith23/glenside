@@ -713,12 +713,9 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         },
     )
     .find_best(id);
-    // If this call causes a stack overflow, it's because you're getting an
-    // infinite loop due to the cost function. If it can only find things
-    // that are usize::MAX, it might get stuck traversing an infinite loop.
 
     println!("{}", expr.pretty(80));
     println!("{:?}", cost);
 
-    assert!(cost < std::usize::MAX);
+    assert!(cost < glenside::extraction::MonolithicCostFunction::INFINITY_VALUE);
 }
