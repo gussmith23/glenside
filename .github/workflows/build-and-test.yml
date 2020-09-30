@@ -19,4 +19,4 @@ jobs:
       # GitHub actions, which changes timeouts in some places. So if the feature
       # was instead "--not-running-on-github-actions", then --all-features
       # wouldn't make much sense.
-      - run: docker run -it glenside cargo test --all-features
+      - run: docker run glenside cargo test --all-features
