@@ -1,0 +1,30 @@
+name: Deploy Rustdoc to GitHub Pages
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  deploy-rustdoc-to-github-pages:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - run: docker build --tag glenside .
+      # TODO(@gussmith23) Figure out a better way to signal "test everything"
+      # The main problem with --all-features is that I currently use feature
+      # flags to indicate things that aren't necessarily "additional features".
+      # For example, I have a feature that indicates that we're running on
+      # GitHub actions, which changes timeouts in some places. So if the feature
+      # was instead "--not-running-on-github-actions", then --all-features
+      # wouldn't make much sense.
+      - run: mkdir doc
+      - run: docker run --mount type=bind,src=`pwd`/doc,dst=/root/glenside/target/doc glenside cargo doc --all-features
+      - name: Deploy to GitHub Pages
+        if: success()
+        uses: crazy-max/ghaction-github-pages@v2
+        with:
+          target_branch: gh-pages
+          build_dir: doc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
