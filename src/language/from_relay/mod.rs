@@ -728,7 +728,8 @@ fn compile_expression(
                     let axis = if attrs.axis >= 0 {
                         attrs.axis as i64
                     } else {
-                        (call.args
+                        (call
+                            .args
                             .get(0)
                             .unwrap()
                             .checked_type
