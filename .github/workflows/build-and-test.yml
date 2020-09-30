@@ -11,7 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - run: sudo /usr/share/rust/.cargo/bin/cargo test --no-default-features --features "run-on-github-actions"
+      - run: docker build --tag glenside .
+      # TODO(@gussmith23) Figure out a better way to signal "test everything"
+      # The main problem with --all-features is that I currently use feature
+      # flags to indicate things that aren't necessarily "additional features".
+      # For example, I have a feature that indicates that we're running on
+      # GitHub actions, which changes timeouts in some places. So if the feature
+      # was instead "--not-running-on-github-actions", then --all-features
+      # wouldn't make much sense.
+      - run: docker run -it glenside cargo test --all-features
