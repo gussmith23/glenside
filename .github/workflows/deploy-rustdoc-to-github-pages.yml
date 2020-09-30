@@ -20,6 +20,8 @@ jobs:
       # wouldn't make much sense.
       - run: mkdir doc
       - run: docker run --mount type=bind,src=`pwd`/doc,dst=/root/glenside/target/doc glenside cargo doc --all-features
+      # Getting permission denied on .lock
+      - run: rm -f doc/.lock
       - name: Deploy to GitHub Pages
         if: success()
         uses: crazy-max/ghaction-github-pages@v2
