@@ -55,4 +55,6 @@ RUN pip3 install -r requirements.txt
 # Build Glenside with all features
 WORKDIR /root/glenside
 COPY . .
-RUN cargo build --all-features
+
+# At this point, you should be able to build Glenside with whatever features you
+# want!
