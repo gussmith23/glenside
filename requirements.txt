@@ -6,3 +6,4 @@ tornado==6.0.3
 xgboost==0.90
 antlr4-python3-runtime==4.7.2
 typed-ast==1.4.0
+attrs==19.1.0
