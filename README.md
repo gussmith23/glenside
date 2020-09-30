@@ -5,6 +5,8 @@
 
 Hardware-software partition exploration with e-graphs
 
+See [docs](https://gussmith23.github.io/glenside/glenside) for technical details and examples!
+
 ## Quickstart
 
 Fastest way to verify that this code actually does something is to build the Docker image and run the tests:
