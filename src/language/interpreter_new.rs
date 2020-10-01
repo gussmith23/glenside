@@ -75,6 +75,28 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
+        &Language::AccessShape([shape_id, item_shape_id]) => {
+            let shape = match interpret(expr, shape_id.into(), env) {
+                Value::Shape(s) => s,
+                _ => panic!(),
+            };
+            let item_shape = match interpret(expr, item_shape_id.into(), env) {
+                Value::Shape(s) => s,
+                _ => panic!(),
+            };
+            Value::AccessShape(
+                IxDyn(
+                    shape
+                        .slice()
+                        .iter()
+                        .chain(item_shape.slice().iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ),
+                shape.ndim(),
+            )
+        }
         &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
             let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
@@ -2819,5 +2841,17 @@ mod tests {
             RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 2 0 1)")
                 .unwrap();
         interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    fn access_shape() {
+        let expr = RecExpr::<Language>::from_str("(access-shape (shape 1 2) (shape 3 4))").unwrap();
+        match interpret::<i64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+            Value::AccessShape(shape, access_axis) => {
+                assert_eq!(shape.slice(), &[1, 2, 3, 4]);
+                assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
     }
 }
