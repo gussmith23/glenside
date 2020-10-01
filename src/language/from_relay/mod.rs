@@ -31,6 +31,30 @@ pub fn access_transpose(expr: &mut RecExpr<Language>, data_id: Id, transpose_lis
     expr.add(Language::AccessTranspose([data_id, transpose_list_id]))
 }
 
+/// Create access shape literal
+///
+/// ```
+/// use glenside::language::from_relay::access_shape;
+/// use egg::RecExpr;
+/// use glenside::language::Language;
+///
+/// let mut expr = RecExpr::default();
+/// let id = access_shape(&mut expr, &[1,2,3], &[4,5,6]);
+/// assert_eq!(expr.pretty(80), "(access-shape (shape 1 2 3) (shape 4 5 6))");
+/// ```
+pub fn access_shape(expr: &mut RecExpr<Language>, shape: &[usize], item_shape: &[usize]) -> Id {
+    let mut shape_ids = Vec::default();
+    for s in shape {
+        shape_ids.push(expr.add(Language::Usize(*s)));
+    }
+    let mut item_shape_ids = Vec::default();
+    for i in item_shape {
+        item_shape_ids.push(expr.add(Language::Usize(*i)));
+    }
+    let shape_id = expr.add(Language::Shape(shape_ids.into_boxed_slice()));
+    let item_shape_id = expr.add(Language::Shape(item_shape_ids.into_boxed_slice()));
+    expr.add(Language::AccessShape([shape_id, item_shape_id]))
+}
 
 /// Concatenate accesses
 ///
