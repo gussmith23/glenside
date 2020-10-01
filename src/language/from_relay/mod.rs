@@ -31,6 +31,224 @@ pub fn access_transpose(expr: &mut RecExpr<Language>, data_id: Id, transpose_lis
     expr.add(Language::AccessTranspose([data_id, transpose_list_id]))
 }
 
+pub fn conv2d(
+    expr: &mut RecExpr<Language>,
+    data_id: Id,
+    data_shape: &[usize],
+    weights_id: Id,
+    weights_shape: &[usize],
+    strides: &[usize],
+    padding: &[usize],
+    dilation: &[usize],
+    groups: usize,
+    // We get these from the shapes above. Remove?
+    // _channels: usize,
+    // _kernel_size: [usize; 2],
+    data_layout: &str,
+    kernel_layout: &str,
+    out_layout: &str,
+) -> Id {
+    assert_eq!(data_shape.len(), 4);
+    assert_eq!(weights_shape.len(), 4);
+    assert_eq!(strides.len(), 2);
+    assert_eq!(padding.len(), 4);
+    assert_eq!(dilation.len(), 2);
+
+    assert!(
+        &["NCHW", "NHWC"].contains(&data_layout),
+        "NCHW and NHWC are the only layouts supported at the moment"
+    );
+    assert!(
+        ["OIHW", "HWIO"].contains(&kernel_layout),
+        "OIHW and HWIO are the only layouts supported at the moment"
+    );
+
+    assert_eq!(dilation, [1, 1]);
+    assert_eq!(out_layout, "");
+
+    // Transpose to NCHW
+    let (data_id, data_shape) = match data_layout {
+        "NCHW" => (data_id, Vec::from(data_shape)),
+        "NHWC" => (
+            access_transpose(expr, data_id, &[0, 3, 1, 2]),
+            vec![data_shape[0], data_shape[3], data_shape[1], data_shape[2]],
+        ),
+        _ => unreachable!(),
+    };
+
+    // Transpose to OIHW
+    let (weights_id, weights_shape) = match kernel_layout {
+        "OIHW" => (weights_id, Vec::from(weights_shape)),
+        "HWIO" => (
+            access_transpose(expr, weights_id, &[3, 2, 0, 1]),
+            vec![
+                weights_shape[3],
+                weights_shape[2],
+                weights_shape[0],
+                weights_shape[1],
+            ],
+        ),
+        _ => unreachable!(),
+    };
+
+    let pad_axis_id = expr.add(Language::Usize(2));
+    let pad_before_id = expr.add(Language::Usize(padding[0]));
+    let pad_after_id = expr.add(Language::Usize(padding[2]));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_before_id,
+        pad_after_id,
+    ]));
+
+    let pad_axis_id = expr.add(Language::Usize(3));
+    let pad_before_id = expr.add(Language::Usize(padding[1]));
+    let pad_after_id = expr.add(Language::Usize(padding[3]));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_before_id,
+        pad_after_id,
+    ]));
+
+    let access_axis_id = expr.add(Language::Usize(4));
+    let data_id = expr.add(Language::Access([data_id, access_axis_id]));
+
+    let mut stride_list = Vec::default();
+    stride_list.push(expr.add(Language::Usize(1)));
+    stride_list.push(expr.add(Language::Usize(1)));
+    stride_list.push(expr.add(Language::Usize(strides[0])));
+    stride_list.push(expr.add(Language::Usize(strides[1])));
+    let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
+    let in_channels = data_shape[1];
+
+    let data_id = match groups as usize {
+        1 => {
+            // Create the (shape ...) representing the kernel shapes
+            let usize_1_id = expr.add(Language::Usize(1));
+            let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
+            let usize_kh_id = expr.add(Language::Usize(weights_shape[2]));
+            let usize_kw_id = expr.add(Language::Usize(weights_shape[3]));
+            let weights_shape_id = expr.add(Language::Shape(Box::new([
+                usize_1_id,
+                usize_c_id,
+                usize_kh_id,
+                usize_kw_id,
+            ])));
+
+            let data_id = expr.add(Language::AccessWindows([
+                data_id,
+                weights_shape_id,
+                stride_shape_id,
+            ]));
+            // Result is [batch 1 new_h new_w] [1 in_channel kw kh]
+
+            // Squeeze the 4th dimension so it matches kernel shapes
+            let squeeze_axis_id = expr.add(Language::Usize(4));
+            let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+            // Squeeze extraneous 1st dimension
+            let squeeze_axis_id = expr.add(Language::Usize(1));
+            let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+            let data_id = access(expr, data_id, 3);
+            // Result is [batch new_h new_w] [in_channel kw kh]
+
+            let access_axis_id = expr.add(Language::Usize(1));
+            let weights_id = expr.add(Language::Access([weights_id, access_axis_id]));
+
+            let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+
+            let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
+            let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
+
+            let data_id = access_transpose(expr, data_id, &[1, 0, 2, 3]);
+
+            data_id
+        }
+        // If groups = num input channels (ie in depthwise separable mobilenet convs)
+        // TODO(@gussmith23) Layout assumption
+        n if n == in_channels => {
+            // Kernel size is the same for each group. Each
+            // kernel's shape is (1,1,kH,kW) where the first 1
+            // lines up with batch and the second lines up with
+            // input channels. The fact that the kernel's
+            // channel size is 1 is what makes this grouped with
+            // groups=in_channels.
+            // TODO(@gussmith23) Layout assumption.
+            let mut list = Vec::default();
+            list.push(expr.add(Language::Usize(1)));
+            list.push(expr.add(Language::Usize(1)));
+            for v in weights_shape[2..].iter() {
+                list.push(expr.add(Language::Usize(*v as usize)));
+            }
+            let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+
+            let mut to_be_concatted = Vec::default();
+
+            for channel_idx in 0..in_channels {
+                // Get this group's input channel
+                // TODO(@gussmith23) layout assumption
+                let data_id = access_slice(
+                    expr,
+                    data_id,
+                    1,
+                    channel_idx.try_into().unwrap(),
+                    (channel_idx + 1).try_into().unwrap(),
+                );
+                let data_id = expr.add(Language::AccessWindows([
+                    data_id,
+                    weights_shape_id,
+                    stride_shape_id,
+                ]));
+                let data_id = access(expr, data_id, 4);
+                // Result should be
+                // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
+
+                // Get this group's kernel
+                // TODO(@gussmith23) layout assumption
+                let weights_id = access_slice(
+                    expr,
+                    weights_id,
+                    0,
+                    channel_idx.try_into().unwrap(),
+                    (channel_idx + 1).try_into().unwrap(),
+                );
+                let weights_id = access(expr, weights_id, 0);
+
+                let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+                // Results should be
+                // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
+
+                let data_id = compute(expr, ComputeType::DotProduct, data_id);
+                // Results should be
+                // [1 1 new_H new_W]
+
+                to_be_concatted.push(data_id);
+            }
+
+            let mut concatted_id = to_be_concatted[0];
+            for to_be_concatted_id in to_be_concatted[1..].iter() {
+                // TODO(@gussmith23) Layout assumption
+                concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
+            }
+
+            concatted_id
+        }
+        _ => panic!("Groups not implemented for groups={}", groups),
+    };
+
+    // Transpose from NCHW to original layout
+    match data_layout {
+        "NCHW" => data_id,
+        "NHWC" => access_transpose(expr, data_id, &[0, 2, 3, 1]),
+        _ => unreachable!(),
+    }
+}
+
 /// Create access shape literal
 ///
 /// ```
@@ -823,23 +1041,11 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_shape =
                         shape_from_type(call.args.get(0).unwrap().checked_type.clone());
-                    // TODO(@gussmith23) Layout assumption
-                    let in_channels = data_shape[1];
                     assert_eq!(data_shape.len(), 4);
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
                     let weights_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
                     assert_eq!(weights_shape.len(), 4);
-
-                    assert_eq!(
-                        attrs.data_layout, "NCHW",
-                        "NCHW is the only layout supported at the moment"
-                    );
-                    assert_eq!(
-                        attrs.kernel_layout, "OIHW",
-                        "OIHW is the only layout supported at the moment"
-                    );
-
                     assert_eq!(attrs.padding.len(), 4);
                     assert_eq!(attrs.dilation.len(), 2);
                     assert_eq!(
@@ -869,326 +1075,79 @@ fn compile_expression(
                         tvm::DataType::new(3, 0, 0)
                     );
 
-                    match attrs.groups as usize {
-                        1 => {
-                            let usize_1_id = glenside_expr.add(Language::Usize(1));
-
-                            let mut list = Vec::default();
-                            list.push(usize_1_id);
-                            for v in weights_shape[1..].iter() {
-                                list.push(glenside_expr.add(Language::Usize(*v as usize)));
-                            }
-                            let weights_shape_id =
-                                glenside_expr.add(Language::Shape(Box::from(list.as_slice())));
-
-                            let pad_axis_id = glenside_expr.add(Language::Usize(2));
-                            let pad_before_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let pad_after_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(2)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let zero_padding_id =
-                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
-                            let data_id = glenside_expr.add(Language::AccessPad([
-                                data_id,
-                                zero_padding_id,
-                                pad_axis_id,
-                                pad_before_id,
-                                pad_after_id,
-                            ]));
-
-                            let pad_axis_id = glenside_expr.add(Language::Usize(3));
-                            let pad_before_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let pad_after_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(3)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let zero_padding_id =
-                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
-                            let data_id = glenside_expr.add(Language::AccessPad([
-                                data_id,
-                                zero_padding_id,
-                                pad_axis_id,
-                                pad_before_id,
-                                pad_after_id,
-                            ]));
-
-                            let access_axis_id = glenside_expr.add(Language::Usize(4));
-                            let data_id =
-                                glenside_expr.add(Language::Access([data_id, access_axis_id]));
-
-                            let mut stride_list = Vec::default();
-                            stride_list.push(glenside_expr.add(Language::Usize(1)));
-                            stride_list.push(glenside_expr.add(Language::Usize(1)));
-                            stride_list.push(
-                                glenside_expr.add(Language::Usize(
-                                    attrs
-                                        .strides
-                                        .get(0)
-                                        .unwrap()
-                                        .downcast::<IntImm>()
-                                        .unwrap()
-                                        .value as usize,
-                                )),
-                            );
-                            stride_list.push(
-                                glenside_expr.add(Language::Usize(
-                                    attrs
-                                        .strides
-                                        .get(1)
-                                        .unwrap()
-                                        .downcast::<IntImm>()
-                                        .unwrap()
-                                        .value as usize,
-                                )),
-                            );
-                            let stride_shape_id = glenside_expr
-                                .add(Language::Shape(Box::from(stride_list.as_slice())));
-
-                            let data_id = glenside_expr.add(Language::AccessWindows([
-                                data_id,
-                                weights_shape_id,
-                                stride_shape_id,
-                            ]));
-
-                            let squeeze_axis_id = glenside_expr.add(Language::Usize(4));
-                            let data_id = glenside_expr
-                                .add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
-                            let squeeze_axis_id = glenside_expr.add(Language::Usize(1));
-                            let data_id = glenside_expr
-                                .add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
-
-                            let access_axis_id = glenside_expr.add(Language::Usize(3));
-                            let data_id =
-                                glenside_expr.add(Language::Access([data_id, access_axis_id]));
-
-                            let access_axis_id = glenside_expr.add(Language::Usize(1));
-                            let weights_id =
-                                glenside_expr.add(Language::Access([weights_id, access_axis_id]));
-
-                            let data_id = glenside_expr
-                                .add(Language::AccessCartesianProduct([weights_id, data_id]));
-
-                            let compute_type_id =
-                                glenside_expr.add(Language::ComputeType(ComputeType::DotProduct));
-                            let data_id =
-                                glenside_expr.add(Language::Compute([compute_type_id, data_id]));
-
-                            let mut transpose_list = Vec::default();
-                            transpose_list.push(glenside_expr.add(Language::Usize(1)));
-                            transpose_list.push(glenside_expr.add(Language::Usize(0)));
-                            transpose_list.push(glenside_expr.add(Language::Usize(2)));
-                            transpose_list.push(glenside_expr.add(Language::Usize(3)));
-                            let transpose_list_id =
-                                glenside_expr.add(Language::List(Box::from(transpose_list)));
-
-                            let data_id = glenside_expr
-                                .add(Language::AccessTranspose([data_id, transpose_list_id]));
-
-                            data_id
-                        }
-                        // If groups = num input channels (ie in depthwise separable mobilenet convs)
-                        // TODO(@gussmith23) Layout assumption
-                        n if n == in_channels => {
-                            assert_eq!(
-                                attrs.data_layout, "NCHW",
-                                "NCHW is the only layout supported at the moment"
-                            );
-
-                            // First, pad input data.
-                            let pad_axis_id = glenside_expr.add(Language::Usize(2));
-                            let pad_before_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let pad_after_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(2)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let zero_padding_id =
-                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
-                            let data_id = glenside_expr.add(Language::AccessPad([
-                                data_id,
-                                zero_padding_id,
-                                pad_axis_id,
-                                pad_before_id,
-                                pad_after_id,
-                            ]));
-
-                            let pad_axis_id = glenside_expr.add(Language::Usize(3));
-                            let pad_before_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let pad_after_id = glenside_expr.add(Language::Usize(
-                                attrs
-                                    .padding
-                                    .get(3)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ));
-                            let zero_padding_id =
-                                glenside_expr.add(Language::PadType(PadType::ZeroPadding));
-                            let data_id = glenside_expr.add(Language::AccessPad([
-                                data_id,
-                                zero_padding_id,
-                                pad_axis_id,
-                                pad_before_id,
-                                pad_after_id,
-                            ]));
-
-                            let access_axis_id = glenside_expr.add(Language::Usize(4));
-                            let data_id =
-                                glenside_expr.add(Language::Access([data_id, access_axis_id]));
-
-                            // Kernel size is the same for each group. Each
-                            // kernel's shape is (1,1,kH,kW) where the first 1
-                            // lines up with batch and the second lines up with
-                            // input channels. The fact that the kernel's
-                            // channel size is 1 is what makes this grouped with
-                            // groups=in_channels.
-                            // TODO(@gussmith23) Layout assumption.
-                            let mut list = Vec::default();
-                            list.push(glenside_expr.add(Language::Usize(1)));
-                            list.push(glenside_expr.add(Language::Usize(1)));
-                            for v in weights_shape[2..].iter() {
-                                list.push(glenside_expr.add(Language::Usize(*v as usize)));
-                            }
-                            let weights_shape_id =
-                                glenside_expr.add(Language::Shape(Box::from(list.as_slice())));
-
-                            // Stride is the same for each group.
-                            let mut stride_list = Vec::default();
-                            stride_list.push(glenside_expr.add(Language::Usize(1)));
-                            stride_list.push(glenside_expr.add(Language::Usize(1)));
-                            stride_list.push(
-                                glenside_expr.add(Language::Usize(
-                                    attrs
-                                        .strides
-                                        .get(0)
-                                        .unwrap()
-                                        .downcast::<IntImm>()
-                                        .unwrap()
-                                        .value as usize,
-                                )),
-                            );
-                            stride_list.push(
-                                glenside_expr.add(Language::Usize(
-                                    attrs
-                                        .strides
-                                        .get(1)
-                                        .unwrap()
-                                        .downcast::<IntImm>()
-                                        .unwrap()
-                                        .value as usize,
-                                )),
-                            );
-                            let stride_shape_id = glenside_expr
-                                .add(Language::Shape(Box::from(stride_list.as_slice())));
-
-                            let mut to_be_concatted = Vec::default();
-
-                            for channel_idx in 0..in_channels {
-                                // Get this group's input channel
-                                // TODO(@gussmith23) layout assumption
-                                let data_id = access_slice(
-                                    glenside_expr,
-                                    data_id,
-                                    1,
-                                    channel_idx.try_into().unwrap(),
-                                    (channel_idx + 1).try_into().unwrap(),
-                                );
-                                let data_id = glenside_expr.add(Language::AccessWindows([
-                                    data_id,
-                                    weights_shape_id,
-                                    stride_shape_id,
-                                ]));
-                                let data_id = access(glenside_expr, data_id, 4);
-                                // Result should be
-                                // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
-
-                                // Get this group's kernel
-                                // TODO(@gussmith23) layout assumption
-                                let weights_id = access_slice(
-                                    glenside_expr,
-                                    weights_id,
-                                    0,
-                                    channel_idx.try_into().unwrap(),
-                                    (channel_idx + 1).try_into().unwrap(),
-                                );
-                                let weights_id = access(glenside_expr, weights_id, 0);
-
-                                let data_id = glenside_expr
-                                    .add(Language::AccessCartesianProduct([weights_id, data_id]));
-                                // Results should be
-                                // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
-
-                                let data_id =
-                                    compute(glenside_expr, ComputeType::DotProduct, data_id);
-                                // Results should be
-                                // [1 1 new_H new_W]
-
-                                to_be_concatted.push(data_id);
-                            }
-
-                            let mut concatted_id = to_be_concatted[0];
-                            for to_be_concatted_id in to_be_concatted[1..].iter() {
-                                // TODO(@gussmith23) Layout assumption
-                                concatted_id = access_concatenate(
-                                    glenside_expr,
-                                    concatted_id,
-                                    *to_be_concatted_id,
-                                    1,
-                                );
-                            }
-
-                            concatted_id
-                        }
-                        _ => panic!("Groups not implemented for groups={}", attrs.groups),
-                    }
+                    conv2d(
+                        glenside_expr,
+                        data_id,
+                        &data_shape,
+                        weights_id,
+                        &weights_shape,
+                        &[
+                            attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .strides
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        &[
+                            attrs
+                                .padding
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(2)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(3)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        &[
+                            attrs
+                                .dilation
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .dilation
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        attrs.groups.try_into().unwrap(),
+                        attrs.data_layout.as_str().unwrap(),
+                        attrs.kernel_layout.as_str().unwrap(),
+                        attrs.out_layout.as_str().unwrap(),
+                    )
                 }
                 _ => todo!(),
             }
@@ -1492,6 +1451,26 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), 
 "#
     );
 
+    // TODO(@gussmith23) Relay/TVM doesn't seem to like nhwc w/o hwoi
+    // So we can't run a test like this til we support hwoi!
+    //     test!(
+    //         conv2d_depthwise_separable_stage1_nhwc,
+    //         1e-6,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%data: Tensor[(1, 32, 32, 3), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 38, 20, 3), float32] {
+    //   nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3, data_layout="NHWC")
+    // }
+    // "#,
+    //         // TODO(@gussmith23) I'm being lazy here
+    //         r#"
+    // (access-transpose
+    //  (access-concatenate ?a ?b ?c)
+    //  (list 0 2 3 1)
+    // )
+    // "#
+    //     );
+
     test!(
         conv2d,
         1e-5,
@@ -1534,6 +1513,58 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
   )
  )
  (list 1 0 2 3)
+)
+"#
+    );
+
+    test!(
+        conv2d_nhwc_hwio,
+        1e-5,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 32, 32, 3), float32], %weights: Tensor[(3, 3, 3, 8), float32]) -> Tensor[(1, 17, 12, 8), float32] {
+  nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4], data_layout="NHWC", kernel_layout="HWIO")
+}
+"#,
+        r#"
+(access-transpose
+ (access-transpose
+  (compute dot-product
+   (access-cartesian-product
+    (access
+     (access-transpose (access-tensor weights) (list 3 2 0 1))
+     1
+    )
+    (access
+     (access-squeeze
+      (access-squeeze
+       (access-windows
+        (access
+         (access-pad
+          (access-pad
+           (access-transpose (access-tensor data) (list 0 3 1 2))
+           zero-padding
+           2 1 3
+          )
+          zero-padding
+          3 2 4
+         )
+         4
+        )
+        (shape 1 3 3 3)
+        (shape 1 1 2 3)
+       )
+       4
+      )
+      1
+     )
+     3
+    )
+   )
+  )
+  (list 1 0 2 3)
+ )
+ (list 0 2 3 1)
 )
 "#
     );
