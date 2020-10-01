@@ -13,10 +13,28 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     #[cfg(feature = "run-on-github-actions")]
     pub const EGG_SEARCH_TIME_SECS: u64 = 180;
 
+    pub const IMAGE_SHAPE: &[usize] = &[1, 32, 32, 3];
+    pub const KERNEL_SHAPE: &[usize] = &[3, 3, 3, 8];
+
     let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
-    let id = expr.as_ref().len() - 1;
-    let _conv2d_id =
-        glenside::models::resnet50::conv2d(&mut expr, id.into(), "weights", (1, 1), (1, 1));
+    let data_id = expr.as_ref().len() - 1;
+    let weights_id = expr.add(Language::Symbol("weights".to_string()));
+    let weights_id = expr.add(Language::AccessTensor(weights_id));
+
+    let _conv2d_id = crate::from_relay::conv2d(
+        &mut expr,
+        data_id.into(),
+        IMAGE_SHAPE,
+        weights_id,
+        KERNEL_SHAPE,
+        &[1, 1],
+        &[1, 1, 1, 1],
+        &[1, 1],
+        1,
+        "NHWC",
+        "HWIO",
+        "",
+    );
 
     let mut map = HashMap::default();
     // batch, height, width, channels
