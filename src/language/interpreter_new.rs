@@ -29,6 +29,30 @@ pub type Environment<'a, DataType> = HashMap<&'a str, ArrayD<DataType>>;
 // TODO(@gussmith23) Interpreter stack overflows on large programs
 // If I want to interpret something like a full resnet, then I will have to
 // figure out a way around the stack overflows.
+/// Interpret a Glenside expression
+///
+/// Generally, `DataType` can be inferred from the environment passed in. If
+/// your expression doesn't actually use any tensor values, and the environment
+/// is empty, you can choose an arbitrary type: e.g. `interpret::<i64>(...)`:
+///
+/// ```
+/// use egg::RecExpr;
+/// use glenside::language::Language;
+/// use glenside::language::interpreter::interpret;
+/// use glenside::language::interpreter::Value;
+/// use std::str::FromStr;
+/// use std::collections::HashMap;
+/// use ndarray::Dimension;
+///
+/// let expr = RecExpr::<Language>::from_str("(access-shape (shape 1 2) (shape 3 4))").unwrap();
+/// match interpret::<i64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+///     Value::AccessShape(shape, access_axis) => {
+///         assert_eq!(shape.slice(), &[1, 2, 3, 4]);
+///         assert_eq!(access_axis, 2);
+///     }
+///     _ => panic!(),
+/// }
+/// ```
 pub fn interpret<DataType: 'static>(
     expr: &RecExpr<Language>,
     index: usize,
