@@ -338,8 +338,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             &Language::Usize(_) | &Language::PadType(_) => (),
-            &Language::GetAccessShape(_)
-            | &Language::Literal(_)
+            &Language::Literal(_)
             | &Language::AccessLiteral(_)
             | &Language::NotNanFloat64(_)
             | &Language::AccessBroadcast(_)
@@ -1331,8 +1330,7 @@ if (i{i} < {dim_len}) {{
 
             out_var_name
         }
-        &Language::GetAccessShape(_)
-        | &Language::Literal(_)
+        &Language::Literal(_)
         | &Language::NotNanFloat64(_)
         | Language::List(_)
         | &Language::AccessBroadcast(_)

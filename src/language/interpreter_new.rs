@@ -208,13 +208,6 @@ where
                 })
                 .collect::<Vec<_>>(),
         ),
-        &Language::GetAccessShape(access_id) => {
-            let access = match interpret(expr, access_id.into(), env) {
-                Value::Access(a) => a,
-                _ => panic!(),
-            };
-            Value::AccessShape(IxDyn(access.tensor.shape()), access.access_axis)
-        }
         &Language::AccessBroadcast([access_id, shape_id]) => {
             let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
@@ -901,7 +894,6 @@ where
         | &Language::BsgSystolicArray(_)
         | &Language::SystolicArray(_)
         | &Language::AccessReshape(_)
-        | &Language::AccessShape(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
@@ -2085,10 +2077,9 @@ mod tests {
     fn access_broadcast() {
         let mut env = Environment::new();
         env.insert("t", array![[1, 2]].into_dyn());
-        env.insert("n", array![[1, 2], [1, 2]].into_dyn());
 
         let expr = RecExpr::<Language>::from_str(
-            "(access-broadcast (access (access-tensor t) 0) (get-access-shape (access-tensor n)))",
+            "(access-broadcast (access (access-tensor t) 0) (access-shape (shape 2 2) (shape)))",
         )
         .unwrap();
         match interpret(&expr, expr.as_ref().len() - 1, &env) {
@@ -2120,22 +2111,6 @@ mod tests {
                 access_axis,
             }) => {
                 assert_eq!(tensor, array![[1, 2], [1, 2]].into_dyn());
-                assert_eq!(access_axis, 0);
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn get_access_shape() {
-        let mut env = Environment::new();
-        env.insert("t", array![[1, 2]].into_dyn());
-
-        let expr = RecExpr::<Language>::from_str("(get-access-shape (access (access-tensor t) 0))")
-            .unwrap();
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::AccessShape(shape, access_axis) => {
-                assert_eq!(shape.slice(), &[1, 2]);
                 assert_eq!(access_axis, 0);
             }
             _ => panic!(),

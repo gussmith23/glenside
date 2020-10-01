@@ -1,6 +1,7 @@
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
+use ndarray::IxDyn;
 
 type EG = EGraph<Language, MyAnalysis>;
 type RW = Rewrite<Language, MyAnalysis>;
@@ -680,16 +681,47 @@ pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
 // }
 
 pub fn flatten_unflatten_any_access() -> RW {
+    struct ApplierImpl(Var);
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let shape = match &egraph[subst[self.0]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+
+            format!(
+                "(access-reshape
+                      (access-flatten
+                       ?access
+                      )
+                      (access-shape
+                       (shape {})
+                       (shape {})
+                      )
+                     )",
+                shape
+                    .shape
+                    .slice()
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                shape
+                    .item_shape
+                    .slice()
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
     rewrite!("flatten-unflatten-all-accesses";
              "?access" =>
-             "(access-reshape
-               (access-flatten
-                ?access
-               )
-               (get-access-shape
-                ?access
-               )
-              )"
+             { ApplierImpl("?access".parse().unwrap()) }
              if is_access())
 }
 
@@ -705,15 +737,89 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
             _ => false,
         }
     }
-    // TODO(@gussmith23) Calculate new cartesian product shape by hand?
-    // The fact that we're using get-access-shape in the rewrite feels bad,
-    // somehow. I'm not fully sure why.
-    // Pro: we don't have to duplicate the logic for figuring out the shape of a
-    // cartesian product. Using get-access-shape just extracts the shape from
-    // the access-cartesian-product.
-    // Con: I'm not sure. If there's an existing bug, it'll just propagate? I
-    // guess I should just make sure the cartesian product definition is right,
-    // and that get-access-shape works as expected!
+
+    struct ApplierImpl {
+        left_shape: Var,
+        right_shape: Var,
+    };
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let left_shape = match &egraph[subst[self.left_shape]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let right_shape = match &egraph[subst[self.right_shape]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+
+            // TODO(@gussmith23) Duplicated logic for cartprod shape calculation
+
+            assert_eq!(
+                left_shape.item_shape, right_shape.item_shape,
+                "Cartesian product argument shapes must match"
+            );
+
+            let new_shape = IxDyn(
+                left_shape
+                    .shape
+                    .as_array_view()
+                    .iter()
+                    .cloned()
+                    .chain(right_shape.shape.as_array_view().iter().cloned())
+                    .collect::<Vec<usize>>()
+                    .as_slice(),
+            );
+            let new_item_shape = IxDyn(
+                std::iter::once(2)
+                    .chain(left_shape.item_shape.as_array_view().iter().cloned())
+                    .collect::<Vec<usize>>()
+                    .as_slice(),
+            );
+
+            assert_eq!(
+                new_shape.as_array_view().iter().product::<usize>()
+                    * new_item_shape.as_array_view().iter().product::<usize>(),
+                left_shape.shape.as_array_view().iter().product::<usize>()
+                    * right_shape.shape.as_array_view().iter().product::<usize>()
+                    * 2
+                    * left_shape
+                        .item_shape
+                        .as_array_view()
+                        .iter()
+                        .product::<usize>()
+            );
+
+            format!(
+                "(access-reshape
+                      (access-cartesian-product
+                       ?left-access
+                       ?right-access
+                      )
+                      (access-shape
+                       (shape {})
+                       (shape {})
+                      )
+                     )",
+                new_shape
+                    .slice()
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                new_item_shape
+                    .slice()
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+
     rewrite!("bubble-reshape-through-cartesian-product";
              "(access-cartesian-product
                (access-reshape
@@ -725,24 +831,10 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
                 ?right-shape
                )
               )" =>
-              "(access-reshape
-                (access-cartesian-product
-                 ?left-access
-                 ?right-access
-                )
-                (get-access-shape
-                 (access-cartesian-product
-                  (access-reshape
-                   ?left-access
-                   ?left-shape
-                  )
-                  (access-reshape
-                   ?right-access
-                   ?right-shape
-                  )
-                 )
-                )
-               )"
+             { ApplierImpl {
+                 left_shape: "?left-shape".parse().unwrap(),
+                 right_shape: "?right-shape".parse().unwrap(),
+             }}
              if access_item_shapes_equal("?left-access".parse().unwrap(),
                                          "?right-access".parse().unwrap()))
 }
@@ -2029,12 +2121,9 @@ mod tests {
                (shape 1 1 2)
               )
              )
-             (get-access-shape
-              (access-windows
-               (access (access-tensor t-3-32-32) 3)
-               (slice-shape (shape-of t-8-3-3-3) 1)
-               (shape 1 1 2)
-              )
+             (access-shape
+              (shape 1 30 15)
+              (shape 3 3 3)
              )
             )
             "
@@ -3171,10 +3260,28 @@ mod tests {
     fn conv2d_im2col_systolic_array_1() {
         test_logger::ensure_env_logger_initialized();
 
+        pub const IMAGE_SHAPE: &[usize] = &[1, 32, 32, 3];
+        pub const KERNEL_SHAPE: &[usize] = &[3, 3, 3, 8];
+
         let mut expr = RecExpr::from_str("(access-tensor image)").unwrap();
-        let id = expr.as_ref().len() - 1;
-        let _conv2d_id =
-            crate::models::resnet50::conv2d(&mut expr, id.into(), "weights", (1, 1), (1, 1));
+        let data_id = expr.as_ref().len() - 1;
+        let weights_id = expr.add(Language::Symbol("weights".to_string()));
+        let weights_id = expr.add(Language::AccessTensor(weights_id));
+
+        let _conv2d_id = crate::language::from_relay::conv2d(
+            &mut expr,
+            data_id.into(),
+            IMAGE_SHAPE,
+            weights_id,
+            KERNEL_SHAPE,
+            &[1, 1],
+            &[1, 1, 1, 1],
+            &[1, 1],
+            1,
+            "NHWC",
+            "HWIO",
+            "",
+        );
 
         let mut map = HashMap::default();
         // batch, height, width, channels
@@ -3199,40 +3306,45 @@ mod tests {
 
         // Expected original program.
         let matches = "
-            (access-transpose
-             (compute dot-product
-              (access-cartesian-product
-               (access
-                (access-transpose
-                 (access (access-tensor weights) 0)
-                 (list 3 0 1 2)
-                )
-                1
-               )
-               (access
-                (access-squeeze
-                 (access-squeeze
-                  (access-windows
-                   (access-pad
-                    (access-pad
-                     (access (access-tensor image) 4)
-                     zero-padding 1 1 1
-                    )
-                    zero-padding 2 1 1
-                   )
-                   (shape-insert-axis (shape-remove-axis (shape-of weights) 3) 0)
-                   (shape 1 1 1 1)
-                  )
-                  3
-                 )
-                 3
-                )
-                3
-               )
-              )
-             )
-             (list 1 2 3 0)
-            )
+(access-transpose
+ (access-transpose
+  (compute dot-product
+   (access-cartesian-product
+    (access
+     (access-transpose (access-tensor weights) (list 3 2 0 1))
+     1
+    )
+    (access
+     (access-squeeze
+      (access-squeeze
+       (access-windows
+        (access
+         (access-pad
+          (access-pad
+           (access-transpose (access-tensor image) (list 0 3 1 2))
+           zero-padding
+           2 1 1
+          )
+          zero-padding
+          3 1 1
+         )
+         4
+        )
+        (shape 1 3 3 3)
+        (shape 1 1 1 1)
+       )
+       4
+      )
+      1
+     )
+     3
+    )
+   )
+  )
+  (list 1 0 2 3)
+ )
+ (list 0 2 3 1)
+)
             "
         .parse::<Pattern<_>>()
         .unwrap()
@@ -3242,50 +3354,55 @@ mod tests {
 
         // Find the version with flattened and reshaped weight/image arguments
         let matches = "
-            (access-transpose
-             (compute dot-product
-              (access-cartesian-product
-               (access-reshape
-                (access-flatten
-                 (access
-                  (access-transpose
-                   (access (access-tensor weights) 0)
-                   (list 3 0 1 2)
-                  )
-                  1
-                 )
-                )
-                ?shape-of-weights
-               )
-               (access-reshape
-                (access-flatten
-                 (access
-                  (access-squeeze
-                   (access-squeeze
-                    (access-windows
-                     (access-pad
-                      (access-pad
-                       (access (access-tensor image) 4)
-                       zero-padding 1 1 1
-                      )
-                      zero-padding 2 1 1
-                     )
-                     (shape-insert-axis (shape-remove-axis (shape-of weights) 3) 0)
-                     (shape 1 1 1 1)
-                    )
-                    3
-                   )
-                   3
-                  )
-                  3
-                 )
-                )
-                ?shape-of-image
-               )
-              )
-             )
-             (list 1 2 3 0)
+(access-transpose
+ (access-transpose
+  (compute dot-product
+   (access-cartesian-product
+    (access-reshape
+     (access-flatten
+      (access
+       (access-transpose (access-tensor weights) (list 3 2 0 1))
+       1
+      )
+     )
+     (access-shape (shape 8) (shape 3 3 3))
+    )
+    (access-reshape
+     (access-flatten
+      (access
+       (access-squeeze
+        (access-squeeze
+         (access-windows
+          (access
+           (access-pad
+            (access-pad
+             (access-transpose (access-tensor image) (list 0 3 1 2))
+             zero-padding
+             2 1 1
             )
+            zero-padding
+            3 1 1
+           )
+           4
+          )
+          (shape 1 3 3 3)
+          (shape 1 1 1 1)
+         )
+         4
+        )
+        1
+       )
+       3
+      )
+     )
+     (access-shape (shape 1 32 32) (shape 3 3 3))
+    )
+   )
+  )
+  (list 1 0 2 3)
+ )
+ (list 0 2 3 1)
+)
             "
         .parse::<Pattern<_>>()
         .unwrap()
@@ -3294,51 +3411,56 @@ mod tests {
         assert_eq!(matches.substs.len(), 1);
 
         let matches = "
-            (access-transpose
-             (access-reshape
-              (systolic-array 27 1024
-               (access-flatten
-                (access
-                 (access-transpose
-                  (access (access-tensor weights) 0)
-                  (list 3 0 1 2)
-                 )
-                 1
-                )
-               )
-               (access
-                (access-transpose
-                 (access-flatten
-                  (access
-                   (access-squeeze
-                    (access-squeeze
-                     (access-windows
-                      (access-pad
-                       (access-pad
-                        (access (access-tensor image) 4)
-                        zero-padding 1 1 1
-                       )
-                       zero-padding 2 1 1
-                      )
-                      (shape-insert-axis (shape-remove-axis (shape-of weights) 3) 0)
-                      (shape 1 1 1 1)
-                     )
-                     3
-                    )
-                    3
-                   )
-                   3
-                  )
-                 )
-                 (list 1 0)
-                )
-                0
-               )
-              )
-              ?shape
+(access-transpose
+ (access-transpose
+  (access-reshape
+   (systolic-array 27 1024
+    (access-flatten
+     (access
+      (access-transpose (access-tensor weights) (list 3 2 0 1))
+      1
+     )
+    )
+    (access
+     (access-transpose
+      (access-flatten
+       (access
+        (access-squeeze
+         (access-squeeze
+          (access-windows
+           (access
+            (access-pad
+             (access-pad
+              (access-transpose (access-tensor image) (list 0 3 1 2))
+              zero-padding
+              2 1 1
              )
-             (list 1 2 3 0)
+             zero-padding
+             3 1 1
             )
+            4
+           )
+           (shape 1 3 3 3)
+           (shape 1 1 1 1)
+          )
+          4
+         )
+         1
+        )
+        3
+       )
+      )
+      (list 1 0)
+     )
+     0
+    )
+   )
+   (access-shape (shape 8 1 32 32) (shape))
+  )
+  (list 1 0 2 3)
+ )
+ (list 0 2 3 1)
+)
             "
         .parse::<Pattern<_>>()
         .unwrap()

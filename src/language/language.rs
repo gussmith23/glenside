@@ -140,7 +140,12 @@ define_language! {
 
         // (get-access-shape <access>)
         // Returns the shape of the access.
-        "get-access-shape" = GetAccessShape(Id),
+        // "get-access-shape" = GetAccessShape(Id),
+        // This shouldn't actually be needed at the moment. We are handling all
+        // statically-sized networks, and so anywhere where we would have used
+        // this, we should be able to just plug in a literal access-shape. If
+        // and when we start supporting dynamic networks, this will become
+        // needed.
 
         // (access-reshape <access> <shape>)
         // Reshapes the access to have the given
@@ -1441,7 +1446,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
                 })
             }
-            &GetAccessShape(access_id) => egraph[access_id].data.clone(),
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
             &Compute([compute_type_id, access_id]) => {
                 let compute_type = match &egraph[compute_type_id].data {
@@ -3374,14 +3378,13 @@ mod tests {
     // TODO(@gussmith) More access-broadcast tests
     fn access_broadcast() {
         let program = "
-         (access-broadcast (access (access-tensor t-1-2-3-4) 1) (get-access-shape (access (access-tensor t) 1)))
+         (access-broadcast (access (access-tensor t-1-2-3-4) 1) (access-shape (shape 2 2 3 4) (shape)))
          "
         .parse()
         .unwrap();
-        let mut map = HashMap::default();
-        map.insert("t".to_string(), vec![2, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {

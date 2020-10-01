@@ -912,18 +912,18 @@ fn compile_expression(
                         .map(|(a, b)| a < b)
                         .any(|v| v)
                     {
-                        let get_access_shape_id = glenside_expr.add(Language::GetAccessShape(b_id));
-                        a_id = glenside_expr
-                            .add(Language::AccessBroadcast([a_id, get_access_shape_id]));
+                        let access_shape_id = access_shape(glenside_expr, &b_shape, &[]);
+                        a_id =
+                            glenside_expr.add(Language::AccessBroadcast([a_id, access_shape_id]));
                     } else if a_shape
                         .iter()
                         .zip(b_shape.iter())
                         .map(|(a, b)| a > b)
                         .any(|v| v)
                     {
-                        let get_access_shape_id = glenside_expr.add(Language::GetAccessShape(a_id));
-                        b_id = glenside_expr
-                            .add(Language::AccessBroadcast([b_id, get_access_shape_id]));
+                        let access_shape_id = access_shape(glenside_expr, &a_shape, &[]);
+                        b_id =
+                            glenside_expr.add(Language::AccessBroadcast([b_id, access_shape_id]));
                     }
 
                     let pair_id = access_pair(glenside_expr, a_id, b_id, 0);
@@ -1021,9 +1021,11 @@ fn compile_expression(
                         bias_id = glenside_expr.add(Language::AccessInsertAxis([bias_id, axis_id]));
                     }
 
-                    let get_shape_id = glenside_expr.add(Language::GetAccessShape(data_id));
+                    let data_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    let access_shape_id = access_shape(glenside_expr, &data_shape, &[]);
                     let bias_id =
-                        glenside_expr.add(Language::AccessBroadcast([bias_id, get_shape_id]));
+                        glenside_expr.add(Language::AccessBroadcast([bias_id, access_shape_id]));
 
                     let data_id = access_pair(glenside_expr, data_id, bias_id, 0);
                     let data_id = compute(glenside_expr, ComputeType::ElementwiseAdd, data_id);
@@ -1380,7 +1382,7 @@ def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32
         r#"
 (compute elementwise-div
  (access-pair
-  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (get-access-shape (access-tensor y))) 0)
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
   (access (access-tensor y) 0)
  )
 )
@@ -1581,7 +1583,7 @@ def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32
         r#"
 (compute elementwise-mul
  (access-pair
-  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (get-access-shape (access-tensor y))) 0)
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
   (access (access-tensor y) 0)
  )
 )
@@ -1600,7 +1602,7 @@ def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32
         r#"
 (compute elementwise-add
  (access-pair
-  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (get-access-shape (access-tensor y))) 0)
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
   (access (access-tensor y) 0)
  )
 )
@@ -1694,7 +1696,7 @@ def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3
   (access
    (access-broadcast
     (access-insert-axis (access-tensor y) 1)
-    (get-access-shape (access-tensor x))
+    (access-shape (shape 3 3) (shape))
    )
    0
   )
@@ -1719,7 +1721,7 @@ def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3
   (access
    (access-broadcast
     (access-insert-axis (access-tensor y) 0)
-    (get-access-shape (access-tensor x))
+    (access-shape (shape 3 3) (shape))
    )
    0
   )
@@ -1744,7 +1746,7 @@ def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3
   (access
    (access-broadcast
     (access-insert-axis (access-tensor y) 0)
-    (get-access-shape (access-tensor x))
+    (access-shape (shape 3 3) (shape))
    )
    0
   )
@@ -1769,7 +1771,7 @@ def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3
   (access
    (access-broadcast
     (access-insert-axis (access-tensor y) 1)
-    (get-access-shape (access-tensor x))
+    (access-shape (shape 3 3) (shape))
    )
    0
   )
