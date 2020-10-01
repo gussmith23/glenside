@@ -16,7 +16,21 @@ use tvm::DataType;
 use super::ComputeType;
 use super::PadType;
 
+pub fn list(expr: &mut RecExpr<Language>, list: &[usize]) -> Id {
+    let mut id_list: Vec<Id> = Vec::default();
+    for i in list {
+        id_list.push(expr.add(Language::Usize(*i)));
+    }
+    expr.add(Language::List(id_list.into_boxed_slice()))
+}
+
 // TODO(@gussmith23) Give glenside-expression-creation helpers a new home
+pub fn access_transpose(expr: &mut RecExpr<Language>, data_id: Id, transpose_list: &[usize]) -> Id {
+    let transpose_list_id = list(expr, transpose_list);
+
+    expr.add(Language::AccessTranspose([data_id, transpose_list_id]))
+}
+
 
 /// Concatenate accesses
 ///
