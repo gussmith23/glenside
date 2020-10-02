@@ -84,10 +84,30 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::List(_)
             | Language::SliceShape(_)
             | Language::AccessPair(_)
+            // We don't penalize Compute, though we don't want to extract
+            // compute statements. Instead, we penalize most ComputeTypes, and
+            // let some types pass through until we've implemented some other
+            // way to handle them.
+            // TODO(@gussmith23) We shouldn't have to extract ANY computes!
+            | Language::Compute(_)
             | Language::AccessTranspose(_) => 1,
 
-            // Computes cannot be extracted.
-            Language::ComputeType(_) | Language::Compute(_) => Self::INFINITY_VALUE,
+            // Penalaize specific compute types. In the future, these constructs
+            // shouldn't be extractable at all.
+            // TODO(@gussmith23) We shouldn't have to extract ANY computes!
+            Language::ComputeType(t) => match t {
+                crate::language::ComputeType::DotProduct => Self::INFINITY_VALUE,
+                crate::language::ComputeType::ReduceSum => 1,
+                crate::language::ComputeType::ReLU => 1,
+                crate::language::ComputeType::Sqrt => 1,
+                crate::language::ComputeType::Negative => 1,
+                crate::language::ComputeType::ElementwiseAdd => 1,
+                crate::language::ComputeType::ElementwiseMul => 1,
+                crate::language::ComputeType::ElementwiseDiv => 1,
+                crate::language::ComputeType::ReduceMax => 1,
+                crate::language::ComputeType::Softmax => 1,
+                crate::language::ComputeType::ReduceMean => 1,
+            }
 
             // Old constructs.
             Language::MoveAxis(_)
