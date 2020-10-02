@@ -1,3 +1,7 @@
+# Glenside Dockerfile
+#
+# Uses `nproc+1` cores when running make.
+
 FROM ubuntu:18.04
 
 # Install needed packages
@@ -40,7 +44,7 @@ RUN bash -c \
      "mkdir -p build && \
      cd build && \
      cmake .. && \
-     make -j2"
+     make -j$((`nproc`+1))"
 
 # Help the system find the libtvm library and TVM Python library
 ENV TVM_HOME=/root/tvm
