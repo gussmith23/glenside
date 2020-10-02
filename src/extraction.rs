@@ -48,6 +48,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
     {
         let base_cost = match enode {
             &Language::SystolicArray([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
+            | &Language::SystolicArrayWithBlocking([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
                 if (
                     MyAnalysis::get_usize(rows_id, self.egraph),
                     MyAnalysis::get_usize(cols_id, self.egraph),
@@ -61,6 +62,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Literal(_)
             | Language::NotNanFloat64(_)
             | Language::SystolicArray(_)
+            | Language::SystolicArrayWithBlocking(_)
             | Language::Usize(_)
             | Language::AccessSlice(_)
             | Language::AccessConcatenate(_)
@@ -141,7 +143,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,
             // Extracting hardware atoms is encouraged.
-            SystolicArray(_) => 1,
+            SystolicArray(_) | SystolicArrayWithBlocking(_) => 1,
             // Extracting various access patterns is essential.
             AccessWindows(_)
             | Access(_)

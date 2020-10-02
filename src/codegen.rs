@@ -326,7 +326,9 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 4]
-            &Language::SystolicArray(ids) | &Language::AccessSlice(ids) => {
+            &Language::SystolicArray(ids)
+            | &Language::SystolicArrayWithBlocking(ids)
+            | &Language::AccessSlice(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -488,6 +490,7 @@ fn codegen_recursive_helper(
         assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
     } {
+        &Language::SystolicArrayWithBlocking([_rows_id, _cols_id, _a0_id, _a1_id]) => todo!(),
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,

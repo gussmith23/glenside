@@ -75,6 +75,10 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "systolic-array" = SystolicArray([Id; 4]),
 
+        // Same as the systolic array above, but relies on Scott's blocking code
+        // instead of relying on Glenside to discover the blocking.
+        "systolic-array-with-blocking" = SystolicArrayWithBlocking([Id; 4]),
+
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
@@ -1855,7 +1859,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     usize_value: None,
                 })
             }
-            &SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
+            &SystolicArray([rows_id, cols_id, a0_id, a1_id])
+            | &SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {
                 let rows = Self::get_usize(rows_id, egraph);
                 let cols = Self::get_usize(cols_id, egraph);
 
@@ -1867,9 +1872,26 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 assert_eq!(a1.shape, IxDyn(&[]));
-                assert_eq!(a1.item_shape, IxDyn(&[rows, cols]));
                 assert!(a0.shape.ndim() == 0 || a0.shape.ndim() == 1);
-                assert_eq!(a0.item_shape, IxDyn(&[rows]));
+
+                match &enode {
+                    &SystolicArray(_) => {
+                        assert_eq!(a1.item_shape, IxDyn(&[rows, cols]));
+                        assert_eq!(a0.item_shape, IxDyn(&[rows]));
+                    }
+                    &SystolicArrayWithBlocking(_) => {
+                        // Scott: The input vector size should be a multiple of
+                        // the systolic array's height and the output vector
+                        // size should be a multiple of the systolic array's
+                        // width.
+                        assert_eq!(a0.item_shape.ndim(), 1);
+                        assert!(a0.item_shape.slice()[0] % rows == 0);
+                        assert_eq!(a1.item_shape.ndim(), 2);
+                        assert_eq!(a0.item_shape.slice()[0], a1.item_shape.slice()[0]);
+                        assert!(a1.item_shape.slice()[1] % cols == 0);
+                    }
+                    _ => unreachable!(),
+                }
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
@@ -1895,7 +1917,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         a0.shape
                             .as_array_view()
                             .iter()
-                            .chain(std::iter::once(&cols))
+                            .chain(std::iter::once(&a1.item_shape.slice()[1]))
                             .cloned()
                             .collect::<Vec<_>>()
                             .as_slice(),
@@ -3784,5 +3806,99 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn systolic_array_with_blocking_0() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![64, 32]);
+        let program = "
+         (systolic-array-with-blocking 64 32
+          (access (access-tensor a) 1)
+          (access (access-tensor b) 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn systolic_array_with_blocking_2() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![64, 32]);
+        let program = "
+         (systolic-array-with-blocking 32 32
+          (access (access-tensor a) 1)
+          (access (access-tensor b) 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn systolic_array_with_blocking_3() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![64, 32]);
+        let program = "
+         (systolic-array-with-blocking 32 2
+          (access (access-tensor a) 1)
+          (access (access-tensor b) 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion failed: a1.item_shape.slice()[1] % cols == 0")]
+    fn systolic_array_with_blocking_panic() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![64, 32]);
+        let program = "
+         (systolic-array-with-blocking 32 3
+          (access (access-tensor a) 1)
+          (access (access-tensor b) 0)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let _id = egraph.add_expr(&program);
     }
 }

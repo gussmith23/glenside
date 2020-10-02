@@ -893,6 +893,7 @@ where
         | &Language::ElementwiseAdd(_)
         | &Language::BsgSystolicArray(_)
         | &Language::SystolicArray(_)
+        | &Language::SystolicArrayWithBlocking(_)
         | &Language::AccessReshape(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
