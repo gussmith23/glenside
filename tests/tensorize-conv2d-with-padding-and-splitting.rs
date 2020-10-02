@@ -1,4 +1,4 @@
-use egg::{Pattern, RecExpr, Runner, Searcher};
+use egg::{RecExpr, Runner};
 use glenside::language::rewrites::*;
 use glenside::language::*;
 use std::collections::HashMap;
