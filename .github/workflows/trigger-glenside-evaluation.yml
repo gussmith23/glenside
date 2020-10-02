@@ -1,0 +1,16 @@
+name: Trigger Glenside Evaluation
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  trigger-glenside-evaluation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository Dispatch
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          repository: gussmith23/glenside-evaluation
+          event-type: push-to-glenside-master
