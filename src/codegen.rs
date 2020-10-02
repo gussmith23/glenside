@@ -821,6 +821,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                         .cloned()
                         .collect::<Vec<_>>()
                         .as_slice(),
+                    // TODO(@gussmith23) Datatype assumption
                     DType::Fp32,
                 )
                 .as_str(),
