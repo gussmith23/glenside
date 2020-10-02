@@ -490,7 +490,6 @@ fn codegen_recursive_helper(
         assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
     } {
-        &Language::SystolicArrayWithBlocking([_rows_id, _cols_id, _a0_id, _a1_id]) => todo!(),
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -727,7 +726,8 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             code,
             hw_map,
         ),
-        &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id]) => {
+        &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id])
+        | &Language::SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {
             let rows = MyAnalysis::get_usize(rows_id, expr);
             let cols = MyAnalysis::get_usize(cols_id, expr);
 
@@ -737,9 +737,32 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             };
 
             assert_eq!(a1.shape, IxDyn(&[]));
-            assert_eq!(a1.item_shape, IxDyn(&[rows, cols]));
             assert!(a0.shape.ndim() == 0 || a0.shape.ndim() == 1);
-            assert_eq!(a0.item_shape, IxDyn(&[rows]));
+
+            // TODO(@gussmith23) These are just ripped from language.rs.
+            // Don't want to duplicate checks. Maybe we just assume things check
+            // out? Given that they're in the egraph?
+            match {
+                assert_eq!(expr[id].nodes.len(), 1);
+                &expr[id].nodes[0]
+            } {
+                &Language::SystolicArray(_) => {
+                    assert_eq!(a1.item_shape, IxDyn(&[rows, cols]));
+                    assert_eq!(a0.item_shape, IxDyn(&[rows]));
+                }
+                &Language::SystolicArrayWithBlocking(_) => {
+                    // Scott: The input vector size should be a multiple of
+                    // the systolic array's height and the output vector
+                    // size should be a multiple of the systolic array's
+                    // width.
+                    assert_eq!(a0.item_shape.ndim(), 1);
+                    assert!(a0.item_shape.slice()[0] % rows == 0);
+                    assert_eq!(a1.item_shape.ndim(), 2);
+                    assert_eq!(a0.item_shape.slice()[0], a1.item_shape.slice()[0]);
+                    assert!(a1.item_shape.slice()[1] % cols == 0);
+                }
+                _ => unreachable!(),
+            }
 
             let this_access = match &expr[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -767,11 +790,22 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 hw_map,
             );
 
-            let out_var_name = format!(
-                "systolic_array_{}_eclass_{}_out",
-                hw_map.get(&id).unwrap(),
-                id,
-            );
+            let out_var_name = match {
+                assert_eq!(expr[id].nodes.len(), 1);
+                &expr[id].nodes[0]
+            } {
+                &Language::SystolicArray(_) => format!(
+                    "systolic_array_{}_eclass_{}_out",
+                    hw_map.get(&id).unwrap(),
+                    id,
+                ),
+                &Language::SystolicArrayWithBlocking(_) => format!(
+                    "systolic_array_with_blocking_{}_eclass_{}_out",
+                    hw_map.get(&id).unwrap(),
+                    id,
+                ),
+                _ => unreachable!(),
+            };
 
             // TODO(@gussmith23) how to assign unique names to each usage?
             // TODO(@gussmith23) Allocations should not be done ad-hoc
@@ -805,9 +839,9 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                     // Pointer to input matrix
                     format!("(float*){}", s1,),
                     // Length of input vector/size of input matrix dim 0
-                    rows,
+                    a1.item_shape.slice()[0],
                     // Size of input matrix dim 1/length of output vector
-                    cols,
+                    a1.item_shape.slice()[1],
                     // Batch size, or, the number of vectors to push through.
                     if a0.shape.ndim() == 0 {
                         1
@@ -2258,5 +2292,141 @@ int main() {{
         egraph.add_expr(&expr);
 
         let (_hw_map, _hw_design) = create_hardware_design_monolithic(&egraph, (32, 32));
+    }
+
+    #[test]
+    fn systolic_array_with_blocking() {
+        let shape0 = vec![2, 10];
+        let shape1 = vec![10, 15];
+
+        let input0 = ndarray::ArrayD::from_shape_vec(
+            shape0.clone(),
+            (0..shape0.iter().product::<usize>()).collect(),
+        )
+        .unwrap()
+        .into_dimensionality::<ndarray::Ix2>()
+        .unwrap();
+        let input1 = ndarray::ArrayD::from_shape_vec(
+            shape1.clone(),
+            (0..shape1.iter().product::<usize>()).collect(),
+        )
+        .unwrap()
+        .into_dimensionality::<ndarray::Ix2>()
+        .unwrap();
+        let multiplied = input0.dot(&input1).into_dyn();
+
+        let expr = RecExpr::from_str(
+            "
+(systolic-array-with-blocking 2 5
+ (access (access-tensor t0) 1)
+ (access (access-tensor t1) 0)
+)",
+        )
+        .unwrap();
+
+        let mut map = HashMap::default();
+        map.insert("t0".to_string(), shape0.clone());
+        map.insert("t1".to_string(), shape1.clone());
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let mut hw_map = HashMap::default();
+        hw_map.insert(id, 0);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &hw_map,
+            "systolic_array_with_blocking",
+            "",
+            &vec!["t0", "t1"],
+        );
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+  systolic_array_with_blocking(out, t0, t1);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "rtml_systolic_array_weight_stationary.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "t0", DType::Fp32, &input0.into_dyn().view()),
+            c_assignment_string("", "t1", DType::Fp32, &input1.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &multiplied.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(multiplied.shape()).view()
+            ),
+            code,
+            multiplied.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "systolic-array-with-blocking-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "systolic-array-with-blocking-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
     }
 }
