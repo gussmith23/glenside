@@ -159,7 +159,6 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     (access-cartesian-product
       (access-flatten
        (access (access-transpose (access-tensor weights) (list 3 2 0 1)) 1))
-      (access-transpose )
       (access-flatten
        (access
         (access-squeeze
