@@ -76,7 +76,9 @@ define_language! {
         "systolic-array" = SystolicArray([Id; 4]),
 
         // Same as the systolic array above, but relies on Scott's blocking code
-        // instead of relying on Glenside to discover the blocking.
+        // instead of relying on Glenside to discover the blocking. By
+        // "blocking", we mean splitting up a matrix multiply to run on a
+        // smaller systolic array.
         "systolic-array-with-blocking" = SystolicArrayWithBlocking([Id; 4]),
 
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
