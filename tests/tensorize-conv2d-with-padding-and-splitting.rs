@@ -150,38 +150,4 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         .unwrap()
         .search_eclass(&runner.egraph, id)
         .unwrap();
-
-    "
-(access-transpose
- (access-transpose
-  (access-reshape
-   (systolic-array 27 1024
-    (access-cartesian-product
-      (access-flatten
-       (access (access-transpose (access-tensor weights) (list 3 2 0 1)) 1))
-      (access-flatten
-       (access
-        (access-squeeze
-         (access-squeeze
-          (access-windows
-           (access
-            (access-pad
-             (access-pad (access-transpose (access-tensor image) (list 0 3 1 2)) zero-padding 2 1 1)
-             zero-padding
-             3
-             1
-             1)
-            4)
-           (shape 1 3 3 3)
-           (shape 1 1 1 1))
-          4)
-         1)
-        3))))
-   (access-shape (shape 8 1 32 32) (shape)))
-  (list 1 0 2 3))
- (list 0 2 3 1))"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
-        .unwrap();
 }
