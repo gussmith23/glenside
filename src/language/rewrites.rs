@@ -874,6 +874,63 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
              if is_dot_product("?op".parse().unwrap()))
 }
 
+/// Tensorizes a computation to an externally-blocked systolic array.
+///
+/// `rows` and `cols` define the size of the systolic array to map to. This
+/// rewrite will map any matrix multiplication MxN X NxO to this size systolic
+/// array as long as:
+///  - N is a multiple of `rows`, and
+///  - O is a multiple of `columns`.
+pub fn systolic_array_with_blocking(rows: usize, cols: usize) -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        rows: usize,
+        cols: usize,
+        a: Var,
+        b: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let (a, b) = match (&egraph[subst[self.a]].data, &egraph[subst[self.b]].data) {
+                (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => (a, b),
+                _ => panic!(),
+            };
+            assert_eq!(a.item_shape.ndim(), 1);
+            assert_eq!(b.shape.ndim(), 1);
+            assert_eq!(b.item_shape.ndim(), 1);
+
+            let pattern: Pattern<Language> = format!(
+                "(systolic-array-with-blocking {} {}
+                          ?access-1
+                          (access (access-transpose ?access-2 (list 1 0)) 0)
+                         )",
+                self.rows, self.cols
+            )
+            .parse()
+            .unwrap();
+
+            pattern.apply_one(egraph, eclass, subst)
+        }
+    }
+
+    rewrite!(format!("systolic-array-with-blocking-{}-{}", rows, cols);
+             "(compute dot-product
+               (access-cartesian-product
+                ?access-1
+                ?access-2
+               )
+              )
+             " =>
+             { ApplierImpl{rows, cols, a: "?access-1".parse().unwrap(), b: "?access-2".parse().unwrap(),}}
+             // Remember: the accesses look like [M] [N] and [O] [N] for an
+             // MxN X NxO multiplication.
+             if constrain_access("?access-1".parse().unwrap(),
+                                 move |a| a.shape.ndim() <= 1 && a.item_shape.ndim() == 1
+                                          && a.item_shape.slice()[0] % rows == 0)
+             if constrain_access("?access-2".parse().unwrap(),
+                                 move |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1
+                                          && a.shape.slice()[0] % cols == 0))
+}
+
 pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
     struct ApplierImpl {
         a: Var,
@@ -3790,5 +3847,114 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn systolic_array_with_blocking() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![32, 64]);
+        let program = "
+         (compute dot-product
+          (access-cartesian-product
+           (access (access-tensor a) 1)
+           (access (access-tensor b) 1)
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![
+            super::systolic_array_with_blocking(64, 32),
+            super::systolic_array_with_blocking(32, 32),
+            super::systolic_array_with_blocking(16, 32),
+            super::systolic_array_with_blocking(32, 16),
+            super::systolic_array_with_blocking(2, 2),
+            // Shouldn't tensorize to this one.
+            super::systolic_array_with_blocking(32, 3),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+          (systolic-array-with-blocking 64 32
+           (access (access-tensor a) 1)
+           (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-with-blocking 32 32
+           (access (access-tensor a) 1)
+           (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-with-blocking 16 32
+           (access (access-tensor a) 1)
+           (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-with-blocking 32 16
+           (access (access-tensor a) 1)
+           (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-with-blocking 2 2
+           (access (access-tensor a) 1)
+           (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-with-blocking 32 3
+           (access (access-tensor a) 1)
+           (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id);
+        assert!(matches.is_none());
     }
 }
