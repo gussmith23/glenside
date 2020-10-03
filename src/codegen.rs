@@ -198,7 +198,9 @@ pub fn create_hardware_design_monolithic(
     for eclass in expr.classes() {
         assert_eq!(eclass.nodes.len(), 1);
         match &eclass.nodes[0] {
-            &Language::SystolicArray([row_id, col_id, _, _]) => {
+            // TODO(@gussmith23) Need to test w/ blocking
+            &Language::SystolicArrayWithBlocking([row_id, col_id, _, _])
+            | &Language::SystolicArray([row_id, col_id, _, _]) => {
                 match {
                     assert_eq!(expr[row_id].nodes.len(), 1);
                     &expr[row_id].nodes[0]
@@ -241,7 +243,9 @@ pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Ve
     for eclass in expr.classes() {
         assert_eq!(eclass.nodes.len(), 1);
         match &eclass.nodes[0] {
-            &Language::SystolicArray([row_id, col_id, _, _]) => {
+            // TODO(@gussmith23) Need to test w/ blocking
+            &Language::SystolicArrayWithBlocking([row_id, col_id, _, _])
+            | &Language::SystolicArray([row_id, col_id, _, _]) => {
                 hw_id += 1;
                 let hw_id = hw_id - 1;
 
