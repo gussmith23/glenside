@@ -26,6 +26,26 @@ fn main() {
                         .long("allocate-for-manycore"),
                 )
                 .arg(
+                    Arg::with_name("blocking")
+                        .help(
+                            "Determines how Glenside blocks up matrix \
+                             multiplies to fit on systolic arrays. A value of \
+                             'glenside' will have glenside insert systolic \
+                             arrays for every valid matrix multiplication size \
+                             it finds. A value of '(<rows>,<cols>)' \
+                             (no whitespace) will have Glenside insert \
+                             systolic arrays of size rows,cols which use BSG's \
+                             automatic blocking, where possible. This flag can \
+                             be passed multiple values. A \
+                             value of just 'glenside' indicates that all \
+                             blocking should be done explicitly within \
+                             Glenside's search process.",
+                        )
+                        .long("blocking")
+                        .min_values(1)
+                        .default_value("glenside"),
+                )
+                .arg(
                     Arg::with_name("prefer-bsg-blocking")
                         .help(
                             "When extracting a design, favors systolic arrays \
@@ -112,7 +132,7 @@ fn main() {
         }
 
         // TODO(@gussmith23) Add flags to control different rewrites
-        runner = runner.run(&[
+        let mut rws = vec![
             glenside::language::rewrites::flatten_unflatten_any_access(),
             glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
             glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
@@ -122,7 +142,6 @@ fn main() {
             glenside::language::rewrites::bubble_access_concatenate_through_compute_dot_product_item_axis(),
             glenside::language::rewrites::bubble_access_concatenate_through_compute_dot_product_not_item_axis(),
             glenside::language::rewrites::bubble_access_slice_through_access_pad_inequal_axes(),
-            glenside::language::rewrites::systolic_array(),
             glenside::language::rewrites::pad_slice_accesses(
                 0,
                 PadSliceStrategy::PadToClosestMultipleOf {
@@ -155,7 +174,34 @@ fn main() {
             glenside::language::rewrites::collapse_nested_accesses(),
             glenside::language::rewrites::collapse_nested_transposes(),
             glenside::language::rewrites::remove_trivial_transpose(),
-        ]);
+        ];
+
+        // Ensure that each rewrite is just added once.
+        let mut added = std::collections::HashSet::new();
+        for value in matches.values_of("blocking").unwrap() {
+            if added.contains(value) {
+                continue;
+            }
+            if value == "glenside" {
+                rws.push(glenside::language::rewrites::systolic_array());
+            } else {
+                let parsed = value
+                    .chars()
+                    .skip(1)
+                    .take(value.len() - 2)
+                    .collect::<String>()
+                    .split(",")
+                    .map(|s| s.parse::<usize>().unwrap())
+                    .collect::<Vec<_>>();
+                assert_eq!(parsed.len(), 2);
+                rws.push(glenside::language::rewrites::systolic_array_with_blocking(
+                    parsed[0], parsed[1],
+                ));
+            }
+            added.insert(value);
+        }
+
+        runner = runner.run(&rws);
 
         // TODO(@gussmith23) Explain difference between extraction and hw gen
         // Why do we "extract a monolithic design" and then "create a monolithic
