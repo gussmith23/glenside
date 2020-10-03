@@ -489,6 +489,7 @@ def @main(%data: Tensor[(1, 3, 224, 224), float32], %conv_block_1_conv_weight: T
         MonolithicCostFunction {
             systolic_array_configuration: (16, 128),
             egraph: &runner.egraph,
+            prefer_systolic_arrays_with_blocking: false,
         },
     );
     // TODO(@gussmith23) This is overflowing the stack

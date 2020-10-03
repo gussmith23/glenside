@@ -34,6 +34,9 @@ pub fn find_all_systolic_array_configurations(
 pub struct MonolithicCostFunction<'a> {
     pub systolic_array_configuration: (usize, usize),
     pub egraph: &'a EGraph<Language, MyAnalysis>,
+    /// Whether to prioritize systolic-array or systolic-array-with-blocking
+    // TODO(@gussmith23) This needs to be tested
+    pub prefer_systolic_arrays_with_blocking: bool,
 }
 impl<'a> MonolithicCostFunction<'a> {
     pub const INFINITY_VALUE: <MonolithicCostFunction<'a> as egg::CostFunction<Language>>::Cost =
@@ -130,7 +133,18 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
 /// from being extracted, as these nodes should be replaced by hardware atoms
 /// (or, perhaps in the future, kernel calls). It also filters out old Glenside
 /// constructs.
-pub struct SimpleCostFunction;
+pub struct SimpleCostFunction {
+    /// Whether to prioritize systolic-array or systolic-array-with-blocking
+    // TODO(@gussmith23) This needs to be tested
+    pub prefer_systolic_arrays_with_blocking: bool,
+}
+impl Default for SimpleCostFunction {
+    fn default() -> Self {
+        SimpleCostFunction {
+            prefer_systolic_arrays_with_blocking: false,
+        }
+    }
+}
 impl CostFunction<Language> for SimpleCostFunction {
     type Cost = usize;
 
@@ -142,8 +156,21 @@ impl CostFunction<Language> for SimpleCostFunction {
         let base_cost = match enode {
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,
-            // Extracting hardware atoms is encouraged.
-            SystolicArray(_) | SystolicArrayWithBlocking(_) => 1,
+            // Extracting hardware atoms is encouraged
+            SystolicArray(_) => {
+                if !self.prefer_systolic_arrays_with_blocking {
+                    1
+                } else {
+                    usize::MAX
+                }
+            }
+            SystolicArrayWithBlocking(_) => {
+                if self.prefer_systolic_arrays_with_blocking {
+                    1
+                } else {
+                    usize::MAX
+                }
+            }
             // Extracting various access patterns is essential.
             AccessWindows(_)
             | Access(_)
@@ -281,6 +308,7 @@ mod tests {
             MonolithicCostFunction {
                 systolic_array_configuration: (16, 128),
                 egraph: &egraph,
+                prefer_systolic_arrays_with_blocking: false,
             },
         );
 
@@ -320,6 +348,7 @@ mod tests {
             MonolithicCostFunction {
                 egraph: &egraph,
                 systolic_array_configuration: (32, 32),
+                prefer_systolic_arrays_with_blocking: false,
             },
         );
 
@@ -383,7 +412,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(&egraph, SimpleCostFunction);
+        let mut ex = Extractor::new(&egraph, SimpleCostFunction::default());
 
         let (cost, best) = ex.find_best(id);
         assert!(cost < std::usize::MAX);

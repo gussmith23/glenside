@@ -105,6 +105,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         glenside::extraction::MonolithicCostFunction {
             egraph: &runner.egraph,
             systolic_array_configuration: (64, 64),
+            prefer_systolic_arrays_with_blocking: false,
         },
     )
     .find_best(id);

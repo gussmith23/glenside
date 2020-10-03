@@ -26,6 +26,14 @@ fn main() {
                         .long("allocate-for-manycore"),
                 )
                 .arg(
+                    Arg::with_name("prefer-bsg-blocking")
+                        .help(
+                            "When extracting a design, favors systolic arrays \
+                             that use BSG's automatic blocking.",
+                        )
+                        .long("prefer-bsg-blocking"),
+                )
+                .arg(
                     Arg::with_name("node-limit")
                         .long("node-limit")
                         .takes_value(true),
@@ -171,12 +179,18 @@ fn main() {
                 glenside::extraction::MonolithicCostFunction {
                     egraph: &runner.egraph,
                     systolic_array_configuration: (parsed[0], parsed[1]),
+                    prefer_systolic_arrays_with_blocking: matches.is_present("prefer-bsg-blocking"),
                 },
             )
             .find_best(id)
         } else {
-            egg::Extractor::new(&runner.egraph, glenside::extraction::SimpleCostFunction)
-                .find_best(id)
+            egg::Extractor::new(
+                &runner.egraph,
+                glenside::extraction::SimpleCostFunction {
+                    prefer_systolic_arrays_with_blocking: matches.is_present("prefer-bsg-blocking"),
+                },
+            )
+            .find_best(id)
         };
 
         let mut egraph = EGraph::new(MyAnalysis {
