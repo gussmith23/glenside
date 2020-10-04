@@ -1019,316 +1019,239 @@ impl Sqrt for i64 {
     }
 }
 
+extern crate test;
+
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use approx::AbsDiffEq;
     use ndarray::array;
     use std::str::FromStr;
+    use test::Bencher;
 
-    #[test]
-    fn compute_elementwise_add_0() {
-        let mut env = Environment::new();
-        env.insert(
-            "t",
-            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
-
-        let expr = RecExpr::<Language>::from_str(
-            "(compute elementwise-add
-              (access (access-tensor t) 0)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
-                tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 0);
-                assert_eq!(
-                    tensor,
-                    array![[1 + -5 + -9, -2 + 6 + 10], [3 + 0 + 11, 0 + 8 + 12]].into_dyn()
+    macro_rules! benchmark_test {
+        ($test_name:ident, $glenside_str: expr, $check_correct: expr, $base_env: expr) => {
+            #[bench]
+            fn $test_name(b: &mut Bencher) {
+                let test = test_function!(
+                    $glenside_str,
+                    $check_correct,
+                    $base_env
                 );
+                b.iter(|| test());
             }
-            _ => panic!(),
+        };
+    }
+    macro_rules! test_function {
+        ($glenside_str: expr, $check_correct: expr, $base_env: expr) => {
+            || {
+                let mut env = Environment::new();
+                for (key, value) in $base_env.into_iter() {
+                    env.insert(key, value);
+                }               
+
+                let expr = RecExpr::<Language>::from_str(
+                    $glenside_str,
+                )
+                .unwrap();
+
+                match interpret(&expr, expr.as_ref().len() - 1, &env) {
+                    Value::Access(Access {
+                        tensor,
+                        access_axis,
+                    }) => {
+                        $check_correct(tensor, access_axis);
+                    }
+                    _ => panic!(),
+                }
+            }
         }
     }
 
-    #[test]
-    fn compute_elementwise_mul_0() {
-        let mut env = Environment::new();
-        env.insert(
+    benchmark_test!(
+        compute_elementwise_add_0,
+        "(compute elementwise-add
+        (access (access-tensor t) 0)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 0);
+            assert_eq!(
+                tensor,
+                array![[1 + -5 + -9, -2 + 6 + 10], [3 + 0 + 11, 0 + 8 + 12]].into_dyn()
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute elementwise-mul
-              (access (access-tensor t) 0)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_elementwise_mul_0,
+        "(compute elementwise-mul
+        (access (access-tensor t) 0)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 0);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 0);
-                assert_eq!(
-                    tensor,
-                    array![[1 * -5 * -9, -2 * 6 * 10], [3 * 0 * 11, 0 * 8 * 12]].into_dyn()
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_reduce_sum_0() {
-        let mut env = Environment::new();
-        env.insert(
+                array![[1 * -5 * -9, -2 * 6 * 10], [3 * 0 * 11, 0 * 8 * 12]].into_dyn()
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute reduce-sum
-              (access (access-tensor t) 0)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_reduce_sum_0,
+        "(compute reduce-sum
+        (access (access-tensor t) 0)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 0);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 0);
-                assert_eq!(
-                    tensor,
-                    ndarray::arr0(1 + -2 + 3 + 0 + -5 + 6 + 0 + 8 + -9 + 10 + 11 + 12).into_dyn()
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_reduce_sum_1() {
-        let mut env = Environment::new();
-        env.insert(
+                ndarray::arr0(1 + -2 + 3 + 0 + -5 + 6 + 0 + 8 + -9 + 10 + 11 + 12).into_dyn()
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute reduce-sum
-              (access (access-tensor t) 1)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_reduce_sum_1,
+        "(compute reduce-sum
+        (access (access-tensor t) 1)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 1);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 1);
-                assert_eq!(
-                    tensor,
-                    array![1 + -2 + 3 + 0, -5 + 6 + 0 + 8, -9 + 10 + 11 + 12].into_dyn()
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_reduce_sum_2() {
-        let mut env = Environment::new();
-        env.insert(
+                array![1 + -2 + 3 + 0, -5 + 6 + 0 + 8, -9 + 10 + 11 + 12].into_dyn()
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute reduce-sum
-              (access (access-tensor t) 2)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_reduce_sum_2,
+        "(compute reduce-sum
+        (access (access-tensor t) 2)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 2);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 2);
-                assert_eq!(
-                    tensor,
-                    array![[1 + -2, 3 + 0], [-5 + 6, 0 + 8], [-9 + 10, 11 + 12]].into_dyn()
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_reduce_sum_3() {
-        let mut env = Environment::new();
-        env.insert(
+                array![[1 + -2, 3 + 0], [-5 + 6, 0 + 8], [-9 + 10, 11 + 12]].into_dyn()
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute reduce-sum
-              (access (access-tensor t) 3)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_reduce_sum_3,
+        "(compute reduce-sum
+        (access (access-tensor t) 3)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 3);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 3);
-                assert_eq!(
-                    tensor,
-                    array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_relu_0() {
-        let mut env = Environment::new();
-        env.insert(
+                array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute relu
-              (access (access-tensor t) 0)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_relu_0,
+        "(compute relu
+        (access (access-tensor t) 0)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 0);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 0);
-                assert_eq!(
-                    tensor,
-                    array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_relu_1() {
-        let mut env = Environment::new();
-        env.insert(
+                array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
+            );
+        },
+        vec![(
             "t",
             array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute relu
-              (access (access-tensor t) 2)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_relu_1,
+        "(compute relu
+        (access (access-tensor t) 2)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(access_axis, 2);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(access_axis, 2);
-                assert_eq!(
-                    tensor,
-                    array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
-                );
-            }
-            _ => panic!(),
-        }
-    }
+                array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
+            );
+        },
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )]
+    );
 
-    #[test]
-    fn compute_dot_product_0() {
-        let mut env = Environment::new();
-        env.insert(
+    benchmark_test!(
+        compute_dot_product_0,
+        "(compute dot-product
+        (access (access-tensor t) 0)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(tensor.shape(), &[] as &[usize]);
+            assert_eq!(access_axis, 0);
+            assert_eq!(
+                tensor,
+                ndarray::arr0(1 * 5 * 9 + 2 * 6 * 10 + 3 * 7 * 11 + 4 * 8 * 12).into_dyn()
+            );
+        },
+        vec![(
             "t",
             // 3 x 2 x 2
             array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
-        );
+        )]
+    );
 
-        let expr = RecExpr::<Language>::from_str(
-            "(compute dot-product
-              (access (access-tensor t) 0)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
+    benchmark_test!(
+        compute_dot_product_1,
+        "(compute dot-product
+        (access (access-tensor t) 1)
+        )",
+        |tensor, access_axis| {
+            assert_eq!(tensor.shape(), &[3]);
+            assert_eq!(access_axis, 1);
+            assert_eq!(
                 tensor,
-                access_axis,
-            }) => {
-                assert_eq!(tensor.shape(), &[] as &[usize]);
-                assert_eq!(access_axis, 0);
-                assert_eq!(
-                    tensor,
-                    ndarray::arr0(1 * 5 * 9 + 2 * 6 * 10 + 3 * 7 * 11 + 4 * 8 * 12).into_dyn()
-                );
-            }
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn compute_dot_product_1() {
-        let mut env = Environment::new();
-        env.insert(
+                array![11, 5 * 7 + 8 * 6, 9 * 11 + 10 * 12].into_dyn()
+            );
+        },
+        vec![
             "t",
             // 3 x 2 x 2
             array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
-        );
-
-        let expr = RecExpr::<Language>::from_str(
-            "(compute dot-product
-              (access (access-tensor t) 1)
-             )",
-        )
-        .unwrap();
-
-        match interpret(&expr, expr.as_ref().len() - 1, &env) {
-            Value::Access(Access {
-                tensor,
-                access_axis,
-            }) => {
-                assert_eq!(tensor.shape(), &[3]);
-                assert_eq!(access_axis, 1);
-                assert_eq!(
-                    tensor,
-                    array![11, 5 * 7 + 8 * 6, 9 * 11 + 10 * 12].into_dyn()
-                );
-            }
-            _ => panic!(),
-        }
-    }
+        )]
+    );
 
     #[test]
     fn compute_dot_product_2() {
