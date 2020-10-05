@@ -1030,7 +1030,7 @@ mod tests {
     use std::str::FromStr;
     use test::Bencher;
 
-    /// Creates an benchmark test for the interpreter
+    /// Creates a benchmark test for the interpreter
     /// The test does the following:
     ///  1. Parses $glenside_str as glenside expression
     ///  2. Creates a new Environment from the vector of (key, value) pairs
@@ -1044,14 +1044,6 @@ mod tests {
         ($test_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
             #[bench]
             fn $test_name(b: &mut Bencher) {
-                let test = test_function!($glenside_str, $env, $check_correct);
-                b.iter(|| test());
-            }
-        };
-    }
-    macro_rules! test_function {
-        ($glenside_str: expr, $env: expr, $check_correct: expr) => {
-            || {
                 let mut env = Environment::new();
                 for (key, value) in $env.into_iter() {
                     env.insert(key, value);
@@ -1059,8 +1051,14 @@ mod tests {
 
                 let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
 
-                let value = interpret(&expr, expr.as_ref().len() - 1, &env);
-                $check_correct(value);
+                b.iter(|| {
+                    // use black box to prevent compiler optimizations
+                    let expr = test::black_box(&expr);
+                    let env = test::black_box(&env);
+
+                    let value = interpret(&expr, expr.as_ref().len() - 1, &env);
+                    $check_correct(value);
+                });
             }
         };
     }
