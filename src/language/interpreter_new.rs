@@ -1032,7 +1032,7 @@ mod tests {
 
     /// Creates an benchmark test for interpreter
     /// The test does the following:
-    ///  1. Converts $glenside_str to glenside by parsing
+    ///  1. Parses $glenside_str as glenside expression
     ///  2. Creates a new Environment from the vector of (key, value) pairs in base_env
     ///  3. Calls check_correct with the glenside expression + environment
     /// $test_name: the name of the created benchmark test
