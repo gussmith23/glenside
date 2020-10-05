@@ -1044,11 +1044,7 @@ mod tests {
         ($test_name:ident, $glenside_str: expr, $base_env: expr, $check_correct: expr) => {
             #[bench]
             fn $test_name(b: &mut Bencher) {
-                let test = test_function!(
-                    $glenside_str,
-                    $base_env,
-                    $check_correct
-                );
+                let test = test_function!($glenside_str, $base_env, $check_correct);
                 b.iter(|| test());
             }
         };
@@ -1059,16 +1055,13 @@ mod tests {
                 let mut env = Environment::new();
                 for (key, value) in $base_env.into_iter() {
                     env.insert(key, value);
-                }               
+                }
 
-                let expr = RecExpr::<Language>::from_str(
-                    $glenside_str,
-                )
-                .unwrap();
+                let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
 
                 $check_correct(expr, env);
             }
-        }
+        };
     }
 
     benchmark_test!(
@@ -1141,7 +1134,8 @@ mod tests {
                     assert_eq!(access_axis, 0);
                     assert_eq!(
                         tensor,
-                        ndarray::arr0(1 + -2 + 3 + 0 + -5 + 6 + 0 + 8 + -9 + 10 + 11 + 12).into_dyn()
+                        ndarray::arr0(1 + -2 + 3 + 0 + -5 + 6 + 0 + 8 + -9 + 10 + 11 + 12)
+                            .into_dyn()
                     );
                 }
                 _ => panic!(),
@@ -1219,7 +1213,8 @@ mod tests {
                     assert_eq!(access_axis, 3);
                     assert_eq!(
                         tensor,
-                        array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+                        array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],]
+                            .into_dyn(),
                     );
                 }
                 _ => panic!(),
@@ -1373,15 +1368,18 @@ mod tests {
         (access (access-tensor t0) 2)
         (access (access-tensor t1) 2)
         )",
-        vec![(
-            "t0",
-            // 3 x 2 x 2
-            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
-        ), (
-            "t1",
-            // 2 x 2 x 2
-            array![[[13, 14], [15, 16]], [[17, 18], [19, 20]]].into_dyn(),
-        )],
+        vec![
+            (
+                "t0",
+                // 3 x 2 x 2
+                array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+            ),
+            (
+                "t1",
+                // 2 x 2 x 2
+                array![[[13, 14], [15, 16]], [[17, 18], [19, 20]]].into_dyn(),
+            )
+        ],
         |expr, env| {
             match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 Value::Access(Access {
@@ -1691,9 +1689,7 @@ mod tests {
     benchmark_test!(
         access_pad,
         "(access-pad (access-tensor t) zero-padding 0 2 4)",
-        vec![(
-            "t", array![[1., 2.], [3., 4.]].into_dyn()
-        )],
+        vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |expr, env| {
             match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 Value::Access(Access {
@@ -1927,11 +1923,10 @@ mod tests {
     benchmark_test!(
         access_pair_0,
         "(access-pair (access (access-tensor a) 0) (access (access-tensor b) 0))",
-        vec![(
-            "a", array![[1, 2], [3, 4]].into_dyn()
-        ), (
-            "b", array![[5, 6], [7, 8]].into_dyn()
-        )],
+        vec![
+            ("a", array![[1, 2], [3, 4]].into_dyn()),
+            ("b", array![[5, 6], [7, 8]].into_dyn())
+        ],
         |expr, env| {
             match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 Value::Access(Access {
@@ -2730,9 +2725,7 @@ mod tests {
     benchmark_test!(
         access_slice_0,
         "(access-slice (access (access-tensor t) 0) 0 0 1)",
-        vec![
-            ("t", array![[1, 2], [3, 4]].into_dyn())
-        ],
+        vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |expr, env| {
             match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 Value::Access(Access {
@@ -2750,9 +2743,7 @@ mod tests {
     benchmark_test!(
         access_slice_1,
         "(access-slice (access (access-tensor t) 0) 0 0 2)",
-        vec![
-            ("t", array![[1, 2], [3, 4]].into_dyn())
-        ],
+        vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |expr, env| {
             match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 Value::Access(Access {
@@ -2766,13 +2757,11 @@ mod tests {
             }
         }
     );
-    
+
     benchmark_test!(
         access_slice_2,
         "(access-slice (access (access-tensor t) 0) 1 1 2)",
-        vec![
-            ("t", array![[1, 2], [3, 4]].into_dyn())
-        ],
+        vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |expr, env| {
             match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 Value::Access(Access {
