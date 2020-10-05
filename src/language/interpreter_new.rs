@@ -1030,6 +1030,16 @@ mod tests {
     use std::str::FromStr;
     use test::Bencher;
 
+    /// Creates an benchmark test for interpreter
+    /// The test does the following:
+    ///  1. Converts $glenside_str to glenside by parsing
+    ///  2. Creates a new Environment from the vector of (key, value) pairs in base_env
+    ///  3. Calls check_correct with the glenside expression + environment
+    /// $test_name: the name of the created benchmark test
+    /// $glenside_str: A string containing the Glenside program
+    /// $base_env: A vector or 2-tuples of key, value pairs to put into the environment
+    /// $check_correct: A closure with arguments (glenside_expr, env) that should call the interpreter
+    ///     and checks for correctness
     macro_rules! benchmark_test {
         ($test_name:ident, $glenside_str: expr, $base_env: expr, $check_correct: expr) => {
             #[bench]
