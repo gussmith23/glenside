@@ -2,7 +2,7 @@ mod common;
 
 use common::load_npy;
 use egg::RecExpr;
-use glenside::language::interpreter_new::*;
+use glenside::language::interpreter::*;
 use glenside::language::Language;
 use std::str::FromStr;
 
