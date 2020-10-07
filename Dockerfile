@@ -45,7 +45,7 @@ RUN bash -c \
      "mkdir -p build && \
      cd build && \
      cmake .. && \
-     make -j$((`nproc`+1))"
+     make -j`nproc`"
 
 # Help the system find the libtvm library and TVM Python library
 ENV TVM_HOME=/root/tvm
