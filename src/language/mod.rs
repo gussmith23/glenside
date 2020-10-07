@@ -3,8 +3,8 @@ mod language;
 pub use language::*;
 
 //pub mod interpreter;
-pub mod interpreter_new;
-pub use interpreter_new as interpreter;
+pub mod interpreter;
+pub use interpreter;
 
 pub mod rewrites;
 
