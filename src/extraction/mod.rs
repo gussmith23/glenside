@@ -1,3 +1,5 @@
+pub mod ilp;
+
 use crate::language::{Language, MyAnalysis};
 use egg::{CostFunction, EGraph, Id, Language as LanguageTrait, Pattern, Searcher};
 use std::collections::HashSet;

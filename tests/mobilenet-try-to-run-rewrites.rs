@@ -5,12 +5,17 @@ use egg::Extractor;
 use egg::Pattern;
 use egg::Runner;
 use egg::Searcher;
+use glenside::extraction::ilp::create_generic_egraph_lp_model;
+use glenside::extraction::ilp::into_recexpr;
 use glenside::extraction::MonolithicCostFunction;
 use glenside::language::rewrites::PadLocation;
 use glenside::language::rewrites::PadSliceStrategy;
 use glenside::language::rewrites::SliceConcatenateStrategy;
 use glenside::language::MyAnalysis;
 use glenside::language::PadType;
+use lp_modeler::dsl::LpObjective;
+use lp_modeler::solvers::GurobiSolver;
+use lp_modeler::solvers::SolverTrait;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -52,7 +57,7 @@ fn mobilenet_try_to_run_rewrites() {
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
     });
-    let _id = egraph.add_expr(&expr);
+    let id = egraph.add_expr(&expr);
 
     let rws = vec![
         glenside::language::rewrites::flatten_unflatten_any_access(),
@@ -107,6 +112,19 @@ fn mobilenet_try_to_run_rewrites() {
 
     runner.print_report();
 
+    let model =
+        create_generic_egraph_lp_model(&runner.egraph, &[id], "mobilenet", LpObjective::Minimize);
+    let solver = GurobiSolver::new();
+    let result = solver.run(&model.problem);
+
+    let var_values = match result.unwrap() {
+        (lp_modeler::solvers::Status::Optimal, var_values) => var_values,
+        _ => panic!(),
+    };
+
+    let out_expr = into_recexpr(&model, &var_values, &[id]);
+    println!("{}", out_expr.pretty(80));
+
     // Did any tensorization happen?
     assert!(
         "(systolic-array ?a ?b ?c ?d)"
@@ -137,6 +155,7 @@ fn mobilenet_try_to_run_rewrites() {
             prefer_systolic_arrays_with_blocking: false,
         },
     );
+
     // TODO(@gussmith23) This is overflowing the stack
     // See https://github.com/egraphs-good/egg/issues/50
     // let (cost, _) = ex.find_best(id);
