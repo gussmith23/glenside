@@ -1671,6 +1671,10 @@ pub fn pad_slice_accesses(
             let pad_after = match self.pad_location {
                 PadLocation::End => pad_to - dim_val,
             };
+            assert!(
+                (pad_before > 0 && pad_before < self.multiple_of)
+                    || (pad_after > 0 && pad_after < self.multiple_of)
+            );
             let low = match self.pad_location {
                 PadLocation::End => 0,
             };
@@ -1803,7 +1807,9 @@ pub fn pad_slice_accesses(
                 }
             }
             if is_access()
-                if access_has_axis(axis)
+            if access_has_axis(axis)
+            // Don't run if it's already divisible.
+            if constrain_access("?a".parse().unwrap(), move |access| access[axis] % multiple_of != 0)
         ),
         PadSliceStrategy::PadToMultiplesOf {
             multiples_of,
@@ -3575,7 +3581,7 @@ mod tests {
             super::pad_slice_accesses(
                 0,
                 PadSliceStrategy::PadToClosestMultipleOf {
-                    multiple_of: 4,
+                    multiple_of: 3,
                     pad_location: PadLocation::End,
                     pad_type: PadType::ZeroPadding,
                 },
@@ -3583,7 +3589,7 @@ mod tests {
             super::pad_slice_accesses(
                 1,
                 PadSliceStrategy::PadToClosestMultipleOf {
-                    multiple_of: 4,
+                    multiple_of: 3,
                     pad_location: PadLocation::End,
                     pad_type: PadType::ZeroPadding,
                 },
@@ -3591,7 +3597,7 @@ mod tests {
             super::pad_slice_accesses(
                 2,
                 PadSliceStrategy::PadToClosestMultipleOf {
-                    multiple_of: 4,
+                    multiple_of: 3,
                     pad_location: PadLocation::End,
                     pad_type: PadType::ZeroPadding,
                 },
@@ -3599,7 +3605,7 @@ mod tests {
             super::pad_slice_accesses(
                 3,
                 PadSliceStrategy::PadToClosestMultipleOf {
-                    multiple_of: 4,
+                    multiple_of: 3,
                     pad_location: PadLocation::End,
                     pad_type: PadType::ZeroPadding,
                 },
@@ -3611,10 +3617,10 @@ mod tests {
             match &class.data {
                 MyAnalysisData::AccessPattern(a) => {
                     for &shape_dim_val in a.shape.slice() {
-                        assert!(shape_dim_val <= 4);
+                        assert!(shape_dim_val <= 6);
                     }
                     for &item_shape_dim_val in a.item_shape.slice() {
-                        assert!(item_shape_dim_val <= 4);
+                        assert!(item_shape_dim_val <= 6);
                     }
                 }
                 _ => (),
@@ -3623,46 +3629,80 @@ mod tests {
 
         runner.print_report();
 
-        for axis in 0..4 {
-            let matches = format!(
-                "(access-slice
+        let matches = "
+                 (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
                    zero-padding
-                   {} 0 {}
+                   0 0 2
                   )
-                  {} 0 {}
-                 )",
-                axis,
-                4 - (axis + 1),
-                axis,
-                axis + 1
-            )
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
-            assert_eq!(matches.substs.len(), 1);
+                  0 0 1
+                 )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
 
-            let matches = format!(
-                "(access-slice
+        let matches = "
+                 (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
                    zero-padding
-                   {} 0 {}
+                   1 0 1
                   )
-                  {} 0 {}
-                 )",
-                axis,
-                4 - (axis + 1) + 4,
-                axis,
-                axis + 1
-            )
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id);
-            assert!(matches.is_none());
-        }
+                  1 0 2
+                 )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+                 (access-slice
+                  (access-pad
+                   (access (access-tensor t) 0)
+                   zero-padding
+                   2 0 0
+                  )
+                  2 0 3
+                 )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id);
+        assert!(matches.is_none());
+
+        let matches = "
+                 (access-slice
+                  (access-pad
+                   (access (access-tensor t) 0)
+                   zero-padding
+                   3 0 2
+                  )
+                  3 0 4
+                 )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        // Shouldn't pad up to the next highest multiple. I.e. length 1
+        // shouldn't go to 6, just to 3.
+        let matches = "
+                 (access-slice
+                  (access-pad
+                   (access (access-tensor t) 0)
+                   zero-padding
+                   0 0 5
+                  )
+                  0 0 1
+                 )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id);
+        assert!(matches.is_none());
     }
 
     #[test]
