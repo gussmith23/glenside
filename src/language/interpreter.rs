@@ -1,830 +1,2814 @@
-// TODO(@gussmith23) Redesign interepreter to interpret RecExprs
-use super::*;
-use log::{debug, info};
-use ndarray::s;
+use super::language::{ComputeType, Language, PadType};
+use egg::{Id, RecExpr};
+use itertools::Itertools;
+use ndarray::{s, Array, ArrayD, Dimension, IxDyn, Zip};
+use num_traits::cast::AsPrimitive;
+use num_traits::Pow;
 use std::collections::hash_map::HashMap;
+use std::iter::FromIterator;
+use std::ops::Div;
 
-// TODO(@gussmith23) hide this interface later
-pub type Environment<'a> = HashMap<&'a str, Value>;
-
-type DataType = f64;
-
-// TODO(@gussmith23) not sure this should actually be pub; I'm being lazy
-/// Values are `ndarray::ArrayD` tensors or `usize`s.
-#[derive(Clone, PartialEq, Debug)]
-pub enum Value {
-    Tensor(ndarray::ArrayD<DataType>),
+pub enum Value<DataType> {
+    Tensor(ArrayD<DataType>),
+    Access(Access<DataType>),
     Usize(usize),
+    Shape(IxDyn),
+    ComputeType(ComputeType),
+    PadType(PadType),
+    AccessShape(IxDyn, usize),
+    List(Vec<usize>),
 }
 
-// impl num_traits::identities::Zero for ListValue {
-//     fn zero() {
-//         // TODO(@gussmith23) This seems bad
-//         ListValue::Scalar(DataType::zero())
-// }
+pub struct Access<DataType> {
+    pub tensor: ArrayD<DataType>,
+    pub access_axis: usize,
+}
 
-impl std::ops::Add for Value {
-    type Output = Value;
+pub type Environment<'a, DataType> = HashMap<&'a str, ArrayD<DataType>>;
 
-    fn add(self: Value, other: Value) -> Value {
-        match self {
-            Value::Tensor(t1) => match other {
-                Value::Tensor(t2) => Value::Tensor(t1 + t2),
+// TODO(@gussmith23) Interpreter stack overflows on large programs
+// If I want to interpret something like a full resnet, then I will have to
+// figure out a way around the stack overflows.
+/// Interpret a Glenside expression
+///
+/// Generally, `DataType` can be inferred from the environment passed in. If
+/// your expression doesn't actually use any tensor values, and the environment
+/// is empty, you can choose an arbitrary type: e.g. `interpret::<i64>(...)`:
+///
+/// ```
+/// use egg::RecExpr;
+/// use glenside::language::Language;
+/// use glenside::language::interpreter::interpret;
+/// use glenside::language::interpreter::Value;
+/// use std::str::FromStr;
+/// use std::collections::HashMap;
+/// use ndarray::Dimension;
+///
+/// let expr = RecExpr::<Language>::from_str("(access-shape (shape 1 2) (shape 3 4))").unwrap();
+/// match interpret::<i64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+///     Value::AccessShape(shape, access_axis) => {
+///         assert_eq!(shape.slice(), &[1, 2, 3, 4]);
+///         assert_eq!(access_axis, 2);
+///     }
+///     _ => panic!(),
+/// }
+/// ```
+pub fn interpret<DataType: 'static>(
+    expr: &RecExpr<Language>,
+    index: usize,
+    env: &Environment<DataType>,
+) -> Value<DataType>
+where
+    DataType: Copy
+        + std::ops::Mul<Output = DataType>
+        + std::ops::Div<Output = DataType>
+        + std::ops::Neg<Output = DataType>
+        + std::iter::Sum
+        + num_traits::identities::One
+        + num_traits::identities::Zero
+        + std::cmp::PartialOrd
+        + num_traits::Bounded
+        + Exp
+        + Sqrt
+        + FromNotNanFloat64Literal
+        + ndarray::ScalarOperand,
+    usize: num_traits::cast::AsPrimitive<DataType>,
+{
+    match &expr.as_ref()[index] {
+        &Language::AccessShape([shape_id, item_shape_id]) => {
+            let shape = match interpret(expr, shape_id.into(), env) {
+                Value::Shape(s) => s,
                 _ => panic!(),
-            },
-            Value::Usize(u1) => match other {
-                Value::Usize(u2) => Value::Usize(u1 + u2),
+            };
+            let item_shape = match interpret(expr, item_shape_id.into(), env) {
+                Value::Shape(s) => s,
                 _ => panic!(),
-            },
+            };
+            Value::AccessShape(
+                IxDyn(
+                    shape
+                        .slice()
+                        .iter()
+                        .chain(item_shape.slice().iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ),
+                shape.ndim(),
+            )
         }
-    }
-}
+        &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let low = match interpret(expr, low_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let high = match interpret(expr, high_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
 
-// TODO(@gussmith23) not sure this should actually be pub; I'm being lazy
-#[derive(Clone, Debug)]
-pub enum MemoizedInterpreterResult {
-    InterpretedValue(Value),
-    StillInterpreting,
-    // When an eclass cannot be interpreted, because all of its enodes
-    // recursively depend on themselves.
-    CanNotInterpret,
-}
+            let mut slice_info: Vec<ndarray::SliceOrIndex> =
+                std::iter::repeat(ndarray::SliceOrIndex::from(..))
+                    .take(access.tensor.ndim())
+                    .collect();
+            slice_info[axis] = ndarray::SliceOrIndex::from(low..high);
+            let slice_info = ndarray::SliceInfo::new(slice_info).unwrap();
+            access.tensor = access
+                .tensor
+                .into_owned()
+                .slice(slice_info.as_ref())
+                .into_owned();
 
-// TODO(@gussmith23) hide this interface later
-pub type MemoizationMap = std::collections::HashMap<egg::Id, MemoizedInterpreterResult>;
+            Value::Access(access)
+        }
+        &Language::AccessConcatenate([a_id, b_id, axis_id]) => {
+            let a = match interpret(expr, a_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let b = match interpret(expr, b_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
 
-// TODO(@gussmith23) design better interface later
-pub fn interpret_eclass<M: egg::Metadata<Language>>(
-    egraph: &egg::EGraph<Language, M>,
-    eclass: &egg::EClass<Language, M>,
-    env: &Environment,
-    // TODO(@gussmith23) shoot, i think i'm mixing up where to put the "mut". Should
-    // probably not be on both.
-    mut memo_map: &mut MemoizationMap,
-) -> MemoizedInterpreterResult {
-    info!("Interpreting eclass {}", eclass.id);
-    debug!("{:?}", eclass);
+            assert_eq!(a.access_axis, b.access_axis);
 
-    if memo_map.contains_key(&eclass.id) {
-        // TODO(@gussmith23) is this right?
-        return memo_map[&eclass.id].clone();
-    }
-
-    // Insert a flag saying that we are now interpreting this eclass. As we
-    // recurse, if we hit this eclass again, we'll know we have a recursive
-    // cycle, which we handle later in this function.
-    match memo_map.insert(eclass.id, MemoizedInterpreterResult::StillInterpreting) {
-        Some(_) => panic!(),
-        None => (),
-    }
-
-    assert!(eclass.nodes.len() > 0);
-    let mut results: std::vec::Vec<MemoizedInterpreterResult> = eclass
-        .nodes
-        .iter()
-        .map(|enode: &egg::ENode<Language>| interpret_enode(egraph, enode, env, &mut memo_map))
-        .collect();
-    let pre_filtered_length = results.len();
-
-    // At this point, we'll have a MemoizedInterpreterResult for every enode in
-    // the eclass. These all represent potential values for the entire eclass.
-    // That is, the whole point of the egraph is that eclasses contain
-    // expressions with equivalent values. So, if our interpreter is built
-    // correctly, each MemoizedInterpreterResult will be one of two things:
-    // 1. an InterpretedValue holding the eclass's correct value, or
-    // 2. a StillInterpreting, if the enode recursively depends on the eclass.
-
-    // Now, we check two things:
-    // 1. There's at least one InterpretedValue---i.e. at least one of the
-    //    enodes resolved to a concrete value and doesn't recursively depend on
-    //    its own eclass. Without this, we have no way to even guess the value
-    //    of this eclass.
-    // 2. All of the InterpretedValues have the same value. This should be true
-    //    if the interpreter is built correctly and if the rewrites are correct.
-
-    let filtered_results: std::vec::Vec<Value> = results
-        .drain(..)
-        .filter(|result| match result {
-            MemoizedInterpreterResult::InterpretedValue(_) => true,
-            _ => false,
-        })
-        .map(|result| match result {
-            MemoizedInterpreterResult::InterpretedValue(v) => v,
-            _ => unreachable!(),
-        })
-        .collect();
-    debug!("{:?}", pre_filtered_length);
-    debug!("{:?}", filtered_results.len());
-    debug!("{:?}", eclass);
-    //assert!(filtered_results.len() > 0, "This eclass's enodes all depend recursively on this eclass! Cannot interpret to a concrete value!");
-    if filtered_results.len() == 0 {
-        debug!(
-            "eclass {} evaluates to CanNotInterpret. Hoping for the best!",
-            eclass.id
-        );
-        match memo_map.insert(eclass.id, MemoizedInterpreterResult::CanNotInterpret) {
-            Some(MemoizedInterpreterResult::StillInterpreting) => (),
+            Value::Access(Access {
+                tensor: ndarray::stack![ndarray::Axis(axis), a.tensor, b.tensor].into_dyn(),
+                access_axis: a.access_axis,
+            })
+        }
+        &Language::AccessLiteral(id) => match interpret(expr, id.into(), env) {
+            Value::Tensor(t) => Value::Access(Access {
+                tensor: t,
+                access_axis: 0,
+            }),
             _ => panic!(),
+        },
+        &Language::Literal(id) => match interpret(expr, id.into(), env) {
+            t @ Value::Tensor(_) => t,
+            _ => panic!(),
+        },
+        &Language::NotNanFloat64(v) => Value::Tensor(
+            ndarray::arr0(DataType::from_not_nan_float_64_literal(v.into())).into_dyn(),
+        ),
+        &Language::AccessFlatten(access_id) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+
+            let shape = if access.access_axis <= 0 || access.access_axis >= access.tensor.ndim() {
+                vec![access.tensor.shape().iter().product::<usize>()]
+            } else {
+                vec![
+                    access.tensor.shape()[..access.access_axis]
+                        .iter()
+                        .product::<usize>(),
+                    access.tensor.shape()[access.access_axis..]
+                        .iter()
+                        .product::<usize>(),
+                ]
+            };
+
+            access.tensor = access.tensor.into_shape(shape).unwrap().into_dyn();
+
+            Value::Access(access)
         }
-        return MemoizedInterpreterResult::CanNotInterpret;
-    }
-    assert!(
-        filtered_results.iter().all(|v| *v == filtered_results[0]),
-        "This class's enodes don't all evaluate to the same value!"
-    );
+        &Language::AccessTranspose([access_id, list_id]) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let list = match interpret(expr, list_id.into(), env) {
+                Value::List(l) => l,
+                _ => panic!(),
+            };
 
-    if filtered_results.len() < pre_filtered_length {
-        // Some StillInterpreting values were cut out. Might want to log
-        // something here later on.
-    }
-
-    // Now, if there were any StillInterpreting results, we will "guess" their
-    // value to be the concrete value that the rest of the enodes interpreted
-    // to. We do this by officially setting the eclass's value in the map.
-    assert!(match &memo_map.get(&eclass.id).unwrap() {
-        &MemoizedInterpreterResult::StillInterpreting => true,
-        _ => panic!(),
-    });
-    // TODO(@gussmith23) cloning, inefficient and lazy
-    match memo_map.insert(
-        eclass.id,
-        MemoizedInterpreterResult::InterpretedValue(filtered_results[0].clone()),
-    ) {
-        Some(MemoizedInterpreterResult::StillInterpreting) => (),
-        _ => panic!(),
-    }
-
-    // After we guess, check that things all come out to the same value.
-    // We may want to disable this for running-time reasons.
-    let check_after_guess = true;
-    if check_after_guess {
-        // We're essentially just doing the same thing that we did above!
-        let results: std::vec::Vec<MemoizedInterpreterResult> = eclass
-            .nodes
-            .iter()
-            .map(|enode: &egg::ENode<Language>| interpret_enode(egraph, enode, env, &mut memo_map))
-            .collect();
-
-        assert!(results.iter().all(|result| match result {
-            MemoizedInterpreterResult::InterpretedValue(v) =>
-                v == match memo_map.get(&eclass.id).unwrap() {
-                    // TODO(@gussmith23) probably inefficient
-                    MemoizedInterpreterResult::InterpretedValue(v) => v,
+            access.tensor = access.tensor.permuted_axes(list);
+            Value::Access(access)
+        }
+        Language::List(list) => Value::List(
+            list.iter()
+                .map(|id: &Id| match interpret(expr, (*id).into(), env) {
+                    Value::Usize(u) => u,
                     _ => panic!(),
-                },
-            MemoizedInterpreterResult::CanNotInterpret => {
-                // TODO(@gussmith23) remove this once I figure out if this is expected.
-                debug!("CanNotInterpret found while checking");
-                true
-            }
-            MemoizedInterpreterResult::StillInterpreting =>
-                panic!("After guessing, we still get a StillInterpreting result!"),
-        }));
-    }
-
-    // TODO(@gussmith23) probably inefficient
-    memo_map.get(&eclass.id).unwrap().clone()
-}
-
-// I'm just doing this for now; it may not actually be what we want in the
-// end.
-//type Result = Meta;
-// Woah, this is giving a crazy error that is pointing to the
-// define_language macro usage. Not Donna deal with that right now.
-// TODO I'm wondering if the metadata can just act as an interpreter? It
-// kind of serves that purpose already.
-
-fn interpret_enode<M: egg::Metadata<Language>>(
-    egraph: &egg::EGraph<Language, M>,
-    enode: &egg::ENode<Language>,
-    env: &Environment,
-    memo_map: &mut MemoizationMap,
-) -> MemoizedInterpreterResult {
-    use language::Language::*;
-    debug!("interpreting enode: {:?}", enode);
-    match &enode.op {
-        Symbol(name) => {
-            debug!("interpreting symbol");
-            MemoizedInterpreterResult::InterpretedValue(env[&name[..]].clone())
-        }
-        MapDotProduct(t0_id) => {
-            todo!("reimplement");
-            assert_eq!(enode.children.len(), 1);
-
-            // Get the argument as a tensor.
-            let arg: MemoizedInterpreterResult =
-                interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
-            let arg: Value = match arg {
-                // Return early if we've found a recursive cycle
-                MemoizedInterpreterResult::StillInterpreting => {
-                    return MemoizedInterpreterResult::StillInterpreting
-                }
-                MemoizedInterpreterResult::CanNotInterpret => {
-                    return MemoizedInterpreterResult::CanNotInterpret
-                }
-                MemoizedInterpreterResult::InterpretedValue(v) => v,
+                })
+                .collect::<Vec<_>>(),
+        ),
+        &Language::AccessBroadcast([access_id, shape_id]) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
             };
-            let arg: ndarray::ArrayD<DataType> = match arg {
-                Value::Tensor(t) => t,
+            let shape = match interpret(expr, shape_id.into(), env) {
+                Value::AccessShape(s, _) => s,
+                _ => panic!("Expected access shape as second argument to access-broadcast"),
+            };
+
+            assert_eq!(access.tensor.ndim(), shape.ndim());
+            for (broadcast_from_dim, broadcast_to_dim) in
+                access.tensor.shape().iter().zip(shape.slice().iter())
+            {
+                assert!(*broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim);
+            }
+
+            access.tensor = access.tensor.broadcast(shape).unwrap().to_owned();
+
+            Value::Access(access)
+        }
+        &Language::AccessInsertAxis([access_id, axis_id]) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
-            // Check that it has the correct shape.
-            // Basically, we're looking for a shape:
-            // [d1, ... , dn, 2, v]
-            // where v is the length of the vectors to be dot-prodded together.
-            // The resulting shape will be
-            // [d1, ... , dn]
-            let initial_shape = arg.shape();
-            assert_eq!(initial_shape[arg.shape().len() - 2], 2);
+            assert!(axis <= access.tensor.ndim());
 
-            fn map_dot_product<T: ndarray::LinalgScalar + Copy>(
-                t: ndarray::ArrayViewD<T>,
-            ) -> ndarray::ArrayD<T> {
-                if t.shape().len() > 2 {
-                    // TODO(@gussmith23) Definitely not performant
-                    let to_be_stacked = t
-                        .axis_iter(ndarray::Axis(0))
-                        .map(map_dot_product)
-                        .map(|t| t.insert_axis(ndarray::Axis(0)))
-                        .collect::<Vec<ndarray::ArrayD<T>>>();
-                    // Not sure if this should ever be the case.
-                    assert!(to_be_stacked.len() > 0);
-                    if to_be_stacked[0].shape().len() == 0 {
-                        use std::iter::FromIterator;
-                        ndarray::ArrayBase::from_iter(to_be_stacked.iter().cloned().map(|t| {
-                            t.into_dimensionality::<ndarray::Ix0>()
-                                .unwrap()
-                                .into_scalar()
-                        }))
-                        .into_dyn()
-                    } else {
-                        let to_be_stacked = to_be_stacked
+            access.tensor = access.tensor.insert_axis(ndarray::Axis(axis));
+            if axis <= access.access_axis {
+                access.access_axis += 1;
+            }
+
+            Value::Access(access)
+        }
+        &Language::AccessPair([a0_id, a1_id]) => {
+            let (a0, a1) = match (
+                interpret(expr, a0_id.into(), env),
+                interpret(expr, a1_id.into(), env),
+            ) {
+                (Value::Access(a0), Value::Access(a1)) => (a0, a1),
+                _ => panic!("Expected both arguments to access-pair to be accesses"),
+            };
+
+            assert_eq!(a0.tensor.shape(), a1.tensor.shape());
+            // TODO(@gussmith23) Trying out some new syntax...
+            let access_axis = {
+                assert_eq!(
+                    a0.access_axis, a1.access_axis,
+                    "Expected access axes to match in access-pair"
+                );
+                a0.access_axis
+            };
+
+            let tensor = ndarray::stack(
+                ndarray::Axis(access_axis),
+                &[
+                    a0.tensor.insert_axis(ndarray::Axis(access_axis)).view(),
+                    a1.tensor.insert_axis(ndarray::Axis(access_axis)).view(),
+                ],
+            )
+            .unwrap();
+
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            })
+        }
+        &Language::AccessSqueeze([access_id, axis_id]) => {
+            let mut access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            assert_eq!(
+                access.tensor.shape()[axis],
+                1,
+                "Cannot squeeze an axis which is not equal to 1"
+            );
+
+            access.tensor = access.tensor.index_axis_move(ndarray::Axis(axis), 0);
+            if axis < access.access_axis {
+                access.access_axis -= 1;
+            }
+
+            Value::Access(access)
+        }
+        Language::PadType(t) => Value::PadType(*t),
+        &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
+            let access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let pad_type = match interpret(expr, pad_type_id.into(), env) {
+                Value::PadType(t) => t,
+                _ => panic!(),
+            };
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let pad_before = match interpret(expr, pad_before_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+            let pad_after = match interpret(expr, pad_after_id.into(), env) {
+                Value::Usize(u) => u,
+                _ => panic!(),
+            };
+
+            let mut before_shape = access.tensor.shape().to_vec();
+            before_shape[axis] = pad_before;
+            let mut after_shape = access.tensor.shape().to_vec();
+            after_shape[axis] = pad_after;
+
+            Value::Access(Access {
+                tensor: ndarray::stack(
+                    ndarray::Axis(axis),
+                    &[
+                        // TODO(@gussmith) What's going on here...
+                        ndarray::ArrayD::from_elem(
+                            before_shape,
+                            match &pad_type {
+                                PadType::ZeroPadding => DataType::zero(),
+                                PadType::MinPadding => DataType::min_value(),
+                            },
+                        )
+                        .to_owned()
+                        .view(),
+                        access.tensor.clone().view(),
+                        ndarray::ArrayD::from_elem(
+                            after_shape,
+                            match &pad_type {
+                                PadType::ZeroPadding => DataType::zero(),
+                                PadType::MinPadding => DataType::min_value(),
+                            },
+                        )
+                        .to_owned()
+                        .view(),
+                    ],
+                )
+                .unwrap(),
+                access_axis: access.access_axis,
+            })
+        }
+        Language::ComputeType(t) => Value::ComputeType(t.clone()),
+        &Language::Compute([compute_type_id, access_id]) => {
+            let compute_type = match interpret(expr, compute_type_id.into(), env) {
+                Value::ComputeType(t) => t,
+                _ => panic!(),
+            };
+            let access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+
+            match compute_type {
+                ComputeType::ReduceMean => Value::Access(Access {
+                    tensor: access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            access.tensor.shape()[..access.access_axis]
+                                .iter()
+                                .cloned()
+                                .chain(std::iter::once(
+                                    access.tensor.shape()[access.access_axis..]
+                                        .iter()
+                                        .cloned()
+                                        .product(),
+                                ))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        )
+                        .unwrap()
+                        .sum_axis(ndarray::Axis(access.access_axis))
+                        .div(
+                            access.tensor.shape()[access.access_axis..]
+                                .iter()
+                                .product::<usize>()
+                                .as_(),
+                        ),
+                    access_axis: access.access_axis,
+                }),
+                ComputeType::Softmax => {
+                    assert_eq!(
+                        access.access_axis,
+                        access.tensor.ndim() - 1,
+                        "Softmax over any axis other than the last is not implemented",
+                    );
+
+                    let shape = access.tensor.shape();
+                    let mut exps = ndarray::Zip::from(&access.tensor).apply_collect(|v| v.exp());
+                    let denominators = exps
+                        .sum_axis(ndarray::Axis(access.tensor.ndim() - 1))
+                        .insert_axis(ndarray::Axis(access.tensor.ndim() - 1));
+                    ndarray::Zip::from(&mut exps)
+                        .and(&denominators.broadcast(shape).unwrap())
+                        .apply(|v, denom| *v = *v / *denom);
+
+                    Value::Access(Access {
+                        access_axis: access.access_axis,
+                        tensor: exps,
+                    })
+                }
+                ComputeType::ElementwiseDiv => Value::Access(Access {
+                    access_axis: access.access_axis,
+                    tensor: access
+                        .tensor
+                        .axis_iter(ndarray::Axis(access.access_axis))
+                        // This is like a hacky version of fold_first. Struggled
+                        // to use fold_first because it will expect the function
+                        // to return an ArrayView, which is not what you want
+                        // (or not even possible?)
+                        .skip(1)
+                        .fold(
+                            // TODO(@gussmith23) More efficient way to do this?
+                            access
+                                .tensor
+                                .axis_iter(ndarray::Axis(access.access_axis))
+                                .next()
+                                .expect("Cannot divide 0 arguments")
+                                .into_owned(),
+                            |acc, t| acc / t,
+                        ),
+                }),
+                ComputeType::ElementwiseMul => Value::Access(Access {
+                    access_axis: access.access_axis,
+                    tensor: access
+                        .tensor
+                        .axis_iter(ndarray::Axis(access.access_axis))
+                        .fold(
+                            ndarray::ArrayBase::ones(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .chain(
+                                        access.tensor.shape()[access.access_axis + 1..]
+                                            .iter()
+                                            .cloned(),
+                                    )
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            ),
+                            |acc, t| acc * t,
+                        ),
+                }),
+                ComputeType::ElementwiseAdd => Value::Access(Access {
+                    access_axis: access.access_axis,
+                    tensor: access
+                        .tensor
+                        .axis_iter(ndarray::Axis(access.access_axis))
+                        .fold(
+                            ndarray::ArrayBase::zeros(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .chain(
+                                        access.tensor.shape()[access.access_axis + 1..]
+                                            .iter()
+                                            .cloned(),
+                                    )
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            ),
+                            |acc, t| acc + t,
+                        ),
+                }),
+                ComputeType::DotProduct => {
+                    let reshaped = access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            std::iter::once(
+                                access.tensor.shape()[..access.access_axis]
+                                    .iter()
+                                    .cloned()
+                                    .product(),
+                            )
+                            .chain(access.tensor.shape()[access.access_axis..].iter().cloned())
+                            .collect::<Vec<_>>(),
+                        )
+                        .unwrap();
+
+                    let num_elements_per_vec: usize = access.tensor.shape()
+                        [access.access_axis + 1..]
+                        .iter()
+                        .product();
+
+                    let result = ndarray::arr1(
+                        reshaped
+                            .axis_iter(ndarray::Axis(0))
+                            .map(|t| {
+                                t.axis_iter(ndarray::Axis(0))
+                                    .fold(
+                                        ndarray::ArrayBase::ones([num_elements_per_vec]),
+                                        |acc, vec| {
+                                            let reshaped = vec
+                                                .clone()
+                                                .into_shape([num_elements_per_vec])
+                                                .unwrap();
+
+                                            ndarray::arr1(
+                                                reshaped
+                                                    .axis_iter(ndarray::Axis(0))
+                                                    .zip(acc.axis_iter(ndarray::Axis(0)))
+                                                    .map(|(a, b)| {
+                                                        *a.into_scalar() * *b.into_scalar()
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .as_slice(),
+                                            )
+                                        },
+                                    )
+                                    .sum()
+                            })
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    );
+
+                    let reshaped = result
+                        .into_shape(&access.tensor.shape()[..access.access_axis])
+                        .unwrap();
+
+                    Value::Access(Access {
+                        access_axis: reshaped.ndim(),
+                        tensor: reshaped,
+                    })
+                }
+                ComputeType::Negative => Value::Access(Access {
+                    tensor: access.tensor.mapv(|v| v.neg()),
+                    access_axis: access.access_axis,
+                }),
+                ComputeType::Sqrt => Value::Access(Access {
+                    tensor: access.tensor.mapv(|v| v.sqrt()),
+                    access_axis: access.access_axis,
+                }),
+                ComputeType::ReLU => Value::Access(Access {
+                    tensor: access.tensor.mapv(|v| {
+                        if v >= DataType::zero() {
+                            v
+                        } else {
+                            DataType::zero()
+                        }
+                    }),
+                    access_axis: access.access_axis,
+                }),
+                ComputeType::ReduceSum => Value::Access(Access {
+                    tensor: access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            access.tensor.shape()[..access.access_axis]
+                                .iter()
+                                .cloned()
+                                .chain(std::iter::once(
+                                    access.tensor.shape()[access.access_axis..]
+                                        .iter()
+                                        .cloned()
+                                        .product(),
+                                ))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        )
+                        .unwrap()
+                        .sum_axis(ndarray::Axis(access.access_axis)),
+                    access_axis: access.access_axis,
+                }),
+                ComputeType::ReduceMax => Value::Access(Access {
+                    tensor: access
+                        .tensor
+                        .clone()
+                        .into_shape(
+                            access.tensor.shape()[..access.access_axis]
+                                .iter()
+                                .cloned()
+                                .chain(std::iter::once(
+                                    access.tensor.shape()[access.access_axis..]
+                                        .iter()
+                                        .cloned()
+                                        .product(),
+                                ))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        )
+                        .unwrap()
+                        .map_axis(ndarray::Axis(access.access_axis), |t| {
+                            t.iter().fold(
+                                DataType::min_value(),
+                                |acc, v| if *v > acc { *v } else { acc },
+                            )
+                        }),
+                    access_axis: access.access_axis,
+                }),
+            }
+        }
+        &Language::AccessCartesianProduct([a0_id, a1_id]) => {
+            let (a0, a1) = match (
+                interpret(expr, a0_id.into(), env),
+                interpret(expr, a1_id.into(), env),
+            ) {
+                (Value::Access(a0), Value::Access(a1)) => (a0, a1),
+                _ => panic!(),
+            };
+
+            assert_eq!(
+                a0.tensor.shape()[a0.access_axis..],
+                a1.tensor.shape()[a1.access_axis..],
+                "Expected item shapes to match"
+            );
+
+            let reshaped_0 = a0
+                .tensor
+                .as_standard_layout()
+                .into_shape(
+                    std::iter::once(
+                        a0.tensor.shape()[..a0.access_axis]
                             .iter()
-                            .map(|t| t.view())
-                            .collect::<Vec<ndarray::ArrayViewD<T>>>();
-                        ndarray::stack(ndarray::Axis(0), &to_be_stacked[..]).unwrap()
-                    }
-                } else {
-                    assert_eq!(t.shape()[0], 2);
-
-                    let v1: ndarray::Array1<T> = t
-                        .index_axis(ndarray::Axis(0), 0)
-                        .to_owned()
-                        .into_dimensionality::<ndarray::Ix1>()
-                        .unwrap();
-                    let v2: ndarray::Array1<T> = t
-                        .index_axis(ndarray::Axis(0), 1)
-                        .to_owned()
-                        .into_dimensionality::<ndarray::Ix1>()
-                        .unwrap();
-                    // TODO(@gussmith23) left off here, no idea how to fix the current
-                    // compiler error
-                    ndarray::arr0(v1.dot(&v2)).into_dyn()
-                }
-            }
-
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(map_dot_product(arg.view())))
-        }
-        Rows => {
-            // There should be one arg: a single tensor.
-            assert_eq!(enode.children.len(), 1);
-
-            // Expect that the result of interpreting it is a tensor.
-            // TODO(@gussmith23) clean up this syntax.
-            let arg_as_tensor = interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
-            let arg_as_tensor = match arg_as_tensor {
-                // Return early if we've found a recursive cycle
-                MemoizedInterpreterResult::StillInterpreting => {
-                    return MemoizedInterpreterResult::StillInterpreting
-                }
-                MemoizedInterpreterResult::CanNotInterpret => {
-                    return MemoizedInterpreterResult::CanNotInterpret
-                }
-                MemoizedInterpreterResult::InterpretedValue(v) => v,
-            };
-            let arg_as_tensor: ndarray::ArrayD<DataType> = match arg_as_tensor {
-                Value::Tensor(t) => t,
-                _ => panic!(),
-            };
-
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(arg_as_tensor))
-        }
-        Cols => {
-            // There should be one arg: a single tensor.
-            assert_eq!(enode.children.len(), 1);
-
-            // Expect that the result of interpreting it is a tensor.
-            // TODO(@gussmith23) clean up this syntax.
-            let arg_as_tensor = interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map);
-            let arg_as_tensor = match arg_as_tensor {
-                // Return early if we've found a recursive cycle
-                MemoizedInterpreterResult::StillInterpreting => {
-                    return MemoizedInterpreterResult::StillInterpreting
-                }
-                MemoizedInterpreterResult::CanNotInterpret => {
-                    return MemoizedInterpreterResult::CanNotInterpret
-                }
-                MemoizedInterpreterResult::InterpretedValue(v) => v,
-            };
-            let arg_as_tensor: ndarray::ArrayD<DataType> = match arg_as_tensor {
-                Value::Tensor(t) => t,
-                _ => panic!(),
-            };
-
-            let transpose = arg_as_tensor.t().to_owned();
-
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(transpose))
-        }
-        CartesianProduct([t0_id, t1_id]) => {
-            todo!("reimplement");
-            // Semantics of cartesian product:
-            // Rightmost thing varies the fastest.
-
-            // There should be two args, both of which should be lists.
-            assert_eq!(enode.children.len(), 2);
-            let mut left: ndarray::ArrayD<DataType> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
-                    MemoizedInterpreterResult::StillInterpreting => {
-                        return MemoizedInterpreterResult::StillInterpreting
-                    }
-                    MemoizedInterpreterResult::CanNotInterpret => {
-                        return MemoizedInterpreterResult::CanNotInterpret
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::Tensor(t) => t,
-                        _ => panic!(),
-                    },
-                };
-            let mut right: ndarray::ArrayD<DataType> =
-                match interpret_eclass(egraph, &egraph[enode.children[1]], env, memo_map) {
-                    MemoizedInterpreterResult::StillInterpreting => {
-                        return MemoizedInterpreterResult::StillInterpreting
-                    }
-                    MemoizedInterpreterResult::CanNotInterpret => {
-                        return MemoizedInterpreterResult::CanNotInterpret
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::Tensor(t) => t,
-                        _ => panic!(),
-                    },
-                };
-
-            assert!(left.shape().len() > 0);
-            assert!(right.shape().len() > 0);
-            assert_eq!(left.shape().last().unwrap(), right.shape().last().unwrap());
-
-            if left.shape().len() > 2 || right.shape().len() > 2 {
-                todo!("Cartesian product not implemented for more than 2 dimensions");
-            }
-
-            let new_shape = left
-                .shape()
-                .iter()
-                .take(left.shape().len() - 1)
-                .chain(right.shape().iter().take(right.shape().len() - 1))
-                .chain(&[2, *left.shape().last().unwrap()])
-                .cloned()
-                .collect::<Vec<ndarray::Ix>>();
-
-            //let new_shape = vec![left.shape()[0], right.shape()[0], 2, left.shape()[1]];
-
-            // TODO(@gussmith23) this whole chain of things is definitely not performant
-            if left.shape().len() == 1 {
-                left = left.insert_axis(ndarray::Axis(0));
-            }
-
-            if right.shape().len() == 1 {
-                right = right.insert_axis(ndarray::Axis(0));
-            }
-
-            let left = left.axis_iter(ndarray::Axis(0));
-            let right = right.axis_iter(ndarray::Axis(0));
-            use itertools::iproduct;
-            let to_be_reshaped = iproduct!(left, right);
-            let to_be_reshaped = to_be_reshaped.map(|tuple| {
-                ndarray::stack(ndarray::Axis(0), &[tuple.0.view(), tuple.1.view()]).unwrap()
-            });
-            let vec = to_be_reshaped.collect::<Vec<ndarray::ArrayD<DataType>>>();
-            let vec = vec
-                .iter()
-                .map(|t| t.view())
-                .collect::<Vec<ndarray::ArrayViewD<DataType>>>();
-
-            let to_be_reshaped: ndarray::ArrayD<DataType> =
-                ndarray::stack(ndarray::Axis(0), &vec[..]).unwrap();
-
-            // TODO(@gussmith23) probably unnecessary cloning happening here.
-            let reshaped_into_tensor: ndarray::ArrayD<DataType> =
-                ndarray::ArrayD::<DataType>::from_shape_vec(
-                    new_shape,
-                    to_be_reshaped.iter().cloned().collect::<Vec<DataType>>(),
+                            .cloned()
+                            .product(),
+                    )
+                    .chain(a0.tensor.shape()[a0.access_axis..].iter().cloned())
+                    .collect::<Vec<_>>(),
+                )
+                .unwrap();
+            let reshaped_1 = a1
+                .tensor
+                .clone()
+                .into_shape(
+                    std::iter::once(
+                        a1.tensor.shape()[..a1.access_axis]
+                            .iter()
+                            .cloned()
+                            .product(),
+                    )
+                    .chain(a1.tensor.shape()[a1.access_axis..].iter().cloned())
+                    .collect::<Vec<_>>(),
                 )
                 .unwrap();
 
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(reshaped_into_tensor))
-        }
-        Slice([tensor_id, axis_id, low_id, high_id]) => {
-            todo!("reimplement this");
-            // TODO(@gussmith23) this is true for our minimal working example, not
-            // expected to be true in the future, definitely not.
-            assert_eq!(enode.children.len(), 5);
-
-            let tensor: ndarray::ArrayD<_> =
-                match interpret_eclass(egraph, &egraph[enode.children[0]], env, memo_map) {
-                    MemoizedInterpreterResult::StillInterpreting => {
-                        return MemoizedInterpreterResult::StillInterpreting
-                    }
-                    MemoizedInterpreterResult::CanNotInterpret => {
-                        return MemoizedInterpreterResult::CanNotInterpret
-                    }
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::Tensor(t) => t,
-                        _ => panic!(),
-                    },
-                };
-
-            assert_eq!(tensor.shape().len(), 2);
-
-            let ((row_slice_start, row_slice_end), (col_slice_start, col_slice_end)): (
-                (usize, usize),
-                (usize, usize),
-            ) = match enode.children[1..5]
-                .iter()
-                .map(|eclass_id: &u32| {
-                    match interpret_eclass(egraph, &egraph[*eclass_id], env, memo_map) {
-                        // TODO(@gussmith23) this panic is me just being lazy. if
-                        // StillInterpreting is found, we should return
-                        MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                            Value::Usize(u) => u,
-                            _ => panic!(),
-                        },
-                        _ => panic!(),
-                    }
+            let to_stack = reshaped_0
+                .axis_iter(ndarray::Axis(0))
+                .cartesian_product(reshaped_1.axis_iter(ndarray::Axis(0)))
+                .map(|(t0, t1)| {
+                    ndarray::stack(
+                        ndarray::Axis(0),
+                        &[
+                            t0.insert_axis(ndarray::Axis(0)),
+                            t1.insert_axis(ndarray::Axis(0)),
+                        ],
+                    )
+                    .unwrap()
+                    .insert_axis(ndarray::Axis(0))
                 })
-                .collect::<std::vec::Vec<usize>>()
-                .as_slice()
-            {
-                [row_slice_start, row_slice_end, col_slice_start, col_slice_end] => (
-                    (*row_slice_start, *row_slice_end),
-                    (*col_slice_start, *col_slice_end),
-                ),
+                .collect::<Vec<_>>();
+
+            let unreshaped = ndarray::stack(
+                ndarray::Axis(0),
+                to_stack
+                    .iter()
+                    .map(|t| t.view())
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )
+            .unwrap();
+
+            let reshaped = unreshaped
+                .into_shape(
+                    a0.tensor.shape()[..a0.access_axis]
+                        .iter()
+                        .cloned()
+                        .chain(a1.tensor.shape()[..a1.access_axis].iter().cloned())
+                        .chain(std::iter::once(2))
+                        .chain(a0.tensor.shape()[a0.access_axis..].iter().cloned())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+
+            Value::Access(Access {
+                tensor: reshaped.into_dyn(),
+                access_axis: a0.access_axis + a1.access_axis,
+            })
+        }
+        &Language::Access([access_id, dim_id]) => {
+            let access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let dim = match interpret(expr, dim_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
-            // A  consistent problem I was having with this library
-            // was with converting to dynamic-dimension tensors.
-            // Found out I can use into_dyn().
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(
-                tensor
-                    .slice_move(s![
-                        row_slice_start..row_slice_end,
-                        col_slice_start..col_slice_end
-                    ])
-                    .into_dyn(),
-            ))
+            assert!(dim <= access.tensor.ndim());
+
+            Value::Access(Access {
+                tensor: access.tensor,
+                // TODO(@gussmith) Settle on vocab: "axis" or "dimension"?
+                access_axis: dim,
+            })
         }
-        Usize(u) => MemoizedInterpreterResult::InterpretedValue(Value::Usize(*u)),
-        BsgSystolicArray([_rows_id, _cols_id, _t0_id, _t1_id]) => panic!(),
-        Concat => {
-            todo!("reimplement");
-            // TODO(@gussmith23) this is true for our minimal working example, not
-            // expected to be true in the future, definitely not.
-            assert!(enode.children.len() >= 3);
-
-            println!("Interpreting: {:?}", enode);
-            // TODO(@gussmith23) it seems like there's a loop.
-            // concat a has concat b as a child. concat b has concat a as a child.
-            let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode.children
-                [0..enode.children.len() - 1]
-                .iter()
-                .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
-                .collect();
-            // TODO(@gussmith23) the order of this and the next if block matters!
-            if tensors.iter().any(|t| match t {
-                MemoizedInterpreterResult::CanNotInterpret => true,
-                _ => false,
-            }) {
-                return MemoizedInterpreterResult::CanNotInterpret;
-            }
-            if tensors.iter().any(|t| match t {
-                MemoizedInterpreterResult::StillInterpreting => true,
-                _ => false,
-            }) {
-                return MemoizedInterpreterResult::StillInterpreting;
-            }
-            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = tensors
-                .drain(..)
-                .map(|result| match result {
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::Tensor(t) => t,
-                        _ => panic!(),
-                    },
-                    _ => panic!(),
-                })
-                .collect();
-
-            let concat_axis: usize = match interpret_eclass(
-                egraph,
-                &egraph[enode.children[enode.children.len() - 1]],
-                env,
-                memo_map,
-            ) {
-                MemoizedInterpreterResult::StillInterpreting => {
-                    return MemoizedInterpreterResult::StillInterpreting
-                }
-                MemoizedInterpreterResult::CanNotInterpret => {
-                    return MemoizedInterpreterResult::CanNotInterpret
-                }
-                MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                    Value::Usize(u) => u,
-                    _ => panic!(),
-                },
+        &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
+            let access = match interpret(expr, access_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let filters_shape = match interpret(expr, filters_shape_id.into(), env) {
+                Value::Shape(s) => s,
+                _ => panic!(),
+            };
+            let stride_shape = match interpret(expr, stride_shape_id.into(), env) {
+                Value::Shape(s) => s,
+                _ => panic!(),
             };
 
-            // Have to stack manually, because ndarray::stack doesn't actually
-            // support tensors holding values that don't implement Copy! :(
-            // TODO(@gussmith23) given that i changed to a simpler value system, I can
-            // actually go back to stacking with their code.
+            assert_eq!(
+                access.access_axis,
+                access.tensor.ndim(),
+                "access-windows access should be accessed at its last dimension"
+            );
+            assert_eq!(
+                access.tensor.ndim(),
+                stride_shape.ndim(),
+                "access-windows access ndims should match stride ndims"
+            );
+            assert_eq!(
+                filters_shape.ndim(),
+                stride_shape.ndim(),
+                "access-windows filters ndims should match stride ndims"
+            );
 
-            let shapes: std::vec::Vec<&[usize]> = tensors.iter().map(|t| t.shape()).collect();
-            // All have equal number of dimensions
-            assert!(shapes.iter().all(|shape| shape.len() == shapes[0].len()));
-            // All dimensions match, except for along the concat axis.
-            assert!((0..shapes[0].len())
-                .all(|i| i == concat_axis
-                    || ((0..shapes.len()).all(|j| shapes[j][i] == shapes[0][i]))));
+            let out_shape = super::access_windows_resulting_shape(
+                &IxDyn(access.tensor.shape()),
+                &filters_shape,
+                // Ignore striding for now; we will stride after we get the result
+                // TODO(@gussmith23) More efficient striding?
+                &IxDyn(
+                    std::iter::repeat(1)
+                        .take(filters_shape.ndim())
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ),
+            );
 
-            let mut new_shape: std::vec::Vec<usize> = shapes[0].to_vec();
-            new_shape[concat_axis] += (1..shapes.len())
-                .map(|i| shapes[i][concat_axis])
-                .sum::<usize>();
-            let new_shape = new_shape;
+            let mut result = ArrayD::<DataType>::zeros(
+                out_shape
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(filters_shape.slice().iter().product()))
+                    .collect::<Vec<_>>(),
+            );
 
-            let mut new_tensor: ndarray::ArrayD<_> = ndarray::Array::default(new_shape.to_vec());
-            let mut current_start_index: usize = 0;
-            for i in 0..tensors.len() {
-                let original_concat_axis_size: usize = shapes[i][concat_axis];
-                use std::convert::TryFrom;
-                let slices: std::vec::Vec<ndarray::SliceOrIndex> = (0..new_shape.len())
-                    .map(|axis| {
-                        if axis == concat_axis {
-                            ndarray::SliceOrIndex::Slice {
-                                start: isize::try_from(current_start_index).unwrap(),
-                                end: Some(
-                                    isize::try_from(
-                                        current_start_index + original_concat_axis_size,
-                                    )
-                                    .unwrap(),
-                                ),
-                                step: 1,
-                            }
-                        } else {
-                            ndarray::SliceOrIndex::Slice {
-                                start: 0,
-                                end: None,
-                                step: 1,
-                            }
-                        }
-                    })
-                    .collect();
-                let slice_info: ndarray::SliceInfo<
-                    std::vec::Vec<ndarray::SliceOrIndex>,
-                    ndarray::IxDyn,
-                > = ndarray::SliceInfo::new(slices).unwrap();
+            Zip::from(result.genrows_mut())
+                .and(access.tensor.windows(filters_shape.clone()))
+                .apply(|mut result, windows| {
+                    result.assign(&Array::from_iter(windows.iter().cloned()))
+                });
 
-                new_tensor
-                    .slice_mut(slice_info.as_ref())
-                    .assign(&tensors[i]);
+            let mut result = result
+                .into_shape(
+                    out_shape
+                        .iter()
+                        .cloned()
+                        .chain(filters_shape.slice().iter().cloned())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
 
-                current_start_index += original_concat_axis_size;
+            for (axis, &stride) in (0..stride_shape.ndim()).zip(stride_shape.slice().iter()) {
+                // TODO(@gussmith23) Interpreter window striding is inefficient
+                // I wish we could do this in the windows() method of ndarray,
+                // but they don't seem to support it.
+                result = ndarray::stack(
+                    ndarray::Axis(axis),
+                    result
+                        .axis_iter(ndarray::Axis(axis))
+                        .step_by(stride)
+                        // TODO(@gussmith23) This seems dumb
+                        // Can we do an axis_iter that doesn't remove the axis?
+                        .map(|t| t.insert_axis(ndarray::Axis(axis)))
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                )
+                .unwrap();
             }
 
-            assert_eq!(current_start_index, new_shape[concat_axis]);
-
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(new_tensor))
+            Value::Access(Access {
+                tensor: result,
+                // TODO(@gussmith23) Hardcoded
+                // This already bit me. I forgot to update it when I changed the
+                // access-windows semantics, and it took me a bit to find the
+                // bug.
+                // Actually, at this point, I'm pretty sure this is just wrong.
+                access_axis: 3,
+            })
         }
-        ElementwiseAdd([t0_id, t1_id]) => {
-            todo!("reimplement");
-            // TODO(@gussmith23) this is true for our minimal working example, not
-            // expected to be true in the future, definitely not.
-            assert!(enode.children.len() == 2);
-
-            println!("Interpreting: {:?}", enode);
-            // TODO(@gussmith23) it seems like there's a loop.
-            // concat a has concat b as a child. concat b has concat a as a child.
-            let mut tensors: std::vec::Vec<MemoizedInterpreterResult> = enode
-                .children
-                .iter()
-                .map(|child| interpret_eclass(egraph, &egraph[*child], env, memo_map))
-                .collect();
-            // TODO(@gussmith23) the order of this and the next if block matters!
-            if tensors.iter().any(|t| match t {
-                MemoizedInterpreterResult::CanNotInterpret => true,
-                _ => false,
-            }) {
-                return MemoizedInterpreterResult::CanNotInterpret;
-            }
-            if tensors.iter().any(|t| match t {
-                MemoizedInterpreterResult::StillInterpreting => true,
-                _ => false,
-            }) {
-                return MemoizedInterpreterResult::StillInterpreting;
-            }
-            let tensors: std::vec::Vec<ndarray::ArrayD<_>> = tensors
-                .drain(..)
-                .map(|result| match result {
-                    MemoizedInterpreterResult::InterpretedValue(v) => match v {
-                        Value::Tensor(t) => t,
-                        _ => panic!(),
-                    },
+        Language::Shape(list) => Value::Shape(IxDyn(
+            list.iter()
+                .map(|id: &Id| match interpret(expr, (*id).into(), env) {
+                    Value::Usize(u) => u,
                     _ => panic!(),
                 })
-                .collect();
-
-            assert_eq!(tensors[0].shape(), tensors[1].shape());
-            MemoizedInterpreterResult::InterpretedValue(Value::Tensor(&tensors[0] + &tensors[1]))
-        }
-    }
-}
-pub fn pack_interpreter_input(array: ndarray::ArrayD<DataType>) -> Value {
-    Value::Tensor(array)
-}
-pub fn unpack_interpreter_output(output: MemoizedInterpreterResult) -> ndarray::ArrayD<DataType> {
-    match output {
-        MemoizedInterpreterResult::InterpretedValue(v) => match v {
-            Value::Tensor(t) => t,
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )),
+        &Language::SliceShape([shape_id, slice_axis_id]) => match (
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, slice_axis_id.into(), env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
+            }
             _ => panic!(),
         },
-        _ => panic!(),
+        &Language::ShapeInsertAxis([shape_id, axis_id]) => match (
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, axis_id.into(), env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                assert!(u <= s.ndim());
+                Value::Shape(IxDyn(
+                    s.slice()[..u]
+                        .iter()
+                        .chain(std::iter::once(&1))
+                        .chain(s.slice()[u..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ))
+            }
+            _ => panic!(),
+        },
+        &Language::ShapeRemoveAxis([shape_id, axis_id]) => match (
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, axis_id.into(), env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                assert!(u < s.ndim(), "Invalid axis in shape-remove-axis");
+                Value::Shape(IxDyn(
+                    s.slice()[..u]
+                        .iter()
+                        .chain(s.slice()[u + 1..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ))
+            }
+            _ => panic!(),
+        },
+        &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id.into(), env) {
+            Value::Tensor(t) => Value::Shape(IxDyn(t.shape())),
+            _ => panic!(),
+        },
+        &Language::AccessTensor(tensor_id) => match interpret(expr, tensor_id.into(), env) {
+            Value::Tensor(t) => Value::Access(Access {
+                tensor: t,
+                // TODO(@gussmith) Arbitrarily picked default access axis
+                access_axis: 0,
+            }),
+            _ => panic!(),
+        },
+        Language::Symbol(s) => Value::Tensor(
+            env.get(s.as_str())
+                .unwrap_or_else(|| panic!("Symbol {} not in environment", s))
+                .clone(),
+        ),
+        &Language::Usize(u) => Value::Usize(u),
+
+        &Language::MoveAxis(_)
+        | &Language::CartesianProduct(_)
+        | &Language::MapDotProduct(_)
+        | &Language::Slice(_)
+        | &Language::Concatenate(_)
+        | &Language::ElementwiseAdd(_)
+        | &Language::BsgSystolicArray(_)
+        | &Language::SystolicArray(_)
+        | &Language::SystolicArrayWithBlocking(_)
+        | &Language::AccessReshape(_)
+        | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
+
+/// Trait for types which can be converted to from Glenside literals.
+pub trait FromNotNanFloat64Literal {
+    /// Convert from ordered_float::NotNan<f64>
+    fn from_not_nan_float_64_literal(value: ordered_float::NotNan<f64>) -> Self;
+}
+
+impl FromNotNanFloat64Literal for f64 {
+    /// ```
+    /// use glenside::language::interpreter::FromNotNanFloat64Literal;
+    /// assert_eq!(
+    ///     f64::from_not_nan_float_64_literal(
+    ///         ordered_float::NotNan::new(std::f64::consts::PI).unwrap()
+    ///     ),
+    ///     std::f64::consts::PI
+    /// );
+    /// ```
+    fn from_not_nan_float_64_literal(value: ordered_float::NotNan<f64>) -> Self {
+        value.into_inner()
+    }
+}
+
+impl FromNotNanFloat64Literal for f32 {
+    /// ```
+    /// use glenside::language::interpreter::FromNotNanFloat64Literal;
+    /// assert_eq!(
+    ///     f32::from_not_nan_float_64_literal(
+    ///         ordered_float::NotNan::new(std::f64::consts::PI).unwrap()
+    ///     ),
+    ///     std::f64::consts::PI as f32
+    /// );
+    /// ```
+    fn from_not_nan_float_64_literal(value: ordered_float::NotNan<f64>) -> Self {
+        value.into_inner() as f32
+    }
+}
+
+impl FromNotNanFloat64Literal for i64 {
+    /// ```should_panic
+    /// use glenside::language::interpreter::FromNotNanFloat64Literal;
+    /// i64::from_not_nan_float_64_literal(
+    ///     ordered_float::NotNan::new(std::f64::consts::PI).unwrap(),
+    /// );
+    /// ```
+    fn from_not_nan_float_64_literal(_value: ordered_float::NotNan<f64>) -> Self {
+        unreachable!()
+    }
+}
+
+/// Trait for types which implement the exponential function.
+pub trait Exp {
+    /// Calculate exponential function
+    fn exp(self) -> Self;
+}
+
+impl Exp for f64 {
+    /// ```
+    /// use glenside::language::interpreter::Exp;
+    /// assert_eq!(1.234f64.exp(), 3.43494186080076);
+    /// ```
+    fn exp(self) -> Self {
+        Pow::pow(std::f64::consts::E, self)
+    }
+}
+
+impl Exp for f32 {
+    /// ```
+    /// use glenside::language::interpreter::Exp;
+    /// assert_eq!(1.234f32.exp(), 3.4349418);
+    /// ```
+    fn exp(self) -> Self {
+        Pow::pow(std::f32::consts::E, self)
+    }
+}
+
+impl Exp for i64 {
+    /// ```should_panic
+    /// use glenside::language::interpreter::Exp;
+    /// 0i64.exp();
+    /// ```
+    fn exp(self) -> Self {
+        unreachable!()
+    }
+}
+
+/// Trait for types which implement square root.
+/// TODO(@gussmith23) Does this already exist somewhere?
+pub trait Sqrt {
+    /// Calculate square root.
+    fn sqrt(self) -> Self;
+}
+
+impl Sqrt for f64 {
+    /// ```
+    /// use glenside::language::interpreter::Sqrt;
+    /// assert_eq!(1.234f64.sqrt(), 1.1108555261599053);
+    /// ```
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
+
+impl Sqrt for f32 {
+    /// ```
+    /// use glenside::language::interpreter::Sqrt;
+    /// assert_eq!(1.234f32.sqrt(), 1.1108555);
+    /// ```
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
+
+impl Sqrt for i64 {
+    /// ```should_panic
+    /// use glenside::language::interpreter::Sqrt;
+    /// 5i64.sqrt();
+    /// ```
+    fn sqrt(self) -> Self {
+        panic!()
+    }
+}
+
+extern crate test;
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
+    use approx::AbsDiffEq;
+    use ndarray::array;
+    use std::str::FromStr;
+    use test::Bencher;
 
-    fn load_npy(path: &str) -> ndarray::ArrayD<DataType> {
-        ndarray_npy::read_npy::<_, ndarray::ArrayD<DataType>>(path).unwrap()
+    /// Creates a benchmark test for the interpreter
+    /// The test does the following:
+    ///  1. Parses $glenside_str as glenside expression
+    ///  2. Creates a new Environment from the vector of (key, value) pairs
+    ///  3. Calls the interpreter with the glenside expression and env,
+    ///         and passes the value to check_correct
+    /// $test_name: the name of the created benchmark test
+    /// $glenside_str: A string containing the Glenside program
+    /// $env: A vector of 2-tuples of key, value pairs to put into the environment
+    /// $check_correct: A closure with arguments (value) that checks for correctness
+    macro_rules! benchmark_test {
+        ($test_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
+            #[bench]
+            fn $test_name(b: &mut Bencher) {
+                let mut env = Environment::new();
+                for (key, value) in $env.into_iter() {
+                    env.insert(key, value);
+                }
+
+                let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
+
+                b.iter(|| {
+                    // use black box to prevent compiler optimizations
+                    let expr = test::black_box(&expr);
+                    let env = test::black_box(&env);
+
+                    let value = interpret(&expr, expr.as_ref().len() - 1, &env);
+                    $check_correct(value);
+                });
+            }
+        };
     }
 
+    benchmark_test!(
+        compute_elementwise_add_0,
+        "(compute elementwise-add
+        (access (access-tensor t) 0)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 0);
+                    assert_eq!(
+                        tensor,
+                        array![[1 + -5 + -9, -2 + 6 + 10], [3 + 0 + 11, 0 + 8 + 12]].into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_elementwise_mul_0,
+        "(compute elementwise-mul
+        (access (access-tensor t) 0)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 0);
+                    assert_eq!(
+                        tensor,
+                        array![[1 * -5 * -9, -2 * 6 * 10], [3 * 0 * 11, 0 * 8 * 12]].into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_reduce_sum_0,
+        "(compute reduce-sum
+        (access (access-tensor t) 0)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 0);
+                    assert_eq!(
+                        tensor,
+                        ndarray::arr0(1 + -2 + 3 + 0 + -5 + 6 + 0 + 8 + -9 + 10 + 11 + 12)
+                            .into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_reduce_sum_1,
+        "(compute reduce-sum
+        (access (access-tensor t) 1)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 1);
+                    assert_eq!(
+                        tensor,
+                        array![1 + -2 + 3 + 0, -5 + 6 + 0 + 8, -9 + 10 + 11 + 12].into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_reduce_sum_2,
+        "(compute reduce-sum
+        (access (access-tensor t) 2)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 2);
+                    assert_eq!(
+                        tensor,
+                        array![[1 + -2, 3 + 0], [-5 + 6, 0 + 8], [-9 + 10, 11 + 12]].into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_reduce_sum_3,
+        "(compute reduce-sum
+        (access (access-tensor t) 3)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 3);
+                    assert_eq!(
+                        tensor,
+                        array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],]
+                            .into_dyn(),
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_relu_0,
+        "(compute relu
+        (access (access-tensor t) 0)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 0);
+                    assert_eq!(
+                        tensor,
+                        array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_relu_1,
+        "(compute relu
+        (access (access-tensor t) 2)
+        )",
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(access_axis, 2);
+                    assert_eq!(
+                        tensor,
+                        array![[[1, 0], [3, 0]], [[0, 6], [0, 8]], [[0, 10], [11, 12]],].into_dyn(),
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_dot_product_0,
+        "(compute dot-product
+        (access (access-tensor t) 0)
+        )",
+        vec![(
+            "t",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor.shape(), &[] as &[usize]);
+                    assert_eq!(access_axis, 0);
+                    assert_eq!(
+                        tensor,
+                        ndarray::arr0(1 * 5 * 9 + 2 * 6 * 10 + 3 * 7 * 11 + 4 * 8 * 12).into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        compute_dot_product_1,
+        "(compute dot-product
+        (access (access-tensor t) 1)
+        )",
+        vec![(
+            "t",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+        )],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor.shape(), &[3]);
+                    assert_eq!(access_axis, 1);
+                    assert_eq!(
+                        tensor,
+                        array![11, 5 * 7 + 8 * 6, 9 * 11 + 10 * 12].into_dyn()
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
     #[test]
-    fn test_slice() {
-        let slice_test_program_1 = "(slice a 0 1 0 1)".parse().unwrap();
-        let slice_test_program_2 = "(slice a 1 2 0 2)".parse().unwrap();
-        let input = pack_interpreter_input(
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
-        );
+    fn compute_dot_product_2() {
         let mut env = Environment::new();
-        env.insert("a", input);
-        let (egraph, id) = egg::EGraph::<Language, ()>::from_expr(&slice_test_program_1);
-        let out = unpack_interpreter_output(interpret_eclass(
-            &egraph,
-            &egraph[id],
-            &env,
-            &mut MemoizationMap::new(),
-        ));
-        assert_eq!(
-            out,
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 1], vec![1.]).unwrap()
+        env.insert(
+            "t",
+            // 3 x 2 x 2
+            array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
         );
-        let (egraph, id) = egg::EGraph::<Language, ()>::from_expr(&slice_test_program_2);
-        let out = unpack_interpreter_output(interpret_eclass(
-            &egraph,
-            &egraph[id],
-            &env,
-            &mut MemoizationMap::new(),
-        ));
-        assert_eq!(
-            out,
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![1, 2], vec![3., 4.]).unwrap()
-        );
-    }
 
-    #[test]
-    fn test_single_matrix_multiply() {
-        let program = "
-         (map-dot-product
-          (cartesian-product
-           (rows single-matrix-multiply-input-a)
-           (cols single-matrix-multiply-input-b)
-          )
-         )
-         "
-        .parse()
-        .unwrap();
-        let a_val = pack_interpreter_input(load_npy(
-            format!(
-                "{}/{}",
-                env!("CARGO_MANIFEST_DIR"),
-                "data/single_matrix_multiply_input_a.npy"
-            )
-            .as_str(),
-        ));
-        let b_val = pack_interpreter_input(load_npy(
-            format!(
-                "{}/{}",
-                env!("CARGO_MANIFEST_DIR"),
-                "data/single_matrix_multiply_input_b.npy"
-            )
-            .as_str(),
-        ));
-        let out_true = load_npy(
-            format!(
-                "{}/{}",
-                env!("CARGO_MANIFEST_DIR"),
-                "data/single_matrix_multiply_output.npy"
-            )
-            .as_str(),
-        );
-        let mut env = Environment::new();
-        env.insert("single-matrix-multiply-input-a", a_val);
-        env.insert("single-matrix-multiply-input-b", b_val);
-        let (egraph, id) = egg::EGraph::<Language, MyAnalysis>::from_expr(&program);
-        let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
-        let out = unpack_interpreter_output(out);
-
-        use approx::AbsDiffEq;
-        println!("{:?}", out);
-        println!("{:?}", out_true);
-        assert!(out_true.abs_diff_eq(&out, 1e-10));
-    }
-
-    #[test]
-    fn test_mlp() {
-        let program = "
-     (map-dot-product
-      (cartesian-product
-       (rows
-        (map-dot-product
-         (cartesian-product
-          (rows
-           (map-dot-product (cartesian-product (rows in)
-                                           (cols w1))))
-          (cols w2)
-         )
+        let expr = RecExpr::<Language>::from_str(
+            "(compute dot-product
+              (access (access-tensor t) 2)
+             )",
         )
-       )
-       (cols w3)
-      )
-     )
-     "
-        .parse()
         .unwrap();
-        let in_val = pack_interpreter_input(load_npy(
-            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/in.npy").as_str(),
-        ));
-        let w1_val = pack_interpreter_input(load_npy(
-            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/w1.npy").as_str(),
-        ));
-        let w2_val = pack_interpreter_input(load_npy(
-            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/w2.npy").as_str(),
-        ));
-        let w3_val = pack_interpreter_input(load_npy(
-            format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/w3.npy").as_str(),
-        ));
-        let out_true =
-            load_npy(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "data/out.npy").as_str());
-        let mut env = Environment::new();
-        env.insert("in", in_val);
-        env.insert("w1", w1_val);
-        env.insert("w2", w2_val);
-        env.insert("w3", w3_val);
-        let (egraph, id) = egg::EGraph::<Language, MyAnalysis>::from_expr(&program);
-        let out = interpret_eclass(&egraph, &egraph[id], &env, &mut MemoizationMap::new());
-        let out = unpack_interpreter_output(out);
 
-        use approx::AbsDiffEq;
-        println!("{:?}", out);
-        println!("{:?}", out_true);
-        assert!(out_true.abs_diff_eq(&out, 1e-8));
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), &[3, 2]);
+                assert_eq!(access_axis, 2);
+                assert_eq!(
+                    tensor,
+                    array![[1 * 2, 3 * 4], [5 * 6, 7 * 8], [9 * 10, 11 * 12]].into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    benchmark_test!(
+        access_cartesian_product,
+        "(access-cartesian-product
+        (access (access-tensor t0) 2)
+        (access (access-tensor t1) 2)
+        )",
+        vec![
+            (
+                "t0",
+                // 3 x 2 x 2
+                array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
+            ),
+            (
+                "t1",
+                // 2 x 2 x 2
+                array![[[13, 14], [15, 16]], [[17, 18], [19, 20]]].into_dyn(),
+            )
+        ],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor.shape(), &[3, 2, 2, 2, 2, 2]);
+                    assert_eq!(access_axis, 4);
+                    assert_eq!(
+                        tensor.slice(s![0, 0, 0, 0, .., ..]),
+                        array![[1, 2], [13, 14]]
+                    );
+                    assert_eq!(
+                        tensor.slice(s![2, 0, 1, 0, .., ..]),
+                        array![[9, 10], [17, 18]]
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    #[test]
+    fn access() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access (access-tensor t) 1)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1., 2.], [3., 4.]].into_dyn());
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
     }
 
     #[test]
-    fn elementwise_add() {
-        let elementwise_add_test_program = "(elementwise-add a b)".parse().unwrap();
-        let a = pack_interpreter_input(
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![1., 2., 3., 4.]).unwrap(),
-        );
-        let b = pack_interpreter_input(
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![6.5, 2.2, -3., 4.])
-                .unwrap(),
-        );
+    #[should_panic]
+    fn access_panic() {
         let mut env = Environment::new();
-        env.insert("a", a);
-        env.insert("b", b);
-        let (egraph, id) = egg::EGraph::<Language, ()>::from_expr(&elementwise_add_test_program);
-        let out = unpack_interpreter_output(interpret_eclass(
-            &egraph,
-            &egraph[id],
-            &env,
-            &mut MemoizationMap::new(),
-        ));
-        assert_eq!(
-            out,
-            ndarray::ArrayD::<DataType>::from_shape_vec(vec![2, 2], vec![7.5, 4.2, 0., 8.])
-                .unwrap()
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access (access-tensor t) 3)").unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    benchmark_test!(
+        access_windows,
+        "(access-windows
+            (access (access-tensor t) 3)
+            (shape 3 2 2)
+            (shape 1 1 1)
+        )",
+        vec![(
+            "t",
+            array![
+                [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+                [[10., 11., 12.], [13., 14., 15.], [16., 17., 18.]],
+                [[19., 20., 21.], [22., 23., 24.], [25., 26., 27.]],
+            ]
+            .into_dyn()
+        )],
+        |value| {
+            match value {
+                Value::Access(a) => {
+                    assert_eq!(a.access_axis, 3);
+                    assert_eq!(a.tensor.shape(), &[1, 2, 2, 3, 2, 2]);
+                    assert_eq!(
+                        a.tensor.slice(s![0, 0, 0, .., .., ..]),
+                        array![
+                            [[1., 2.], [4., 5.]],
+                            [[10., 11.], [13., 14.]],
+                            [[19., 20.], [22., 23.]],
+                        ]
+                    );
+                    assert_eq!(
+                        a.tensor.slice(s![0, 1, 0, .., .., ..]),
+                        array![
+                            [[4., 5.], [7., 8.]],
+                            [[13., 14.], [16., 17.]],
+                            [[22., 23.], [25., 26.]],
+                        ]
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    #[test]
+    fn shape() {
+        let expr = RecExpr::<Language>::from_str("(shape 1 2 3)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn slice_shape_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(slice-shape (shape-of t) 0)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 2])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn slice_shape_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(slice-shape (shape-of t) 1)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn slice_shape_2() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(slice-shape (shape-of t) 2)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_insert_axis_0() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 0)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_insert_axis_1() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 1)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 1, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_insert_axis_2() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 2)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3, 1])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn shape_insert_axis_panic() {
+        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 3)").unwrap();
+        interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
         );
+    }
+
+    #[test]
+    fn shape_remove_axis_0() {
+        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 0)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_remove_axis_1() {
+        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 1)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 3])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn shape_remove_axis_2() {
+        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 2)").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn shape_remove_axis_panic() {
+        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 3)").unwrap();
+        interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        );
+    }
+
+    #[test]
+    fn shape_of() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(shape-of t)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 2])),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn usize() {
+        let expr = RecExpr::<Language>::from_str("23").unwrap();
+        match interpret(
+            &expr,
+            expr.as_ref().len() - 1,
+            &Environment::<f32>::default(),
+        ) {
+            Value::Usize(23) => (),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn symbol() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("t").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Tensor(t) => assert_eq!(t, array![[1., 2.], [3., 4.]].into_dyn()),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_tensor() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-tensor t)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1., 2.], [3., 4.]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn pad_type() {
+        let expr = RecExpr::<Language>::from_str("zero-padding").unwrap();
+        match interpret::<i64>(&expr, expr.as_ref().len() - 1, &Environment::default()) {
+            Value::PadType(PadType::ZeroPadding) => (),
+            _ => panic!(),
+        };
+    }
+
+    benchmark_test!(
+        access_pad,
+        "(access-pad (access-tensor t) zero-padding 0 2 4)",
+        vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(
+                        tensor,
+                        array![
+                            [0., 0.],
+                            [0., 0.],
+                            [1., 2.],
+                            [3., 4.],
+                            [0., 0.],
+                            [0., 0.],
+                            [0., 0.],
+                            [0., 0.]
+                        ]
+                        .into_dyn()
+                    );
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    #[test]
+    fn compute_reduce_max_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(tensor, ndarray::arr0(12).into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 1)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 1);
+                assert_eq!(tensor, array![3, 8, 12].into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 2)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 2);
+                assert_eq!(tensor, array![[1, 3], [6, 8], [10, 12]].into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_max_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access (access-tensor t) 3)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 3);
+                assert_eq!(
+                    tensor,
+                    array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_squeeze_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-squeeze (access-tensor t) 0)").unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![1., 2.].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_squeeze_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-squeeze (access (access-tensor t) 1) 0)")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![1., 2.].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_squeeze_panic() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str("(access-squeeze (access (access-tensor t) 1) 1)")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![1., 2.].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    /// Example showing how access-windows can be used to implement max pooling
+    /// (in addition to convolution)
+    #[test]
+    fn max_pool2d() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1, -2, -4, 5], [3, 6, -8, 0]],
+                [[-5, 6, -8, -10], [0, 0, 0, 8]],
+                [[-9, -20, -15, 10], [-1, 2, 11, 12]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute reduce-max
+              (access-windows (access (access-tensor t) 3) (shape 1 2 2) (shape 1 2 2))
+             )",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 3);
+                // Checking that output is CHW.
+                assert_eq!(tensor.shape(), [3, 1, 2]);
+                assert_eq!(tensor, array![[[6, 5]], [[6, 8]], [[2, 12]]].into_dyn(),);
+            }
+            _ => panic!(),
+        }
+    }
+
+    benchmark_test!(
+        access_pair_0,
+        "(access-pair (access (access-tensor a) 0) (access (access-tensor b) 0))",
+        vec![
+            ("a", array![[1, 2], [3, 4]].into_dyn()),
+            ("b", array![[5, 6], [7, 8]].into_dyn())
+        ],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor.shape(), [2, 2, 2]);
+                    assert_eq!(
+                        tensor,
+                        array![[[1, 2], [3, 4]], [[5, 6], [7, 8]]].into_dyn()
+                    );
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        access_pair_1,
+        "(access-pair (access (access-tensor a) 1) (access (access-tensor b) 1))",
+        vec![
+            ("a", array![[1, 2], [3, 4]].into_dyn()),
+            ("b", array![[5, 6], [7, 8]].into_dyn())
+        ],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor.shape(), [2, 2, 2]);
+                    assert_eq!(
+                        tensor,
+                        array![[[1, 2], [5, 6]], [[3, 4], [7, 8]]].into_dyn()
+                    );
+                    assert_eq!(access_axis, 1);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        access_pair_2,
+        "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
+        vec![
+            ("a", array![[1, 2], [3, 4]].into_dyn()),
+            ("b", array![[5, 6], [7, 8]].into_dyn())
+        ],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor.shape(), [2, 2, 2]);
+                    assert_eq!(
+                        tensor,
+                        array![[[1, 5], [2, 6]], [[3, 7], [4, 8]]].into_dyn()
+                    );
+                    assert_eq!(access_axis, 2);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    #[test]
+    #[should_panic]
+    fn access_pair_panic() {
+        let mut env = Environment::new();
+        env.insert("a", array![[1], [3]].into_dyn());
+        env.insert("b", array![[5, 6], [7, 8]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor.shape(), [2, 2, 2]);
+                assert_eq!(
+                    tensor,
+                    array![[[1, 5], [2, 6]], [[3, 7], [4, 8]]].into_dyn()
+                );
+                assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_insert_axis_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![1, 2].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-insert-axis (access (access-tensor t) 0) 0)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2]].into_dyn());
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    // TODO(@gussmith) More access-insert-axis tests
+    fn access_insert_axis_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![1, 2].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-insert-axis (access (access-tensor t) 0) 1)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1], [2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_broadcast() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-broadcast (access (access-tensor t) 0) (access-shape (shape 2 2) (shape)))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2], [1, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    // TODO(@gussmith23) More access-broadcast tests
+    fn access_broadcast_panic() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-broadcast (access (access-tensor t) 0) (shape 2 2 2))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1, 2], [1, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "
+(access-transpose (access (access-tensor t) 0) (list 1 0))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1], [2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "
+(access-transpose (access (access-tensor t) 0) (list 1 0))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[1], [2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_transpose_2() {
+        let mut env = Environment::new();
+        env.insert("t", array![[2, 3], [1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor t) 0) (list 1 0))",
+        )
+        .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, array![[2, 1], [3, 2]].into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_transpose_panic_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[2, 3], [1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor t) 0) (list 1 0 2))",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_transpose_panic_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[2, 3], [1, 2]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor t) 0) (list 1 1))",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    fn compute_softmax() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[0.4597965, 0.8250755], [0.14535584, 0.16271448]].into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str("(compute softmax (access (access-tensor t) 1))")
+            .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert!(tensor.abs_diff_eq(
+                    &array![[0.40968227, 0.5903177], [0.49566042, 0.5043395]].into_dyn(),
+                    1e-7
+                ));
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 0))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2 * 2 * 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 1))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2, 2 * 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 2))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2 * 2, 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_flatten_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![2, 2, 4, 6, 10],
+                (0..2 * 2 * 4 * 6 * 10).collect(),
+            )
+            .unwrap(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-flatten (access (access-tensor t) 5))").unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis: _,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::ArrayD::from_shape_vec(
+                        vec![2 * 2 * 4 * 6 * 10],
+                        (0..2 * 2 * 4 * 6 * 10).collect(),
+                    )
+                    .unwrap(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_0() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 0))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    ndarray::arr0((1f64 + 2f64 + 3f64 + 4f64 + 5f64 + 6f64 + 7f64 + 8f64) / 8f64)
+                        .into_dyn(),
+                );
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_1() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 1))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        (1f64 + 2f64 + 3f64 + 4f64) / 4f64,
+                        (5f64 + 6f64 + 7f64 + 8f64) / 4f64
+                    ]
+                    .into_dyn(),
+                );
+                assert_eq!(access_axis, 1);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_2() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 2))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        [(1f64 + 2f64) / 2f64, (3f64 + 4f64) / 2f64],
+                        [(5f64 + 6f64) / 2f64, (7f64 + 8f64) / 2f64]
+                    ]
+                    .into_dyn(),
+                );
+                assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_reduce_mean_3() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+        );
+
+        let expr =
+            RecExpr::<Language>::from_str("(compute reduce-mean (access (access-tensor t) 3))")
+                .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+                );
+                assert_eq!(access_axis, 3);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pad_min_padding() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1., 2.], [3., 4.]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-pad (access-tensor t) min-padding 0 2 4)")
+                .unwrap();
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(
+                    tensor,
+                    array![
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN],
+                        [1., 2.],
+                        [3., 4.],
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN],
+                        [std::f64::MIN, std::f64::MIN]
+                    ]
+                    .into_dyn()
+                );
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_elementwise_div() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1f32, -2f32], [3f32, 1f32]],
+                [[-5f32, 6f32], [1f32, 8f32]],
+                [[-9f32, 10f32], [11f32, 12f32]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute elementwise-div
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![
+                        [1f32 / -5f32 / -9f32, -2f32 / 6f32 / 10f32],
+                        [3f32 / 1f32 / 11f32, 1f32 / 8f32 / 12f32]
+                    ]
+                    .into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn literal_0() {
+        let expr = RecExpr::<Language>::from_str("(literal 0.1234)").unwrap();
+
+        match interpret::<f64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+            Value::Tensor(t) => {
+                assert_eq!(t, ndarray::arr0(0.1234).into_dyn());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_literal() {
+        let expr = RecExpr::<Language>::from_str("(access-literal (literal 0.1234))").unwrap();
+
+        match interpret::<f64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(tensor, ndarray::arr0(0.1234).into_dyn());
+                assert_eq!(access_axis, 0);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_sqrt() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1f64, 2f64], [3f64, 0f64]],
+                [[5f64, 6f64], [0f64, 8f64]],
+                [[9f64, 10f64], [11f64, 12f64]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute sqrt
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![
+                        [[1f64.sqrt(), 2f64.sqrt()], [3f64.sqrt(), 0f64.sqrt()]],
+                        [[5f64.sqrt(), 6f64.sqrt()], [0f64.sqrt(), 8f64.sqrt()]],
+                        [[9f64.sqrt(), 10f64.sqrt()], [11f64.sqrt(), 12f64.sqrt()]],
+                    ]
+                    .into_dyn(),
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn compute_negative() {
+        let mut env = Environment::new();
+        env.insert(
+            "t",
+            array![
+                [[1f32, -2f32], [3f32, 1f32]],
+                [[-5f32, 6f32], [1f32, 8f32]],
+                [[-9f32, 10f32], [11f32, 12f32]],
+            ]
+            .into_dyn(),
+        );
+
+        let expr = RecExpr::<Language>::from_str(
+            "(compute negative
+              (access (access-tensor t) 0)
+             )",
+        )
+        .unwrap();
+
+        match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            Value::Access(Access {
+                tensor,
+                access_axis,
+            }) => {
+                assert_eq!(access_axis, 0);
+                assert_eq!(
+                    tensor,
+                    array![
+                        [[-1f32, 2f32], [-3f32, -1f32]],
+                        [[5f32, -6f32], [-1f32, -8f32]],
+                        [[9f32, -10f32], [-11f32, -12f32]],
+                    ]
+                    .into_dyn()
+                );
+            }
+            _ => panic!(),
+        }
+    }
+
+    benchmark_test!(
+        access_concatenate_0,
+        "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
+        vec![
+            ("t", array![[1, 2]].into_dyn()),
+            ("n", array![[1, 2], [3, 4]].into_dyn())
+        ],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor, array![[1, 2], [1, 2], [3, 4]].into_dyn());
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        access_concatenate_1,
+        "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 1)",
+        vec![
+            ("t", array![[1], [2]].into_dyn()),
+            ("n", array![[1, 2], [3, 4]].into_dyn())
+        ],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor, array![[1, 1, 2], [2, 3, 4]].into_dyn());
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    #[test]
+    #[should_panic]
+    fn access_concatenate_panic_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1], [2]].into_dyn());
+        env.insert("n", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 1) 1)",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_concatenate_panic_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1], [2]].into_dyn());
+        env.insert("n", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr = RecExpr::<Language>::from_str(
+            "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
+        )
+        .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    benchmark_test!(
+        access_slice_0,
+        "(access-slice (access (access-tensor t) 0) 0 0 1)",
+        vec![("t", array![[1, 2], [3, 4]].into_dyn())],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor, array![[1, 2]].into_dyn());
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        access_slice_1,
+        "(access-slice (access (access-tensor t) 0) 0 0 2)",
+        vec![("t", array![[1, 2], [3, 4]].into_dyn())],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor, array![[1, 2], [3, 4]].into_dyn());
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_test!(
+        access_slice_2,
+        "(access-slice (access (access-tensor t) 0) 1 1 2)",
+        vec![("t", array![[1, 2], [3, 4]].into_dyn())],
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor, array![[2], [4]].into_dyn());
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    #[test]
+    #[should_panic]
+    fn access_slice_panic_0() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 0 0 3)")
+                .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    #[should_panic]
+    fn access_slice_panic_1() {
+        let mut env = Environment::new();
+        env.insert("t", array![[1, 2], [3, 4]].into_dyn());
+
+        let expr =
+            RecExpr::<Language>::from_str("(access-slice (access (access-tensor t) 0) 2 0 1)")
+                .unwrap();
+        interpret(&expr, expr.as_ref().len() - 1, &env);
+    }
+
+    #[test]
+    fn access_shape() {
+        let expr = RecExpr::<Language>::from_str("(access-shape (shape 1 2) (shape 3 4))").unwrap();
+        match interpret::<i64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+            Value::AccessShape(shape, access_axis) => {
+                assert_eq!(shape.slice(), &[1, 2, 3, 4]);
+                assert_eq!(access_axis, 2);
+            }
+            _ => panic!(),
+        }
     }
 }
