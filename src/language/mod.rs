@@ -4,7 +4,6 @@ pub use language::*;
 
 //pub mod interpreter;
 pub mod interpreter;
-pub use interpreter;
 
 pub mod rewrites;
 
