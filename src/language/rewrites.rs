@@ -987,6 +987,12 @@ pub enum SliceConcatenateStrategy {
     DivideInto {
         segment_size: usize,
     },
+    /// Slice into a dimension just once at the beginning, if there's at least
+    /// `segment_size` remaining in the dimension.
+    // TODO(@gussmith23) Test this
+    SliceOnce {
+        segment_size: usize,
+    },
 }
 
 pub fn slice_concatenate_accesses(
@@ -1129,6 +1135,40 @@ pub fn slice_concatenate_accesses(
         }
     }
 
+    struct SliceOnceApplier {
+        axis: usize,
+        segment_size: usize,
+    }
+    impl Applier<Language, MyAnalysis> for SliceOnceApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            _subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let access = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+
+            format!(
+                "
+             (access-concatenate
+              (access-slice ?a {axis} 0 {segment_size})
+              (access-slice ?a {axis} {segment_size} {dim_length})
+              {axis}
+             )
+             ",
+                segment_size = self.segment_size,
+                dim_length = access[self.axis],
+                axis = self.axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, id, _subst)
+        }
+    }
+
     match strategy {
         SliceConcatenateStrategy::DivideBy { divisor, limit } => {
             rewrite!(format!("slice-concatenate-access-axis-{}-divide-by-{}-limit-{}", axis, divisor, limit);
@@ -1154,6 +1194,14 @@ pub fn slice_concatenate_accesses(
                      if is_access()
                      if access_has_axis(axis)
                      if access_dimension_divisible_by(axis, segment_size))
+        }
+        SliceConcatenateStrategy::SliceOnce { segment_size } => {
+            rewrite!(format!("slice-concatenate-access-axis-{}-slice-once-{}", axis, segment_size);
+                     "?a" => { SliceOnceApplier {axis, segment_size} }
+                     if is_access()
+                     if access_has_axis(axis)
+                     // Only slice if there's  at least `segment_size` to slice off.
+                     if constrain_access("?a".parse().unwrap(), move |access| access[axis] > segment_size))
         }
     }
 }
