@@ -373,6 +373,9 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
 
 /// Returns c code.
 /// args: The signature will be `void <function_name>(float * out, float * <arg0>...)`
+/// uninitialized_allocations_prefix: The prefix to use for buffer allocations
+/// that do not need to be initialized. In the future, once we have literals in
+/// the program, we will need to also include an initialized_allocations_prefix.
 // TODO(@gussmith23) Does not reason about ordering on hardware.
 // TODO(@gussmith23) Hardcoded to float32
 pub fn codegen(
@@ -380,7 +383,7 @@ pub fn codegen(
     id: Id,
     hw_map: &HashMap<Id, usize>,
     function_name: &str,
-    allocations_prefix: &str,
+    uninitialized_allocations_prefix: &str,
     args: &Vec<&str>,
 ) -> String {
     let mut declarations = String::default();
@@ -389,7 +392,7 @@ pub fn codegen(
         expr,
         id,
         id,
-        allocations_prefix,
+        uninitialized_allocations_prefix,
         &mut declarations,
         &mut code,
         hw_map,
@@ -480,12 +483,14 @@ for (int i = 0; i < {}; i++) {{
     out
 }
 
-/// allocations_prefix: string to prefix all allocations/declarations with
+/// uninitialized_allocations_prefix: The prefix to use for buffer allocations
+/// that do not need to be initialized. In the future, once we have literals in
+/// the program, we will need to also include an initialized_allocations_prefix.
 fn codegen_recursive_helper(
     expr: &Expr,
     id: Id,
     top_level_id: Id,
-    allocations_prefix: &str,
+    uninitialized_allocations_prefix: &str,
     declarations: &mut String,
     code: &mut String,
     hw_map: &HashMap<Id, usize>,
@@ -529,7 +534,7 @@ fn codegen_recursive_helper(
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         access_windows_shape
                             .iter()
@@ -549,7 +554,7 @@ fn codegen_recursive_helper(
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -637,7 +642,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -655,7 +660,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         new_shape.as_slice(),
                         DType::Fp32,
@@ -714,7 +719,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 expr,
                 symbol_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -725,7 +730,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             expr,
             access_tensor_id,
             top_level_id,
-            allocations_prefix,
+            uninitialized_allocations_prefix,
             declarations,
             code,
             hw_map,
@@ -779,7 +784,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 expr,
                 a0_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -788,7 +793,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 expr,
                 a1_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -815,7 +820,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             // TODO(@gussmith23) Allocations should not be done ad-hoc
             declarations.push_str(
                 c_allocation_string(
-                    allocations_prefix,
+                    uninitialized_allocations_prefix,
                     out_var_name.as_str(),
                     this_access
                         .shape
@@ -899,7 +904,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -917,7 +922,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         new_shape.as_slice(),
                         DType::Fp32,
@@ -1027,7 +1032,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -1044,7 +1049,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         new_shape.as_slice(),
                         DType::Fp32,
@@ -1113,7 +1118,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         out_shape.as_slice(),
                         DType::Fp32,
@@ -1127,7 +1132,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -1167,7 +1172,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         out_shape.as_slice(),
                         DType::Fp32,
@@ -1181,7 +1186,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -1221,7 +1226,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         out_shape.as_slice(),
                         DType::Fp32,
@@ -1235,7 +1240,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 expr,
                 access_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -1266,7 +1271,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 expr,
                 a0_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -1275,7 +1280,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 expr,
                 a1_id,
                 top_level_id,
-                allocations_prefix,
+                uninitialized_allocations_prefix,
                 declarations,
                 code,
                 hw_map,
@@ -1311,7 +1316,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 );
                 declarations.push_str(
                     c_allocation_string(
-                        allocations_prefix,
+                        uninitialized_allocations_prefix,
                         out.as_str(),
                         concat_shape.as_slice(),
                         DType::Fp32,

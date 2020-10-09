@@ -270,7 +270,7 @@ fn main() {
             if !matches.is_present("allocate-for-manycore") {
                 ""
             } else {
-                r#"__attribute__ ((section (".dram"))) __attribute__ ((aligned (256)))"#
+                r#"__attribute__ ((section (".uninitialized"))) __attribute__ ((aligned (256)))"#
             },
             &found_vars.iter().map(AsRef::as_ref).collect(),
         );
