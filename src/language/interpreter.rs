@@ -200,10 +200,7 @@ where
             _ => panic!(),
         },
         &Language::Literal(id) => match interpret!(memo_map, &id) {
-            Value::Tensor(t) => Value::Access(Access {
-                tensor: t.clone().into_owned(),
-                access_axis: 0,
-            }),
+            Value::Tensor(t) => Value::Tensor(t.clone().into_owned()),
             _ => panic!(),
         },
         &Language::NotNanFloat64(v) => Value::Tensor(
@@ -296,7 +293,7 @@ where
             assert!(axis <= access.tensor.ndim());
 
             let mut access_axis = access.access_axis;
-            if axis <= access.access_axis {
+            if axis <= access_axis {
                 access_axis += 1;
             }
 
