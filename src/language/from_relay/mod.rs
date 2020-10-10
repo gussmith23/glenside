@@ -1161,8 +1161,11 @@ fn compile_expression(
     }
 }
 
+extern crate test;
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::language::interpreter::interpret;
     use crate::language::{Language, MyAnalysis};
     use approx::AbsDiffEq;
@@ -1173,6 +1176,8 @@ mod tests {
     use std::collections::HashMap;
     use std::io::Write;
     use std::process::Command;
+    use test::Bencher;
+    use std::path::PathBuf;
 
     /// Creates a Relay-to-Glenside test
     /// The test does the following:
@@ -1808,4 +1813,106 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 (compute softmax (access (compute softmax (access (access-tensor x) 0)) 0))
 "#
     );
+
+    #[bench]
+    fn mobilenet(b: &mut Bencher) {
+        let filename = PathBuf::from(format!(
+            "{}/models/mobilenet-simplified-for-inference.relay",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+        let relay = std::fs::read_to_string(&filename).unwrap();
+        let relay_str = relay.clone();
+
+        // The number of times to run each program and compare their
+        // outputs.
+        // TODO(@gussmith23) # random samples chosen arbitrarily
+        const SAMPLES: usize = 3;
+
+        // Random number generator for generating random tensors.
+        const SEED: u64 = 23;
+        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+
+        let module = tvm::ir::module::IRModule::parse("", relay);
+
+        let (expr, shapes_vec) = super::from_relay(&module);
+
+        b.iter(|| {
+            // Run interpreters and compare output.
+            let script_filepath = format!(
+                "{}/src/language/from_relay/run_relay.py",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
+            // Output filename
+            // TODO(@gussmith23) Do we want this RNG to use SEED?
+            // I initially attempted to do this, but was running into issues
+            // (I think the same filename kept being generated b/c I wasn't
+            // using the RNG carefully...but maybe there's also something
+            // wrong w/ how I'm reading files!)
+            let output_filepath = std::env::temp_dir().with_file_name(format!(
+                "output-{}.npy",
+                rand::thread_rng()
+                    .sample_iter(&rand::distributions::Alphanumeric)
+                    .take(30)
+                    .collect::<String>()
+            ));
+
+            let mut cmd = Command::new("python3");
+            cmd.arg(script_filepath);
+            cmd.arg(&output_filepath);
+            cmd.stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            let mut env = HashMap::default();
+            for (name, shape) in shapes_vec.iter() {
+                // TODO(@gussmith23) output type assumption
+                let value = ndarray::ArrayD::<f32>::random_using(
+                    shape.clone(),
+                    Uniform::new(-1f32, 1f32),
+                    &mut tensor_rng,
+                );
+                env.insert(name.as_str(), value.clone());
+                let filepath = std::env::temp_dir().with_file_name(format!(
+                    "arg-{}.npy",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                ));
+                write_npy(&filepath, &value).unwrap();
+                cmd.arg(filepath);
+            }
+
+            let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
+            proc.stdin
+                .as_mut()
+                .unwrap()
+                .write_all(relay_str.as_bytes())
+                .unwrap();
+            let output = proc.wait_with_output().unwrap();
+            // Check that it ran.
+            assert!(
+                output.status.success(),
+                "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+                output.status.code(),
+                std::str::from_utf8(output.stdout.as_slice())
+                    .expect("Could not convert stderr to UTF8"),
+                std::str::from_utf8(output.stderr.as_slice())
+                    .expect("Could not convert stderr to UTF8")
+            );
+
+            // TODO(@gussmith23) output type assumption
+            let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+            let interpreter_output = match interpret(&expr, expr.as_ref().len() - 1, &env) {
+                crate::language::interpreter::Value::Access(a) => a.tensor,
+                _ => panic!(),
+            };
+            assert!(
+                relay_output.abs_diff_eq(&interpreter_output, 1e-5),
+                "{:?}\nvs.\n{:?}",
+                relay_output,
+                interpreter_output
+            );
+        });
+    }
 }

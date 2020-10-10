@@ -80,7 +80,7 @@ where
         let val = interpret_impl(expr, i, env, &mut memo_map);
         memo_map.insert(egg::Id::from(i), val);
     }
-    
+
     interpret_impl(expr, index, env, &mut memo_map)
 }
 
@@ -163,11 +163,12 @@ where
 
             Value::Access(Access {
                 tensor: access
-                .tensor.clone()
-                .into_owned()
-                .slice(slice_info.as_ref())
-                .into_owned(),
-                access_axis: access.access_axis
+                    .tensor
+                    .clone()
+                    .into_owned()
+                    .slice(slice_info.as_ref())
+                    .into_owned(),
+                access_axis: access.access_axis,
             })
         }
         &Language::AccessConcatenate([a_id, b_id, axis_id]) => {
@@ -229,7 +230,7 @@ where
 
             Value::Access(Access {
                 tensor: access.tensor.clone().into_shape(shape).unwrap().into_dyn(),
-                access_axis: access.access_axis
+                access_axis: access.access_axis,
             })
         }
         &Language::AccessTranspose([access_id, list_id]) => {
@@ -244,7 +245,7 @@ where
 
             Value::Access(Access {
                 tensor: access.tensor.to_owned().permuted_axes(list.to_owned()),
-                access_axis: access.access_axis
+                access_axis: access.access_axis,
             })
         }
         Language::List(list) => Value::List(
@@ -273,8 +274,13 @@ where
             }
 
             Value::Access(Access {
-                tensor: access.tensor.to_owned().broadcast(shape.to_owned()).unwrap().to_owned(),
-                access_axis: access.access_axis
+                tensor: access
+                    .tensor
+                    .to_owned()
+                    .broadcast(shape.to_owned())
+                    .unwrap()
+                    .to_owned(),
+                access_axis: access.access_axis,
             })
         }
         &Language::AccessInsertAxis([access_id, axis_id]) => {
@@ -296,14 +302,11 @@ where
 
             Value::Access(Access {
                 tensor: access.tensor.clone().insert_axis(ndarray::Axis(axis)),
-                access_axis: access_axis
+                access_axis: access_axis,
             })
         }
         &Language::AccessPair([a0_id, a1_id]) => {
-            let (a0, a1) = match (
-                interpret!(memo_map, &a0_id),
-                interpret!(memo_map, &a1_id),
-            ) {
+            let (a0, a1) = match (interpret!(memo_map, &a0_id), interpret!(memo_map, &a1_id)) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
                 _ => panic!("Expected both arguments to access-pair to be accesses"),
             };
@@ -321,8 +324,14 @@ where
             let tensor = ndarray::stack(
                 ndarray::Axis(access_axis),
                 &[
-                    a0.tensor.clone().insert_axis(ndarray::Axis(access_axis)).view(),
-                    a1.tensor.clone().insert_axis(ndarray::Axis(access_axis)).view(),
+                    a0.tensor
+                        .clone()
+                        .insert_axis(ndarray::Axis(access_axis))
+                        .view(),
+                    a1.tensor
+                        .clone()
+                        .insert_axis(ndarray::Axis(access_axis))
+                        .view(),
                 ],
             )
             .unwrap();
@@ -354,8 +363,11 @@ where
             }
 
             Value::Access(Access {
-                tensor: access.tensor.clone().index_axis_move(ndarray::Axis(axis), 0),
-                access_axis: access_axis
+                tensor: access
+                    .tensor
+                    .clone()
+                    .index_axis_move(ndarray::Axis(axis), 0),
+                access_axis: access_axis,
             })
         }
         Language::PadType(t) => Value::PadType(*t),
@@ -668,10 +680,7 @@ where
             }
         }
         &Language::AccessCartesianProduct([a0_id, a1_id]) => {
-            let (a0, a1) = match (
-                interpret!(memo_map, &a0_id),
-                interpret!(memo_map, &a1_id),
-            ) {
+            let (a0, a1) = match (interpret!(memo_map, &a0_id), interpret!(memo_map, &a1_id)) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
                 _ => panic!(),
             };
@@ -879,22 +888,22 @@ where
         &Language::SliceShape([shape_id, slice_axis_id]) => {
             let s = match interpret!(memo_map, &shape_id) {
                 Value::Shape(s) => s,
-                _ => panic!()
+                _ => panic!(),
             };
             let u = match interpret!(memo_map, &slice_axis_id) {
                 Value::Usize(u) => *u,
-                _ => panic!()
+                _ => panic!(),
             };
             Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
         }
         &Language::ShapeInsertAxis([shape_id, axis_id]) => {
             let s = match interpret!(memo_map, &shape_id) {
                 Value::Shape(s) => s,
-                _ => panic!()
+                _ => panic!(),
             };
             let u = match interpret!(memo_map, &axis_id) {
                 Value::Usize(u) => *u,
-                _ => panic!()
+                _ => panic!(),
             };
             assert!(u <= s.ndim());
             Value::Shape(IxDyn(
@@ -910,11 +919,11 @@ where
         &Language::ShapeRemoveAxis([shape_id, axis_id]) => {
             let s = match interpret!(memo_map, &shape_id) {
                 Value::Shape(s) => s,
-                _ => panic!()
+                _ => panic!(),
             };
             let u = match interpret!(memo_map, &axis_id) {
                 Value::Usize(u) => *u,
-                _ => panic!()
+                _ => panic!(),
             };
             assert!(u < s.ndim(), "Invalid axis in shape-remove-axis");
             Value::Shape(IxDyn(
