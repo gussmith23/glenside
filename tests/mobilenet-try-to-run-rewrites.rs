@@ -13,6 +13,8 @@ use glenside::language::rewrites::PadSliceStrategy;
 use glenside::language::rewrites::SliceConcatenateStrategy;
 use glenside::language::MyAnalysis;
 use glenside::language::PadType;
+use lp_modeler::dsl::LpBinary;
+use lp_modeler::dsl::LpExpression;
 use lp_modeler::dsl::LpObjective;
 use lp_modeler::solvers::GurobiSolver;
 use lp_modeler::solvers::SolverTrait;
@@ -112,15 +114,29 @@ fn mobilenet_try_to_run_rewrites() {
 
     runner.print_report();
 
-    let model =
+    println!("hi");
+    let mut model =
         create_generic_egraph_lp_model(&runner.egraph, &[id], "mobilenet", LpObjective::Minimize);
+    println!("hi");
+
+    // TODO(@gussmith23) Figure out a better way to create optimization func
+    // TODO(@gussmith23) This is written this way b/c of the stack overflowing
+    let mut expr: LpExpression = LpExpression::EmptyExpr;
+    for (_, name) in &model.bq_names {
+        expr = expr + LpBinary::new(&name);
+    }
+    println!("after loop");
+    model.problem += expr;
+    println!("hi");
     let solver = GurobiSolver::new();
     let result = solver.run(&model.problem);
 
+    println!("hi");
     let var_values = match result.unwrap() {
         (lp_modeler::solvers::Status::Optimal, var_values) => var_values,
         _ => panic!(),
     };
+    println!("{:#?}", var_values);
 
     let out_expr = into_recexpr(&model, &var_values, &[id]);
     println!("{}", out_expr.pretty(80));
