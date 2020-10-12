@@ -1175,9 +1175,9 @@ mod tests {
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::collections::HashMap;
     use std::io::Write;
+    use std::path::PathBuf;
     use std::process::Command;
     use test::Bencher;
-    use std::path::PathBuf;
 
     /// Creates a Relay-to-Glenside test
     /// The test does the following:
@@ -1902,11 +1902,15 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
             );
 
             // TODO(@gussmith23) output type assumption
-            let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
-            let interpreter_output = match interpret(&expr, expr.as_ref().len() - 1, &env) {
+            let mut relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+            let mut interpreter_output = match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 crate::language::interpreter::Value::Access(a) => a.tensor,
                 _ => panic!(),
             };
+
+            relay_output.mapv_inplace(|x| if x.is_nan() { 0.0 } else { x });
+            interpreter_output.mapv_inplace(|x| if x.is_nan() { 0.0 } else { x });
+
             assert!(
                 relay_output.abs_diff_eq(&interpreter_output, 1e-5),
                 "{:?}\nvs.\n{:?}",
