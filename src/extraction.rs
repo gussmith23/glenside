@@ -122,6 +122,8 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::MapDotProduct(_)
             | Language::Slice(_)
             | Language::Concatenate(_) => panic!(),
+
+            Language::BatchNormInference(_) => todo!()
         };
 
         enode.fold(base_cost, |sum, id| sum + costs(id))
@@ -154,6 +156,8 @@ impl CostFunction<Language> for SimpleCostFunction {
     {
         use crate::language::Language::*;
         let base_cost = match enode {
+            BatchNormInference(_) => todo!(),
+
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,
             // Extracting hardware atoms is encouraged

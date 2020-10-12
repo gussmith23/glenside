@@ -81,6 +81,17 @@ define_language! {
         // smaller systolic array.
         "systolic-array-with-blocking" = SystolicArrayWithBlocking([Id; 4]),
 
+
+        // (batch-norm-inference <data: access>
+        //  <gamma: access> <beta: access>
+        //  <moving_mean: access> <moving_var: access>
+        //  <axis: usize> <epsilon: float>)
+        // The batch-norm-at-inference-time operator. We don't currently support
+        // normal batch norm, which is a training-time operator, but we do
+        // support its inference-time simplified version.
+        // TODO(@gussmith23) How to handle batch norms?
+        "batch-norm-inference" = BatchNormInference([Id; 7]),
+
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
@@ -945,6 +956,28 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &BatchNormInference(params) => {
+                let mut access = match params
+                    .iter()
+                    .map(|id| &egraph[*id].data)
+                    .collect::<Vec<_>>()[..]
+                {
+                    [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_), MyAnalysisData::Literal(_)] => {
+                        a.clone()
+                    }
+                    _ => panic!("Parameters do not type check"),
+                };
+
+                if !access.zero_regions.is_empty() {
+                    warn!(
+                        "Throwing away zero region analysis data on line {}",
+                        std::line!()
+                    );
+                }
+                access.zero_regions = HashMap::default();
+
+                MyAnalysisData::AccessPattern(access)
+            }
             &AccessLiteral(id) => match &egraph[id].data {
                 MyAnalysisData::Literal(t) => MyAnalysisData::AccessPattern(AccessPatternData {
                     zero_regions: {
@@ -3902,5 +3935,70 @@ mod tests {
         let mut egraph =
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let _id = egraph.add_expr(&program);
+    }
+
+    #[test]
+    fn batch_norm_inference() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        // Just showing that, right now, these shapes don't matter at all.
+        map.insert("b".to_string(), vec![32]);
+        map.insert("c".to_string(), vec![10, 20]);
+        map.insert("d".to_string(), vec![3, 3, 3, 3, 3, 3]);
+        map.insert("e".to_string(), vec![]);
+        let program = "
+         (batch-norm-inference
+          (access-tensor a)
+          (access-tensor b)
+          (access-tensor c)
+          (access-tensor d)
+          (access-tensor e)
+          1 1e-5)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameters do not type check")]
+    fn batch_norm_inference_panic() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        // Just showing that, right now, these shapes don't matter at all.
+        map.insert("b".to_string(), vec![32]);
+        map.insert("c".to_string(), vec![10, 20]);
+        map.insert("d".to_string(), vec![3, 3, 3, 3, 3, 3]);
+        map.insert("e".to_string(), vec![]);
+        let program = "
+         (batch-norm-inference
+          (access-tensor a)
+          (access-tensor b)
+          (access-tensor c)
+          (access-tensor d)
+          (access-tensor e)
+          1e-5 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
     }
 }

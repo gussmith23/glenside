@@ -489,7 +489,16 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
 ///
 /// Returns the RecExpr, along with a Vec mapping symbols to their shapes.
 /// Note that the shapes are a Vec rather than a HashMap to preserve ordering.
-pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>) {
+///
+/// If `simplify_batch_norm_for_inference_hack` is enabled, any batch norm found
+/// in the Relay program will be converted to a BatchNormInference node in
+/// Glenside. Otherwise, the function will panic.
+///
+/// TODO(@gussmith23) Get rid of this hack eventually
+pub fn from_relay(
+    module: &IRModule,
+    simplify_batch_norm_for_inference_hack: bool,
+) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>) {
     let main = module
         .lookup(module.get_global_var("main".to_string().into()).unwrap())
         .unwrap();
@@ -507,11 +516,16 @@ pub fn from_relay(module: &IRModule) -> (RecExpr<Language>, Vec<(String, Vec<usi
     for expr in worklist {
         map.insert(
             expr.clone(),
-            compile_expression(expr.clone(), &mut glenside_expr, |expr| {
-                *map.get(&expr).unwrap_or_else(|| {
-                    panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
-                })
-            }),
+            compile_expression(
+                expr.clone(),
+                &mut glenside_expr,
+                |expr| {
+                    *map.get(&expr).unwrap_or_else(|| {
+                        panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
+                    })
+                },
+                simplify_batch_norm_for_inference_hack,
+            ),
         );
     }
 
@@ -554,11 +568,15 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
 /// memoization map. `get_compiled_expression`'s signature may need to be
 /// modified to actually support the naive recursive case.
 ///
+/// If `simplify_batch_norm_for_inference_hack` is enabled, any batch norm found
+/// in the Relay program will be converted to a BatchNormInference node in
+/// Glenside. Otherwise, the function will panic.
 fn compile_expression(
     relay_expr: Expr,
     glenside_expr: &mut RecExpr<Language>,
     // TODO(@gussmith23) Do we need to pass the recexpr into this closure?
     get_compiled_expression: impl Fn(Expr) -> Id,
+    simplify_batch_norm_for_inference_hack: bool,
 ) -> Id {
     if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
         let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
@@ -614,6 +632,10 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.batch_norm" => {
+                    assert!(simplify_batch_norm_for_inference_hack);
+                    todo!()
+                }
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
@@ -1221,7 +1243,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str);
 
-                let (expr, shapes_vec) = super::from_relay(&module);
+                let (expr, shapes_vec) = super::from_relay(&module, false);
 
                 let mut env = HashMap::default();
                 for (k, v) in &shapes_vec {
