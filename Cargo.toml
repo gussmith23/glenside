@@ -28,12 +28,11 @@ ordered-float = "2.0.0"
 
 
 [dependencies.tvm]
-# TODO(@gussmith23) Change this to tvm mainline
-# once https://github.com/apache/incubator-tvm/pull/6563 is merged
+# TODO(@gussmith23) Change this to tvm mainline once BatchNormAttrs merged in
 # NOTE Keep glenside-evaluation in sync with this
 # If the versions get out of whack, we'll probably have some weird errors.
-rev = "3b6edf9ec0b6b3ab6a91174e7e2aa321cd8ec9b2"
-git = "https://github.com/mwillsey/incubator-tvm"
+rev = "14a786d3885304e5964df397a50edd19a759f903"
+git = "https://github.com/gussmith23/incubator-tvm"
 optional = true
 
 [dependencies.egg]
