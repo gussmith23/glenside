@@ -27,10 +27,10 @@ ENV LLVM_CONFIG_PATH=/usr/lib/llvm-10/bin/llvm-config
 # Build TVM with Rust bindings
 # TODO(@gussmith23) Switch this to TVM mainline
 # once https://github.com/apache/incubator-tvm/pull/6563 is merged
-RUN cd /root && git clone https://github.com/mwillsey/incubator-tvm tvm --recursive
+RUN cd /root && git clone https://github.com/gussmith23/tvm tvm --recursive
 WORKDIR /root/tvm
 RUN git fetch
-RUN git checkout 3b6edf9ec0b6b3ab6a91174e7e2aa321cd8ec9b2
+RUN git checkout 14a786d3885304e5964df397a50edd19a759f903
 RUN git submodule sync && git submodule update
 RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
