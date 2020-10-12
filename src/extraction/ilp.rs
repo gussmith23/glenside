@@ -213,9 +213,9 @@ pub fn into_recexpr(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
     use lp_modeler::solvers::GurobiSolver;
     use lp_modeler::solvers::SolverTrait;
-    use std::str::FromStr;
 
     #[test]
     fn extract_trivial() {
@@ -226,8 +226,7 @@ mod tests {
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let model =
-            create_generic_egraph_lp_model(&egraph, &[id], "trivial", LpObjective::Minimize);
+        let model = create_generic_egraph_lp_model(&egraph, &[id], "trivial", LpObjective::Minimize);
         let solver = GurobiSolver::new();
         let result = solver.run(&model.problem);
 
