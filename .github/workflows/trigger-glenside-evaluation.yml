@@ -2,7 +2,7 @@ name: Trigger Glenside Evaluation
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   trigger-glenside-evaluation:
@@ -13,4 +13,4 @@ jobs:
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           repository: gussmith23/glenside-evaluation
-          event-type: push-to-glenside-master
+          event-type: push-to-glenside-main

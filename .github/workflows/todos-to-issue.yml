@@ -3,10 +3,10 @@
 name: TODOs to GitHub Issue
 
 # Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
+# events but only for the main branch
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -24,7 +24,7 @@ jobs:
     - name: Find and format TODOs
       id: generate-todos
       run: |
-        find . -name '*.rs' | xargs grep -n TODO | sed 's/^\(.*\):\([0-9]*\):.*TODO\((\([^)]*\))\)\{0,1\} *\(.*\)$/- (\4) \5 [🔗](https:\/\/github.com\/gussmith23\/glenside\/blob\/master\/\1#L\2)/' > todos.txt
+        find . -name '*.rs' | xargs grep -n TODO | sed 's/^\(.*\):\([0-9]*\):.*TODO\((\([^)]*\))\)\{0,1\} *\(.*\)$/- (\4) \5 [🔗](https:\/\/github.com\/gussmith23\/glenside\/blob\/main\/\1#L\2)/' > todos.txt
         result=$(cat todos.txt)
         result="${result//'%'/'%25'}"
         result="${result//$'\n'/'%0A'}"
