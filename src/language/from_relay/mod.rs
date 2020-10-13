@@ -1817,7 +1817,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
     #[bench]
     fn mobilenet(b: &mut Bencher) {
         let filename = PathBuf::from(format!(
-            "{}/models/mobilenet-simplified-for-inference.relay",
+            "{}/models/mobilenet-shallow.relay",
             env!("CARGO_MANIFEST_DIR")
         ));
         let relay = std::fs::read_to_string(&filename).unwrap();
@@ -1864,13 +1864,23 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
             let mut env = HashMap::default();
+            let mut index = 0;
             for (name, shape) in shapes_vec.iter() {
                 // TODO(@gussmith23) output type assumption
-                let value = ndarray::ArrayD::<f32>::random_using(
-                    shape.clone(),
-                    Uniform::new(-1f32, 1f32),
-                    &mut tensor_rng,
-                );
+                let value = if index < 1 {
+                    index += 1;
+                    ndarray::ArrayD::<f32>::random_using(
+                        shape.clone(),
+                        Uniform::new(0f32, 255f32),
+                        &mut tensor_rng,
+                    )
+                } else {
+                    ndarray::ArrayD::<f32>::random_using(
+                        shape.clone(),
+                        Uniform::new(-1f32, 1f32),
+                        &mut tensor_rng,
+                    )
+                };
                 env.insert(name.as_str(), value.clone());
                 let filepath = std::env::temp_dir().with_file_name(format!(
                     "arg-{}.npy",
@@ -1908,9 +1918,10 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
                 _ => panic!(),
             };
 
-            relay_output.mapv_inplace(|x| if x.is_nan() { 0.0 } else { x });
-            interpreter_output.mapv_inplace(|x| if x.is_nan() { 0.0 } else { x });
-
+            // TODO: this was a hack because NAN != NAN
+            // relay_output.mapv_inplace(|x| if x.is_nan() { 0.0 } else { x });
+            // interpreter_output.mapv_inplace(|x| if x.is_nan() { 0.0 } else { x });
+            print!("{:?}\nvs.\n{:?}", relay_output, interpreter_output);
             assert!(
                 relay_output.abs_diff_eq(&interpreter_output, 1e-5),
                 "{:?}\nvs.\n{:?}",
