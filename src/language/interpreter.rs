@@ -63,6 +63,7 @@ where
         + std::ops::Mul<Output = DataType>
         + std::ops::Div<Output = DataType>
         + std::ops::Neg<Output = DataType>
+        + std::ops::Sub<Output = DataType>
         + std::iter::Sum
         + num_traits::identities::One
         + num_traits::identities::Zero
@@ -101,6 +102,7 @@ where
         + std::ops::Mul<Output = DataType>
         + std::ops::Div<Output = DataType>
         + std::ops::Neg<Output = DataType>
+        + std::ops::Sub<Output = DataType>
         + std::iter::Sum
         + num_traits::identities::One
         + num_traits::identities::Zero
@@ -472,7 +474,15 @@ where
                     );
 
                     let shape = access.tensor.shape();
-                    let mut exps = ndarray::Zip::from(&access.tensor).apply_collect(|v| v.exp());
+                    // shift by max value to prevent integer overflow
+                    let max = access
+                        .tensor
+                        .iter()
+                        .max_by(|x, y| x.partial_cmp(y).unwrap())
+                        .unwrap()
+                        .clone();
+                    let mut exps =
+                        ndarray::Zip::from(&access.tensor).apply_collect(|v| (*v - max).exp());
                     let denominators = exps
                         .sum_axis(ndarray::Axis(access.tensor.ndim() - 1))
                         .insert_axis(ndarray::Axis(access.tensor.ndim() - 1));
