@@ -1917,7 +1917,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
             // use black box to prevent compiler optimizations
             let expr = test::black_box(&expr);
             let env = test::black_box(&env);
-            
+
             let mut interpreter_output = match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 crate::language::interpreter::Value::Access(a) => a.tensor,
                 _ => panic!(),
