@@ -1836,83 +1836,88 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 
         let (expr, shapes_vec) = super::from_relay(&module);
 
-        b.iter(|| {
-            // Run interpreters and compare output.
-            let script_filepath = format!(
-                "{}/src/language/from_relay/run_relay.py",
-                env!("CARGO_MANIFEST_DIR")
-            );
-            // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
-            // Output filename
-            // TODO(@gussmith23) Do we want this RNG to use SEED?
-            // I initially attempted to do this, but was running into issues
-            // (I think the same filename kept being generated b/c I wasn't
-            // using the RNG carefully...but maybe there's also something
-            // wrong w/ how I'm reading files!)
-            let output_filepath = std::env::temp_dir().with_file_name(format!(
-                "output-{}.npy",
+        // Run interpreters and compare output.
+        let script_filepath = format!(
+            "{}/src/language/from_relay/run_relay.py",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
+        // Output filename
+        // TODO(@gussmith23) Do we want this RNG to use SEED?
+        // I initially attempted to do this, but was running into issues
+        // (I think the same filename kept being generated b/c I wasn't
+        // using the RNG carefully...but maybe there's also something
+        // wrong w/ how I'm reading files!)
+        let output_filepath = std::env::temp_dir().with_file_name(format!(
+            "output-{}.npy",
+            rand::thread_rng()
+                .sample_iter(&rand::distributions::Alphanumeric)
+                .take(30)
+                .collect::<String>()
+        ));
+
+        let mut cmd = Command::new("python3");
+        cmd.arg(script_filepath);
+        cmd.arg(&output_filepath);
+        cmd.stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut env = HashMap::default();
+        let mut index = 0;
+        for (name, shape) in shapes_vec.iter() {
+            // TODO(@gussmith23) output type assumption
+            let value = if index < 1 {
+                index += 1;
+                ndarray::ArrayD::<f32>::random_using(
+                    shape.clone(),
+                    Uniform::new(0f32, 255f32),
+                    &mut tensor_rng,
+                )
+            } else {
+                ndarray::ArrayD::<f32>::random_using(
+                    shape.clone(),
+                    Uniform::new(-1f32, 1f32),
+                    &mut tensor_rng,
+                )
+            };
+            env.insert(name.as_str(), value.clone());
+            let filepath = std::env::temp_dir().with_file_name(format!(
+                "arg-{}.npy",
                 rand::thread_rng()
                     .sample_iter(&rand::distributions::Alphanumeric)
                     .take(30)
                     .collect::<String>()
             ));
+            write_npy(&filepath, &value).unwrap();
+            cmd.arg(filepath);
+        }
 
-            let mut cmd = Command::new("python3");
-            cmd.arg(script_filepath);
-            cmd.arg(&output_filepath);
-            cmd.stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped());
-            let mut env = HashMap::default();
-            let mut index = 0;
-            for (name, shape) in shapes_vec.iter() {
-                // TODO(@gussmith23) output type assumption
-                let value = if index < 1 {
-                    index += 1;
-                    ndarray::ArrayD::<f32>::random_using(
-                        shape.clone(),
-                        Uniform::new(0f32, 255f32),
-                        &mut tensor_rng,
-                    )
-                } else {
-                    ndarray::ArrayD::<f32>::random_using(
-                        shape.clone(),
-                        Uniform::new(-1f32, 1f32),
-                        &mut tensor_rng,
-                    )
-                };
-                env.insert(name.as_str(), value.clone());
-                let filepath = std::env::temp_dir().with_file_name(format!(
-                    "arg-{}.npy",
-                    rand::thread_rng()
-                        .sample_iter(&rand::distributions::Alphanumeric)
-                        .take(30)
-                        .collect::<String>()
-                ));
-                write_npy(&filepath, &value).unwrap();
-                cmd.arg(filepath);
-            }
+        let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
+        proc.stdin
+            .as_mut()
+            .unwrap()
+            .write_all(relay_str.as_bytes())
+            .unwrap();
+        let output = proc.wait_with_output().unwrap();
+        // Check that it ran.
+        assert!(
+            output.status.success(),
+            "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+            output.status.code(),
+            std::str::from_utf8(output.stdout.as_slice())
+                .expect("Could not convert stderr to UTF8"),
+            std::str::from_utf8(output.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
 
-            let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
-            proc.stdin
-                .as_mut()
-                .unwrap()
-                .write_all(relay_str.as_bytes())
-                .unwrap();
-            let output = proc.wait_with_output().unwrap();
-            // Check that it ran.
-            assert!(
-                output.status.success(),
-                "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
-                output.status.code(),
-                std::str::from_utf8(output.stdout.as_slice())
-                    .expect("Could not convert stderr to UTF8"),
-                std::str::from_utf8(output.stderr.as_slice())
-                    .expect("Could not convert stderr to UTF8")
-            );
+        // TODO(@gussmith23) output type assumption
+        let mut relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
 
-            // TODO(@gussmith23) output type assumption
-            let mut relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+        b.iter(|| {
+            // use black box to prevent compiler optimizations
+            let expr = test::black_box(&expr);
+            let env = test::black_box(&env);
+            
             let mut interpreter_output = match interpret(&expr, expr.as_ref().len() - 1, &env) {
                 crate::language::interpreter::Value::Access(a) => a.tensor,
                 _ => panic!(),
