@@ -17,30 +17,21 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 
-use bimap::BiMap;
-use egg::RecExpr;
-use egg::{Id, Language as LangugeTrait};
-use lp_modeler::dsl::LpBinary;
-use lp_modeler::dsl::LpObjective;
-use lp_modeler::dsl::LpOperations;
-use lp_modeler::dsl::LpProblem;
+use egg::{Id, Language as LangugeTrait, RecExpr};
+use rplex::{var, Constraint, ConstraintType, Env, Problem, VariableValue, WeightedVariable};
 
-use crate::language::Language;
-use crate::language::MyAnalysis;
+use crate::language::{Language, MyAnalysis};
 
 type EGraph = egg::EGraph<Language, MyAnalysis>;
 
 /// Thin wrapper over [`lp_modeler::LpProblem`].
 pub struct EGraphLpProblem<'a> {
     pub egraph: &'a EGraph,
-    pub problem: LpProblem,
-    /// [`BiMap`] from eclass ids to variable names.
-    pub bq_names: BiMap<Id, String>,
-    /// [`BiMap`] from enodes to variable names.
-    pub bn_names: BiMap<&'a Language, String>,
+    pub problem: Problem<'a>,
+    pub bq_vars: HashMap<Id, usize>,
+    pub bn_vars: HashMap<&'a Language, usize>,
 }
 
 /// From an egraph, create an LP model with a few useful base constraints
@@ -50,63 +41,89 @@ pub struct EGraphLpProblem<'a> {
 /// Code taken from Remy Wang's [`warp`
 /// repository](https://github.com/wormhole-optimization/warp/blob/d7db4a89ec47803bc2e7729946ca3810b6fb1d03/src/extract.rs).
 pub fn create_generic_egraph_lp_model<'a>(
+    env: &'a Env,
     egraph: &'a EGraph,
     roots: &[Id],
     name: &'static str,
-    objective: LpObjective,
 ) -> EGraphLpProblem<'a> {
-    let mut problem = LpProblem::new(name, objective);
+    let mut problem = Problem::new(&env, name).unwrap();
 
     // Variables representing each class
-    let mut bq_names = BiMap::default();
+    let mut bq_vars = HashMap::default();
     // Variables representing each enode
-    let mut bn_names = BiMap::default();
+    let mut bn_vars = HashMap::default();
 
     for eclass in egraph.classes() {
-        bq_names
-            .insert_no_overwrite(eclass.id, format!("bq_{}", eclass.id))
-            .unwrap();
+        let bq_name = format!("bq_{}", eclass.id);
+        let bq_var = var!(bq_name -> 1.0 as Binary);
+        let column_index = problem.add_variable(bq_var).unwrap();
+        assert!(!bq_vars.contains_key(&eclass.id));
+        bq_vars.insert(eclass.id, column_index);
 
         for enode in eclass.nodes.iter() {
             let mut s = DefaultHasher::new();
             enode.hash(&mut s);
             let bn_name = "bn_".to_owned() + &s.finish().to_string();
-            bn_names.insert_no_overwrite(enode, bn_name).unwrap();
+            let bn_var = var!(bn_name -> 1.0 as Binary);
+            let column_index = problem.add_variable(bn_var).unwrap();
+            assert!(!bn_vars.contains_key(&enode));
+            bn_vars.insert(enode, column_index);
         }
     }
 
     // All roots must be chosen.
     for id in roots {
-        let root_var = LpBinary::new(bq_names.get_by_left(id).unwrap().as_str());
-        problem += (0 + &root_var).equal(1);
+        let column_index = bq_vars.get(id).unwrap();
+        let mut con = Constraint::new(ConstraintType::Eq, 1.0, format!("root constraint {}", id));
+        con.add_wvar(WeightedVariable::new_idx(*column_index, 1.0));
+        problem.add_constraint(con).unwrap();
     }
 
     for eclass in egraph.classes() {
-        let bq = LpBinary::new(bq_names.get_by_left(&eclass.id).unwrap());
+        let bq_column_index = bq_vars.get(&eclass.id).unwrap();
 
         if eclass.nodes.is_empty() {
             // Can't extract if this eclass has no variants to be extracted.
-            problem += (0 + bq).equal(0);
+            let mut con = Constraint::new(
+                ConstraintType::Eq,
+                0.0,
+                format!("can't extract {}", eclass.id),
+            );
+            con.add_wvar(WeightedVariable::new_idx(*bq_column_index, 1.0));
+            problem.add_constraint(con).unwrap();
         } else {
             // bq => OR bn
             // That is, if an eclass is selected, at least one of its variants
             // is selected.
-            let mut expr = 1 - bq;
-            for bn in eclass
-                .nodes
-                .iter()
-                .map(|node| LpBinary::new(bn_names.get_by_left(&node).unwrap()))
-            {
-                expr = expr + bn;
+            // implemented as:
+            // -bq + bn ... >= 0
+            let mut con = Constraint::new(
+                ConstraintType::GreaterThanEq,
+                0.0,
+                format!("must select enode for {}", eclass.id),
+            );
+            con.add_wvar(WeightedVariable::new_idx(*bq_column_index, -1.0));
+            for bn in eclass.nodes.iter().map(|node| bn_vars.get(&node).unwrap()) {
+                con.add_wvar(WeightedVariable::new_idx(*bn, 1.0));
             }
-            problem += expr.ge(1);
+            problem.add_constraint(con).unwrap();
         }
 
+        // If an enode is selected, then its child eclasses must be selected.
+        // Implemented as
+        // -bn + bq >= 0 for each bq
         for node in eclass.nodes.iter() {
-            let bn = LpBinary::new(bn_names.get_by_left(&node).unwrap());
+            let bn = bn_vars.get(&node).unwrap();
             for eclass in node.children().iter() {
-                let bq = LpBinary::new(bq_names.get_by_left(eclass).unwrap());
-                problem += (1 - &bn + bq).ge(1);
+                let bq = bq_vars.get(eclass).unwrap();
+                let mut con = Constraint::new(
+                    ConstraintType::GreaterThanEq,
+                    0.0,
+                    format!("must select eclass {} if parent enode selected", eclass),
+                );
+                con.add_wvar(WeightedVariable::new_idx(*bn, -1.0));
+                con.add_wvar(WeightedVariable::new_idx(*bq, 1.0));
+                problem.add_constraint(con).unwrap();
             }
         }
     }
@@ -114,21 +131,21 @@ pub fn create_generic_egraph_lp_model<'a>(
     EGraphLpProblem {
         egraph,
         problem,
-        bq_names,
-        bn_names,
+        bq_vars,
+        bn_vars,
     }
 }
 
 pub fn into_recexpr(
     egraph_lp_problem: &EGraphLpProblem,
-    results: &HashMap<String, f32>,
+    results: &Vec<VariableValue>,
     roots: &[Id],
 ) -> RecExpr<Language> {
     /// Adds an eclass to the worklist, making sure the eclass's children go on
     /// the worklist first.
     fn make_worklist(
         egraph_lp_problem: &EGraphLpProblem,
-        results: &HashMap<String, f32>,
+        results: &Vec<VariableValue>,
         id: Id,
         worklist: &mut Vec<Id>,
     ) {
@@ -140,22 +157,23 @@ pub fn into_recexpr(
 
         // This id should be selected.
         assert_eq!(
-            *results
-                .get(egraph_lp_problem.bq_names.get_by_left(&id).unwrap())
-                .unwrap(),
-            1.0
+            match results[*egraph_lp_problem.bq_vars.get(&id).unwrap()] {
+                VariableValue::Binary(b) => b,
+                _ => panic!(),
+            },
+            true
         );
 
         // Find a variant of this eclass that's selected.
         let selected_variant = egraph_lp_problem.egraph[id]
             .nodes
             .iter()
-            .find(|node| {
-                *results
-                    .get(egraph_lp_problem.bn_names.get_by_left(node).unwrap())
-                    .unwrap()
-                    == 1.0
-            })
+            .find(
+                |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
+                    VariableValue::Binary(b) => b == true,
+                    _ => panic!(),
+                },
+            )
             .unwrap();
 
         // Build the worklist for the children
@@ -179,10 +197,11 @@ pub fn into_recexpr(
     for id in worklist {
         // This id should be selected.
         assert_eq!(
-            *results
-                .get(egraph_lp_problem.bq_names.get_by_left(&id).unwrap())
-                .unwrap(),
-            1.0
+            match results[*egraph_lp_problem.bq_vars.get(&id).unwrap()] {
+                VariableValue::Binary(b) => b,
+                _ => panic!(),
+            },
+            true
         );
 
         // Find a variant of this eclass that's selected.
@@ -191,12 +210,12 @@ pub fn into_recexpr(
         let selected_variant = egraph_lp_problem.egraph[id]
             .nodes
             .iter()
-            .find(|node| {
-                *results
-                    .get(egraph_lp_problem.bn_names.get_by_left(node).unwrap())
-                    .unwrap()
-                    == 1.0
-            })
+            .find(
+                |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
+                    VariableValue::Binary(b) => b == true,
+                    _ => panic!(),
+                },
+            )
             .unwrap();
 
         let converted_node = selected_variant
@@ -214,8 +233,6 @@ pub fn into_recexpr(
 mod tests {
     use super::*;
     use std::str::FromStr;
-    use lp_modeler::solvers::GurobiSolver;
-    use lp_modeler::solvers::SolverTrait;
 
     #[test]
     fn extract_trivial() {
@@ -226,16 +243,12 @@ mod tests {
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let model = create_generic_egraph_lp_model(&egraph, &[id], "trivial", LpObjective::Minimize);
-        let solver = GurobiSolver::new();
-        let result = solver.run(&model.problem);
+        let env = Env::new().unwrap();
+        let mut model =
+            create_generic_egraph_lp_model(&env, &egraph, &[id], "trivial");
+        let result = model.problem.solve().unwrap();
 
-        let var_values = match result.unwrap() {
-            (lp_modeler::solvers::Status::Optimal, var_values) => var_values,
-            _ => panic!(),
-        };
-
-        let out_expr = into_recexpr(&model, &var_values, &[id]);
+        let out_expr = into_recexpr(&model, &result.variables, &[id]);
 
         assert_eq!(expr, out_expr);
     }

@@ -1,23 +1,18 @@
 #![cfg(feature = "tvm")]
 
 use egg::EGraph;
-use egg::Extractor;
 use egg::Pattern;
 use egg::Runner;
 use egg::Searcher;
 use glenside::extraction::ilp::create_generic_egraph_lp_model;
 use glenside::extraction::ilp::into_recexpr;
-use glenside::extraction::MonolithicCostFunction;
-use glenside::language::rewrites::PadLocation;
 use glenside::language::rewrites::PadSliceStrategy;
+use glenside::language::rewrites::PadLocation;
 use glenside::language::rewrites::SliceConcatenateStrategy;
 use glenside::language::MyAnalysis;
 use glenside::language::PadType;
-use lp_modeler::dsl::LpBinary;
-use lp_modeler::dsl::LpExpression;
-use lp_modeler::dsl::LpObjective;
-use lp_modeler::solvers::GurobiSolver;
-use lp_modeler::solvers::SolverTrait;
+use rplex::Env;
+use rplex::ObjectiveType;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -35,7 +30,6 @@ use std::path::PathBuf;
 //
 // TODO(@gussmith23) Shouldn't always panic.
 // Panics at the moment because we can't actually handle the size of mobilenet.
-#[should_panic]
 #[test]
 fn mobilenet_try_to_run_rewrites() {
     let filename = PathBuf::from(format!(
@@ -114,42 +108,25 @@ fn mobilenet_try_to_run_rewrites() {
 
     runner.print_report();
 
+    let env = Env::new().unwrap();
     println!("hi");
-    let mut model =
-        create_generic_egraph_lp_model(&runner.egraph, &[id], "mobilenet", LpObjective::Minimize);
+    let mut model = create_generic_egraph_lp_model(&env, &runner.egraph, &[id], "mobilenet");
     println!("hi");
 
     // TODO(@gussmith23) Figure out a better way to create optimization func
     // TODO(@gussmith23) This is written this way b/c of the stack overflowing
-    let mut expr: LpExpression = LpExpression::EmptyExpr;
-    for (_, name) in &model.bq_names {
-        expr = expr + LpBinary::new(&name);
-    }
-    println!("after loop");
-    model.problem += expr;
+
+    model.problem.set_objective_type(ObjectiveType::Minimize).unwrap();
     println!("hi");
-    let solver = GurobiSolver::new();
-    let result = solver.run(&model.problem);
+    let result = model.problem.solve().unwrap();
 
     println!("hi");
-    let var_values = match result.unwrap() {
-        (lp_modeler::solvers::Status::Optimal, var_values) => var_values,
-        _ => panic!(),
-    };
-    println!("{:#?}", var_values);
 
-    let out_expr = into_recexpr(&model, &var_values, &[id]);
+    assert!(result.objective > 0.0);
+
+    println!("hi");
+    let out_expr = into_recexpr(&model, &result.variables, &[id]);
     println!("{}", out_expr.pretty(80));
-
-    // Did any tensorization happen?
-    assert!(
-        "(systolic-array ?a ?b ?c ?d)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search(&runner.egraph)
-            .len()
-            > 0
-    );
 
     // Did tensorization to 64x64 happen? (Harder than tensorizing to just
     // anything)
@@ -161,19 +138,4 @@ fn mobilenet_try_to_run_rewrites() {
             .len()
             > 0
     );
-
-    // Can we extract something that can be turned into a hardware design?
-    let _ex = Extractor::new(
-        &runner.egraph,
-        MonolithicCostFunction {
-            systolic_array_configuration: (16, 128),
-            egraph: &runner.egraph,
-            prefer_systolic_arrays_with_blocking: false,
-        },
-    );
-
-    // TODO(@gussmith23) This is overflowing the stack
-    // See https://github.com/egraphs-good/egg/issues/50
-    // let (cost, _) = ex.find_best(id);
-    // assert!(cost < usize::MAX);
 }
