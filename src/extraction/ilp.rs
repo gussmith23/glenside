@@ -187,9 +187,13 @@ pub fn into_recexpr(
 
     let mut worklist = Vec::default();
 
+    println!("Beginning to build worklist");
+
     for root in roots {
         make_worklist(egraph_lp_problem, results, *root, &mut worklist);
     }
+
+    println!("done building worklist");
 
     // Maps old ids to new ids
     let mut new_ids: HashMap<Id, Id> = HashMap::default();
@@ -244,8 +248,7 @@ mod tests {
         let id = egraph.add_expr(&expr);
 
         let env = Env::new().unwrap();
-        let mut model =
-            create_generic_egraph_lp_model(&env, &egraph, &[id], "trivial");
+        let mut model = create_generic_egraph_lp_model(&env, &egraph, &[id], "trivial");
         let result = model.problem.solve().unwrap();
 
         let out_expr = into_recexpr(&model, &result.variables, &[id]);
