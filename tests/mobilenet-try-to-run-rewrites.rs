@@ -6,8 +6,8 @@ use egg::Runner;
 use egg::Searcher;
 use glenside::extraction::ilp::create_generic_egraph_lp_model;
 use glenside::extraction::ilp::into_recexpr;
-use glenside::language::rewrites::PadSliceStrategy;
 use glenside::language::rewrites::PadLocation;
+use glenside::language::rewrites::PadSliceStrategy;
 use glenside::language::rewrites::SliceConcatenateStrategy;
 use glenside::language::MyAnalysis;
 use glenside::language::PadType;
@@ -116,7 +116,10 @@ fn mobilenet_try_to_run_rewrites() {
     // TODO(@gussmith23) Figure out a better way to create optimization func
     // TODO(@gussmith23) This is written this way b/c of the stack overflowing
 
-    model.problem.set_objective_type(ObjectiveType::Minimize).unwrap();
+    model
+        .problem
+        .set_objective_type(ObjectiveType::Minimize)
+        .unwrap();
     println!("hi");
     let result = model.problem.solve().unwrap();
 
