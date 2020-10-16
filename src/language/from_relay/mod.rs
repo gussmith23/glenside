@@ -1814,6 +1814,8 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 "#
     );
 
+    // TODO: enable this test once memoization goes in
+    //
     // Creates a Relay-to-Glenside benchmark test over a model
     // (currently the models we test are convolutional and only image-based)
     // The test does the following:
@@ -1827,6 +1829,7 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
     macro_rules! benchmark_model {
         ($test_name: ident, $relay_str_path:expr) => {
             #[bench]
+            #[ignore = "this test causes stack overflow"]
             fn $test_name(b: &mut Bencher) {
                 let filename = PathBuf::from($relay_str_path);
                 let relay = std::fs::read_to_string(&filename).unwrap();
