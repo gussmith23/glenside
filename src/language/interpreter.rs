@@ -63,46 +63,6 @@ where
         + std::ops::Mul<Output = DataType>
         + std::ops::Div<Output = DataType>
         + std::ops::Neg<Output = DataType>
-        + std::ops::Sub<Output = DataType>
-        + std::iter::Sum
-        + num_traits::identities::One
-        + num_traits::identities::Zero
-        + std::cmp::PartialOrd
-        + num_traits::Bounded
-        + Exp
-        + Sqrt
-        + FromNotNanFloat64Literal
-        + ndarray::ScalarOperand,
-    usize: num_traits::cast::AsPrimitive<DataType>,
-{
-    let mut memo_map: std::collections::HashMap<egg::Id, Value<DataType>> = HashMap::default();
-
-    for i in 0..index {
-        let val = interpret_impl(expr, i, env, &mut memo_map);
-        memo_map.insert(egg::Id::from(i), val);
-    }
-
-    interpret_impl(expr, index, env, &mut memo_map)
-}
-
-macro_rules! interpret {
-    ($memo_map: expr, $id: expr) => {
-        $memo_map.get($id).expect("Child expression should have already been interpreted! Do you have a loop in your program?")
-    }
-}
-
-fn interpret_impl<DataType: 'static>(
-    expr: &RecExpr<Language>,
-    index: usize,
-    env: &Environment<DataType>,
-    memo_map: &mut std::collections::HashMap<egg::Id, Value<DataType>>,
-) -> Value<DataType>
-where
-    DataType: Copy
-        + std::ops::Mul<Output = DataType>
-        + std::ops::Div<Output = DataType>
-        + std::ops::Neg<Output = DataType>
-        + std::ops::Sub<Output = DataType>
         + std::iter::Sum
         + num_traits::identities::One
         + num_traits::identities::Zero
@@ -116,15 +76,14 @@ where
 {
     match &expr.as_ref()[index] {
         &Language::AccessShape([shape_id, item_shape_id]) => {
-            let shape = match interpret!(memo_map, &shape_id) {
+            let shape = match interpret(expr, shape_id.into(), env) {
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
-            let item_shape = match interpret!(memo_map, &item_shape_id) {
+            let item_shape = match interpret(expr, item_shape_id.into(), env) {
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
-
             Value::AccessShape(
                 IxDyn(
                     shape
@@ -139,20 +98,20 @@ where
             )
         }
         &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let axis = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
-            let low = match interpret!(memo_map, &low_id) {
-                Value::Usize(u) => *u,
+            let low = match interpret(expr, low_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
-            let high = match interpret!(memo_map, &high_id) {
-                Value::Usize(u) => *u,
+            let high = match interpret(expr, high_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
@@ -162,28 +121,25 @@ where
                     .collect();
             slice_info[axis] = ndarray::SliceOrIndex::from(low..high);
             let slice_info = ndarray::SliceInfo::new(slice_info).unwrap();
+            access.tensor = access
+                .tensor
+                .into_owned()
+                .slice(slice_info.as_ref())
+                .into_owned();
 
-            Value::Access(Access {
-                tensor: access
-                    .tensor
-                    .clone()
-                    .into_owned()
-                    .slice(slice_info.as_ref())
-                    .into_owned(),
-                access_axis: access.access_axis,
-            })
+            Value::Access(access)
         }
         &Language::AccessConcatenate([a_id, b_id, axis_id]) => {
-            let a = match interpret!(memo_map, &a_id) {
+            let a = match interpret(expr, a_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let b = match interpret!(memo_map, &b_id) {
+            let b = match interpret(expr, b_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let axis = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
@@ -194,22 +150,22 @@ where
                 access_axis: a.access_axis,
             })
         }
-        &Language::AccessLiteral(id) => match interpret!(memo_map, &id) {
+        &Language::AccessLiteral(id) => match interpret(expr, id.into(), env) {
             Value::Tensor(t) => Value::Access(Access {
-                tensor: t.clone().into_owned(),
+                tensor: t,
                 access_axis: 0,
             }),
             _ => panic!(),
         },
-        &Language::Literal(id) => match interpret!(memo_map, &id) {
-            Value::Tensor(t) => Value::Tensor(t.clone().into_owned()),
+        &Language::Literal(id) => match interpret(expr, id.into(), env) {
+            t @ Value::Tensor(_) => t,
             _ => panic!(),
         },
         &Language::NotNanFloat64(v) => Value::Tensor(
             ndarray::arr0(DataType::from_not_nan_float_64_literal(v.into())).into_dyn(),
         ),
         &Language::AccessFlatten(access_id) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
@@ -227,40 +183,37 @@ where
                 ]
             };
 
-            Value::Access(Access {
-                tensor: access.tensor.clone().into_shape(shape).unwrap().into_dyn(),
-                access_axis: access.access_axis,
-            })
+            access.tensor = access.tensor.into_shape(shape).unwrap().into_dyn();
+
+            Value::Access(access)
         }
         &Language::AccessTranspose([access_id, list_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let list = match interpret!(memo_map, &list_id) {
+            let list = match interpret(expr, list_id.into(), env) {
                 Value::List(l) => l,
                 _ => panic!(),
             };
 
-            Value::Access(Access {
-                tensor: access.tensor.to_owned().permuted_axes(list.to_owned()),
-                access_axis: access.access_axis,
-            })
+            access.tensor = access.tensor.permuted_axes(list);
+            Value::Access(access)
         }
         Language::List(list) => Value::List(
             list.iter()
-                .map(|id: &Id| match interpret!(memo_map, id) {
-                    Value::Usize(u) => *u,
+                .map(|id: &Id| match interpret(expr, (*id).into(), env) {
+                    Value::Usize(u) => u,
                     _ => panic!(),
                 })
                 .collect::<Vec<_>>(),
         ),
         &Language::AccessBroadcast([access_id, shape_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let shape = match interpret!(memo_map, &shape_id) {
+            let shape = match interpret(expr, shape_id.into(), env) {
                 Value::AccessShape(s, _) => s,
                 _ => panic!("Expected access shape as second argument to access-broadcast"),
             };
@@ -272,40 +225,34 @@ where
                 assert!(*broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim);
             }
 
-            Value::Access(Access {
-                tensor: access
-                    .tensor
-                    .to_owned()
-                    .broadcast(shape.to_owned())
-                    .unwrap()
-                    .to_owned(),
-                access_axis: access.access_axis,
-            })
+            access.tensor = access.tensor.broadcast(shape).unwrap().to_owned();
+
+            Value::Access(access)
         }
         &Language::AccessInsertAxis([access_id, axis_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let axis = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
             assert!(axis <= access.tensor.ndim());
 
-            let mut access_axis = access.access_axis;
-            if axis <= access_axis {
-                access_axis += 1;
+            access.tensor = access.tensor.insert_axis(ndarray::Axis(axis));
+            if axis <= access.access_axis {
+                access.access_axis += 1;
             }
 
-            Value::Access(Access {
-                tensor: access.tensor.clone().insert_axis(ndarray::Axis(axis)),
-                access_axis: access_axis,
-            })
+            Value::Access(access)
         }
         &Language::AccessPair([a0_id, a1_id]) => {
-            let (a0, a1) = match (interpret!(memo_map, &a0_id), interpret!(memo_map, &a1_id)) {
+            let (a0, a1) = match (
+                interpret(expr, a0_id.into(), env),
+                interpret(expr, a1_id.into(), env),
+            ) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
                 _ => panic!("Expected both arguments to access-pair to be accesses"),
             };
@@ -323,14 +270,8 @@ where
             let tensor = ndarray::stack(
                 ndarray::Axis(access_axis),
                 &[
-                    a0.tensor
-                        .clone()
-                        .insert_axis(ndarray::Axis(access_axis))
-                        .view(),
-                    a1.tensor
-                        .clone()
-                        .insert_axis(ndarray::Axis(access_axis))
-                        .view(),
+                    a0.tensor.insert_axis(ndarray::Axis(access_axis)).view(),
+                    a1.tensor.insert_axis(ndarray::Axis(access_axis)).view(),
                 ],
             )
             .unwrap();
@@ -341,12 +282,12 @@ where
             })
         }
         &Language::AccessSqueeze([access_id, axis_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let mut access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let axis = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
@@ -356,39 +297,33 @@ where
                 "Cannot squeeze an axis which is not equal to 1"
             );
 
-            let mut access_axis = access.access_axis;
-            if axis < access_axis {
-                access_axis -= 1;
+            access.tensor = access.tensor.index_axis_move(ndarray::Axis(axis), 0);
+            if axis < access.access_axis {
+                access.access_axis -= 1;
             }
 
-            Value::Access(Access {
-                tensor: access
-                    .tensor
-                    .clone()
-                    .index_axis_move(ndarray::Axis(axis), 0),
-                access_axis: access_axis,
-            })
+            Value::Access(access)
         }
         Language::PadType(t) => Value::PadType(*t),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let pad_type = match interpret!(memo_map, &pad_type_id) {
+            let pad_type = match interpret(expr, pad_type_id.into(), env) {
                 Value::PadType(t) => t,
                 _ => panic!(),
             };
-            let axis = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
+            let axis = match interpret(expr, axis_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
-            let pad_before = match interpret!(memo_map, &pad_before_id) {
-                Value::Usize(u) => *u,
+            let pad_before = match interpret(expr, pad_before_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
-            let pad_after = match interpret!(memo_map, &pad_after_id) {
-                Value::Usize(u) => *u,
+            let pad_after = match interpret(expr, pad_after_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
@@ -429,11 +364,11 @@ where
         }
         Language::ComputeType(t) => Value::ComputeType(t.clone()),
         &Language::Compute([compute_type_id, access_id]) => {
-            let compute_type = match interpret!(memo_map, &compute_type_id) {
+            let compute_type = match interpret(expr, compute_type_id.into(), env) {
                 Value::ComputeType(t) => t,
                 _ => panic!(),
             };
-            let access = match interpret!(memo_map, &access_id) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
@@ -474,15 +409,7 @@ where
                     );
 
                     let shape = access.tensor.shape();
-                    // shift by max value to prevent integer overflow
-                    let max = access
-                        .tensor
-                        .iter()
-                        .max_by(|x, y| x.partial_cmp(y).unwrap())
-                        .unwrap()
-                        .clone();
-                    let mut exps =
-                        ndarray::Zip::from(&access.tensor).apply_collect(|v| (*v - max).exp());
+                    let mut exps = ndarray::Zip::from(&access.tensor).apply_collect(|v| v.exp());
                     let denominators = exps
                         .sum_axis(ndarray::Axis(access.tensor.ndim() - 1))
                         .insert_axis(ndarray::Axis(access.tensor.ndim() - 1));
@@ -687,7 +614,10 @@ where
             }
         }
         &Language::AccessCartesianProduct([a0_id, a1_id]) => {
-            let (a0, a1) = match (interpret!(memo_map, &a0_id), interpret!(memo_map, &a1_id)) {
+            let (a0, a1) = match (
+                interpret(expr, a0_id.into(), env),
+                interpret(expr, a1_id.into(), env),
+            ) {
                 (Value::Access(a0), Value::Access(a1)) => (a0, a1),
                 _ => panic!(),
             };
@@ -771,33 +701,33 @@ where
             })
         }
         &Language::Access([access_id, dim_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let dim = match interpret!(memo_map, &dim_id) {
-                Value::Usize(u) => *u,
+            let dim = match interpret(expr, dim_id.into(), env) {
+                Value::Usize(u) => u,
                 _ => panic!(),
             };
 
             assert!(dim <= access.tensor.ndim());
 
             Value::Access(Access {
-                tensor: access.tensor.clone(),
+                tensor: access.tensor,
                 // TODO(@gussmith) Settle on vocab: "axis" or "dimension"?
                 access_axis: dim,
             })
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
-            let access = match interpret!(memo_map, &access_id) {
+            let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
             };
-            let filters_shape = match interpret!(memo_map, &filters_shape_id) {
+            let filters_shape = match interpret(expr, filters_shape_id.into(), env) {
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
-            let stride_shape = match interpret!(memo_map, &stride_shape_id) {
+            let stride_shape = match interpret(expr, stride_shape_id.into(), env) {
                 Value::Shape(s) => s,
                 _ => panic!(),
             };
@@ -885,70 +815,64 @@ where
         }
         Language::Shape(list) => Value::Shape(IxDyn(
             list.iter()
-                .map(|id: &Id| match interpret!(memo_map, id) {
-                    Value::Usize(u) => *u,
+                .map(|id: &Id| match interpret(expr, (*id).into(), env) {
+                    Value::Usize(u) => u,
                     _ => panic!(),
                 })
                 .collect::<Vec<_>>()
                 .as_slice(),
         )),
-        &Language::SliceShape([shape_id, slice_axis_id]) => {
-            let s = match interpret!(memo_map, &shape_id) {
-                Value::Shape(s) => s,
-                _ => panic!(),
-            };
-            let u = match interpret!(memo_map, &slice_axis_id) {
-                Value::Usize(u) => *u,
-                _ => panic!(),
-            };
-            Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
-        }
-        &Language::ShapeInsertAxis([shape_id, axis_id]) => {
-            let s = match interpret!(memo_map, &shape_id) {
-                Value::Shape(s) => s,
-                _ => panic!(),
-            };
-            let u = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
-                _ => panic!(),
-            };
-            assert!(u <= s.ndim());
-            Value::Shape(IxDyn(
-                s.slice()[..u]
-                    .iter()
-                    .chain(std::iter::once(&1))
-                    .chain(s.slice()[u..].iter())
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            ))
-        }
-        &Language::ShapeRemoveAxis([shape_id, axis_id]) => {
-            let s = match interpret!(memo_map, &shape_id) {
-                Value::Shape(s) => s,
-                _ => panic!(),
-            };
-            let u = match interpret!(memo_map, &axis_id) {
-                Value::Usize(u) => *u,
-                _ => panic!(),
-            };
-            assert!(u < s.ndim(), "Invalid axis in shape-remove-axis");
-            Value::Shape(IxDyn(
-                s.slice()[..u]
-                    .iter()
-                    .chain(s.slice()[u + 1..].iter())
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            ))
-        }
-        &Language::ShapeOf([tensor_id]) => match interpret!(memo_map, &tensor_id) {
+        &Language::SliceShape([shape_id, slice_axis_id]) => match (
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, slice_axis_id.into(), env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
+            }
+            _ => panic!(),
+        },
+        &Language::ShapeInsertAxis([shape_id, axis_id]) => match (
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, axis_id.into(), env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                assert!(u <= s.ndim());
+                Value::Shape(IxDyn(
+                    s.slice()[..u]
+                        .iter()
+                        .chain(std::iter::once(&1))
+                        .chain(s.slice()[u..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ))
+            }
+            _ => panic!(),
+        },
+        &Language::ShapeRemoveAxis([shape_id, axis_id]) => match (
+            interpret(expr, shape_id.into(), env),
+            interpret(expr, axis_id.into(), env),
+        ) {
+            (Value::Shape(s), Value::Usize(u)) => {
+                assert!(u < s.ndim(), "Invalid axis in shape-remove-axis");
+                Value::Shape(IxDyn(
+                    s.slice()[..u]
+                        .iter()
+                        .chain(s.slice()[u + 1..].iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ))
+            }
+            _ => panic!(),
+        },
+        &Language::ShapeOf([tensor_id]) => match interpret(expr, tensor_id.into(), env) {
             Value::Tensor(t) => Value::Shape(IxDyn(t.shape())),
             _ => panic!(),
         },
-        &Language::AccessTensor(tensor_id) => match interpret!(memo_map, &tensor_id) {
+        &Language::AccessTensor(tensor_id) => match interpret(expr, tensor_id.into(), env) {
             Value::Tensor(t) => Value::Access(Access {
-                tensor: t.clone(),
+                tensor: t,
                 // TODO(@gussmith) Arbitrarily picked default access axis
                 access_axis: 0,
             }),
