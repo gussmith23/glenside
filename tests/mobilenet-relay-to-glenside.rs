@@ -19,7 +19,7 @@ use std::path::PathBuf;
 #[test]
 fn parse_mobilenet_simplified_for_inference() {
     let filename = PathBuf::from(format!(
-        "{}/models/mobilenet-simplified-for-inference.relay",
+        "{}/models/mobilenet.relay",
         env!("CARGO_MANIFEST_DIR")
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
