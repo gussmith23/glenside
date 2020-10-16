@@ -21,6 +21,8 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use egg::{Id, Language as LangugeTrait, RecExpr};
+use rplex::Variable;
+use rplex::VariableType;
 use rplex::{var, Constraint, ConstraintType, Env, Problem, VariableValue, WeightedVariable};
 
 use crate::language::{Language, MyAnalysis};
@@ -53,13 +55,33 @@ pub fn create_generic_egraph_lp_model<'a>(
     let mut bq_vars = HashMap::default();
     // Variables representing each enode
     let mut bn_vars = HashMap::default();
+    // Variables for topographically sorting selected eclasses, to ensure there are no loops.
+    let mut topo_sort_vars = HashMap::new();
 
+    // Create all of the variables
     for eclass in egraph.classes() {
-        let bq_name = format!("bq_{}", eclass.id);
-        let bq_var = var!(bq_name -> 1.0 as Binary);
-        let column_index = problem.add_variable(bq_var).unwrap();
-        assert!(!bq_vars.contains_key(&eclass.id));
-        bq_vars.insert(eclass.id, column_index);
+        {
+            let bq_name = format!("bq_{}", eclass.id);
+            let bq_var = var!(bq_name -> 1.0 as Binary);
+            let column_index = problem.add_variable(bq_var).unwrap();
+            assert!(!bq_vars.contains_key(&eclass.id));
+            bq_vars.insert(eclass.id, column_index);
+        }
+
+        {
+            let topo_sort_var_name = format!("topo_sort_{}", eclass.id);
+            // TODO(@gussmith23) the `as f64` thing here is potentially a bug
+            let topo_sort_var = Variable::new(
+                VariableType::Integer,
+                1.0,
+                0.0,
+                egraph.number_of_classes() as f64,
+                topo_sort_var_name,
+            );
+            let column_index = problem.add_variable(topo_sort_var).unwrap();
+            assert!(!topo_sort_vars.contains_key(&eclass.id));
+            topo_sort_vars.insert(eclass.id, column_index);
+        }
 
         for enode in eclass.nodes.iter() {
             let mut s = DefaultHasher::new();
@@ -124,6 +146,37 @@ pub fn create_generic_egraph_lp_model<'a>(
                 );
                 con.add_wvar(WeightedVariable::new_idx(*bn, -1.0));
                 con.add_wvar(WeightedVariable::new_idx(*bq, 1.0));
+                problem.add_constraint(con).unwrap();
+            }
+        }
+
+        // If an enode is selected, then its children eclass's topological sort
+        // variables must be strictly less than this eclass's topological sort
+        // variable.
+        // The constraint is:
+        // For each eclass i, for each enode n in egraph[i], for each child
+        // eclass j of enode n:
+        // topo_var[i] >= topo_var[j] + 1 if n is selected
+        // === topo_var[i] + some_large_number*(1-bn_vars[n]) >= topo_var[j] + 1
+        // === topo_var[i] + some_large_number*(1-bn_vars[n]) - topo_var[j] >= 1
+        // === topo_var[i] + some_large_number - some_large_number*bn_vars[n] - topo_var[j] >= 1
+        // === topo_var[i] - some_large_number*bn_vars[n] - topo_var[j] >= 1 - some_large_number
+        // some_large_number, in this case, can just be num_classes
+        let this_eclass_topo_sort_var = topo_sort_vars.get(&eclass.id).unwrap();
+        for node in eclass.nodes.iter() {
+            let bn = bn_vars.get(&node).unwrap();
+            for child_eclass in node.children().iter() {
+                let child_eclass_topo_sort_var = topo_sort_vars.get(child_eclass).unwrap();
+                // TODO(@gussmith23) potential bug
+                let large_number = egraph.number_of_classes() as f64;
+                let mut con = Constraint::new(
+                    ConstraintType::GreaterThanEq,
+                    1.0 - large_number,
+                    format!("topo sort {}", child_eclass),
+                );
+                con.add_wvar(WeightedVariable::new_idx(*this_eclass_topo_sort_var, 1.0));
+                con.add_wvar(WeightedVariable::new_idx(*bn, -large_number));
+                con.add_wvar(WeightedVariable::new_idx(*child_eclass_topo_sort_var, -1.0));
                 problem.add_constraint(con).unwrap();
             }
         }
