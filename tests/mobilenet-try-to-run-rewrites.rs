@@ -13,6 +13,7 @@ use glenside::language::MyAnalysis;
 use glenside::language::PadType;
 use rplex::Env;
 use rplex::ObjectiveType;
+use rplex::VariableValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -123,7 +124,17 @@ fn mobilenet_try_to_run_rewrites() {
     println!("hi");
     let result = model.problem.solve().unwrap();
 
-    println!("hi");
+    println!(
+        "{}",
+        result
+            .variables
+            .iter()
+            .filter(|var| match var {
+                VariableValue::Binary(b) => *b == true,
+                _ => panic!(),
+            })
+            .count()
+    );
 
     assert!(result.objective > 0.0);
 

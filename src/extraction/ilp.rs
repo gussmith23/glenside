@@ -17,6 +17,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use egg::{Id, Language as LangugeTrait, RecExpr};
@@ -148,11 +149,20 @@ pub fn into_recexpr(
         results: &Vec<VariableValue>,
         id: Id,
         worklist: &mut Vec<Id>,
+        already_visited: &mut HashSet<Id>,
     ) {
+        if already_visited.contains(&id) {
+            println!("already contains {}", id);
+            return;
+        }
+
+        // Mark this eclass as visited, so that we don't loop.
+        println!("inserting {}", id);
+        already_visited.insert(id);
+
         fn add_to_worklist(id: Id, worklist: &mut Vec<Id>) {
-            if !worklist.contains(&id) {
-                worklist.push(id);
-            }
+            debug_assert!(!worklist.contains(&id));
+            worklist.push(id);
         }
 
         // This id should be selected.
@@ -165,20 +175,36 @@ pub fn into_recexpr(
         );
 
         // Find a variant of this eclass that's selected.
-        let selected_variant = egraph_lp_problem.egraph[id]
+        let variants = egraph_lp_problem.egraph[id]
             .nodes
             .iter()
-            .find(
+            .filter_map(
                 |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
-                    VariableValue::Binary(b) => b == true,
+                    VariableValue::Binary(b) => {
+                        if b {
+                            Some(node)
+                        } else {
+                            None
+                        }
+                    }
                     _ => panic!(),
                 },
             )
-            .unwrap();
+            .collect::<Vec<_>>();
+        assert_eq!(variants.len(), 1);
+        let selected_variant = variants[0];
+
+        println!("{:?}", selected_variant);
 
         // Build the worklist for the children
         for child in selected_variant.children() {
-            make_worklist(egraph_lp_problem, results, *child, worklist);
+            make_worklist(
+                egraph_lp_problem,
+                results,
+                *child,
+                worklist,
+                already_visited,
+            );
         }
 
         // Add ourselves to worklist.
@@ -186,14 +212,21 @@ pub fn into_recexpr(
     }
 
     let mut worklist = Vec::default();
+    let mut already_visited = HashSet::default();
 
     println!("Beginning to build worklist");
 
     for root in roots {
-        make_worklist(egraph_lp_problem, results, *root, &mut worklist);
+        make_worklist(
+            egraph_lp_problem,
+            results,
+            *root,
+            &mut worklist,
+            &mut already_visited,
+        );
     }
 
-    println!("done building worklist");
+    println!("done building worklist,  {:?}", worklist);
 
     // Maps old ids to new ids
     let mut new_ids: HashMap<Id, Id> = HashMap::default();
@@ -211,16 +244,25 @@ pub fn into_recexpr(
         // Find a variant of this eclass that's selected.
         // TODO(@gussmith23) We're repeating work here!
         // TODO(@gussmith23) Potential bug; do they find the same node?
-        let selected_variant = egraph_lp_problem.egraph[id]
+        let variants = egraph_lp_problem.egraph[id]
             .nodes
             .iter()
-            .find(
+            .filter_map(
                 |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
-                    VariableValue::Binary(b) => b == true,
+                    VariableValue::Binary(b) => {
+                        if b {
+                            Some(node)
+                        } else {
+                            None
+                        }
+                    }
                     _ => panic!(),
                 },
             )
-            .unwrap();
+            .collect::<Vec<_>>();
+        assert_eq!(variants.len(), 1);
+        let selected_variant = variants[0];
+        println!("{:?}", selected_variant);
 
         let converted_node = selected_variant
             .clone()
