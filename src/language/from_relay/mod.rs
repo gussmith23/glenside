@@ -554,8 +554,14 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
             create_worklist(call.args.get(i.try_into().unwrap()).unwrap(), worklist);
         }
         add_to_worklist(relay_expr.clone(), worklist);
+    } else if let Ok(tuple_get_item) = relay_expr
+        .clone()
+        .downcast::<tvm::ir::relay::TupleGetItem>()
+    {
+        create_worklist(tuple_get_item.tuple.clone(), worklist);
+        add_to_worklist(relay_expr.clone(), worklist);
     } else {
-        todo!()
+        todo!("Not implemented: {:?}", tvm::ir::as_text(relay_expr))
     }
 }
 
@@ -624,6 +630,33 @@ fn compile_expression(
         let literal_id = glenside_expr.add(Language::Literal(literal_id));
         let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
         access_literal_id
+    } else if let Ok(tuple_get_item) = relay_expr
+        .clone()
+        .downcast::<tvm::ir::relay::TupleGetItem>()
+    {
+        // We've only implemented tuple functionality for handling batch norms,
+        // at the moment. So we check to make sure this is handling a batch
+        // norm.
+
+        let arg = tuple_get_item
+            .tuple
+            .clone()
+            .downcast::<tvm::ir::relay::Call>()
+            .unwrap();
+        assert_eq!(
+            arg.op
+                .clone()
+                .upcast::<tvm::ir::expr::BaseExpr>()
+                .downcast::<tvm::ir::op::Op>()
+                .unwrap()
+                .name
+                .as_str(),
+            Ok("nn.batch_norm")
+        );
+        assert_eq!(tuple_get_item.index, 0);
+
+        let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
+        data_id
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         if let Ok(primitive_op) = call
             .op
@@ -634,7 +667,35 @@ fn compile_expression(
             match primitive_op.name.as_str().unwrap() {
                 "nn.batch_norm" => {
                     assert!(simplify_batch_norm_for_inference_hack);
-                    todo!()
+
+                    assert_eq!(call.args.len(), 5);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let gamma_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let beta_id = get_compiled_expression(call.args.get(2).unwrap());
+                    let moving_mean_id = get_compiled_expression(call.args.get(3).unwrap());
+                    let moving_var_id = get_compiled_expression(call.args.get(4).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::BatchNormAttrs>()
+                        .unwrap();
+
+                    assert_eq!(attrs.axis, 1);
+
+                    let axis_id =
+                        glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));
+                    let epsilon_id = glenside_expr
+                        .add(Language::NotNanFloat64(NotNan::new(attrs.epsilon).unwrap()));
+
+                    glenside_expr.add(Language::BatchNormInference([
+                        data_id,
+                        gamma_id,
+                        beta_id,
+                        moving_mean_id,
+                        moving_var_id,
+                        axis_id,
+                        epsilon_id,
+                    ]))
                 }
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
