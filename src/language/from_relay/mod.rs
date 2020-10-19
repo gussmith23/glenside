@@ -561,6 +561,11 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
         create_worklist(tuple_get_item.tuple.clone(), worklist);
         add_to_worklist(relay_expr.clone(), worklist);
     } else {
+        // NOTE: if you're hitting this TODO, it might be that you have not
+        // actually implemented the TVM Rust bindings for the Relay construct
+        // you care about! I.e. if I am expecting to find a batch norm, but
+        // haven't implemented the bindings, then the downcast to Call won't
+        // work!
         todo!("Not implemented: {:?}", tvm::ir::as_text(relay_expr))
     }
 }
