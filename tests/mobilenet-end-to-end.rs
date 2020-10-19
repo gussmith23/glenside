@@ -210,17 +210,8 @@ fn mobilenet_end_to_end() {
 
     assert!(result.objective > 0.0);
 
-    let _out_expr = into_recexpr(&model, &result.variables);
+    let expr = into_recexpr(&model, &result.variables);
     info!("Glenside expression extracted using solution of ILP problem");
 
-    // Did tensorization to 64x64 happen? (Harder than tensorizing to just
-    // anything)
-    assert!(
-        "(systolic-array 64 64 ?c ?d)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search(&runner.egraph)
-            .len()
-            > 0
-    );
+    println!("{}", expr.pretty(80));
 }
