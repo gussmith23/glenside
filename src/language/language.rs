@@ -1,6 +1,6 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
-use log::warn;
+use log::debug;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
@@ -969,7 +969,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 if !access.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -981,7 +981,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             &AccessLiteral(id) => match &egraph[id].data {
                 MyAnalysisData::Literal(t) => MyAnalysisData::AccessPattern(AccessPatternData {
                     zero_regions: {
-                        warn!("Zero regions unimplemented on line {}", std::line!());
+                        debug!("Zero regions unimplemented on line {}", std::line!());
                         HashMap::default()
                     },
                     shape: IxDyn(&[]),
@@ -1081,7 +1081,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .collect::<Vec<_>>();
 
                 if !access.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -1101,7 +1101,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !access.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1117,7 +1117,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 // TODO(@gussmith23) Implement zero_regions
                 if !access.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -1159,7 +1159,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 // TODO(@gussmith23) Implement zero_regions
                 if !access.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -1217,7 +1217,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 match pad_type {
                     crate::language::PadType::MinPadding => {
                         if !access.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1293,7 +1293,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !a.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1322,13 +1322,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !a0.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
                         }
                         if !a1.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1386,14 +1386,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 // TODO(@gussmith23) Implement zero_regions
                 if !new_access.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
                     new_access.zero_regions = HashMap::default();
                 }
                 if !a1.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -1443,7 +1443,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // TODO(@gussmith23) Implement zero_regions
                 new_shape.zero_regions = HashMap::default();
                 if !a.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -1474,7 +1474,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !a.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1497,7 +1497,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 // TODO(@gussmith23) Implement zero_regions
                 if !a0.zero_regions.is_empty() {
-                    warn!(
+                    debug!(
                         "Throwing away zero region analysis data on line {}",
                         std::line!()
                     );
@@ -1512,7 +1512,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             // for each operator.
                             zero_regions: {
                                 if !a0.zero_regions.is_empty() {
-                                    warn!(
+                                    debug!(
                                         "Throwing away zero region analysis data on line {}",
                                         std::line!()
                                     );
@@ -1536,7 +1536,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             // for each operator.
                             zero_regions: {
                                 if !a0.zero_regions.is_empty() {
-                                    warn!(
+                                    debug!(
                                         "Throwing away zero region analysis data on line {}",
                                         std::line!()
                                     );
@@ -1558,7 +1558,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             // for each operator.
                             zero_regions: {
                                 if !a0.zero_regions.is_empty() {
-                                    warn!(
+                                    debug!(
                                         "Throwing away zero region analysis data on line {}",
                                         std::line!()
                                     );
@@ -1588,7 +1588,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             // for each operator.
                             zero_regions: {
                                 if !a0.zero_regions.is_empty() {
-                                    warn!(
+                                    debug!(
                                         "Throwing away zero region analysis data on line {}",
                                         std::line!()
                                     );
@@ -1607,7 +1607,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             // for each operator.
                             zero_regions: {
                                 if !a0.zero_regions.is_empty() {
-                                    warn!(
+                                    debug!(
                                         "Throwing away zero region analysis data on line {}",
                                         std::line!()
                                     );
@@ -1623,7 +1623,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     | self::ComputeType::Negative => {
                         // TODO(@gussmith23) Implement zero_regions
                         if !a0.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1775,7 +1775,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !access.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -1935,13 +1935,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !a0.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
                         }
                         if !a1.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
@@ -2074,7 +2074,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: {
                         if !access.zero_regions.is_empty() {
-                            warn!(
+                            debug!(
                                 "Throwing away zero region analysis data on line {}",
                                 std::line!()
                             );
