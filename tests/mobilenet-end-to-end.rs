@@ -167,6 +167,9 @@ fn mobilenet_end_to_end() {
                 glenside::language::ComputeType::ReduceMean => 1.0,
             }
 
+            // Hack constructs that we temporarily need.
+            Language::BatchNormInference(_) => 1.0,
+
             // Old constructs.
             Language::MoveAxis(_)
             | Language::CartesianProduct(_)
@@ -176,7 +179,6 @@ fn mobilenet_end_to_end() {
             | Language::Slice(_)
             | Language::Concatenate(_) => panic!(),
 
-            Language::BatchNormInference(_) => todo!()
         }
     }
     let mut costs = Constraint::new(
