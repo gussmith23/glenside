@@ -34,10 +34,6 @@ fn mobilenet_end_to_end() {
         env.insert(k.clone(), v.clone());
     }
 
-    // TODO(@gussmith23) Include some simple simplifying rewrites
-    // If we add some very basic rewrites here, then $glenside_str
-    // won't need to exactly match what's actually produced by
-    // from_relay.py. It can be simpler (e.g. collapsing accesses).
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
     });
@@ -85,8 +81,6 @@ fn mobilenet_end_to_end() {
         glenside::language::rewrites::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(),
     ];
 
-    // TODO(@gussmith23) This is starting to become a flaky test...
-    // I know the correct program can be found, but it takes time.
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
         .with_time_limit(std::time::Duration::from_secs(10))
@@ -97,18 +91,11 @@ fn mobilenet_end_to_end() {
     runner.print_report();
 
     let env = Env::new().unwrap();
-    println!("hi");
     let mut model = create_generic_egraph_lp_model(&env, &runner.egraph, &[id], "mobilenet");
-    println!("hi");
-
-    // TODO(@gussmith23) Figure out a better way to create optimization func
-    // TODO(@gussmith23) This is written this way b/c of the stack overflowing
-
     model
         .problem
         .set_objective_type(ObjectiveType::Minimize)
         .unwrap();
-    println!("hi");
     let result = model.problem.solve().unwrap();
 
     println!(
