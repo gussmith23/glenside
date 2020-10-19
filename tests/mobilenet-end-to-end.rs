@@ -1,4 +1,5 @@
 #![cfg(feature = "tvm")]
+#![cfg(feature = "cplex")]
 
 use egg::EGraph;
 use egg::Pattern;

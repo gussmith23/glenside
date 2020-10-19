@@ -1,3 +1,4 @@
+#![cfg(feature = "cplex")]
 //! Integer Linear Programming-based egraph extractor for Glenside
 //!
 //! Neural networks expressed in Glenside are so large that the standard
