@@ -11,22 +11,26 @@ use glenside::language::rewrites::PadLocation;
 use glenside::language::rewrites::PadSliceStrategy;
 use glenside::language::MyAnalysis;
 use glenside::language::PadType;
+use log::info;
 use rplex::Env;
 use rplex::ObjectiveType;
-use rplex::VariableValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[test]
 fn mobilenet_end_to_end() {
+    test_logger::ensure_env_logger_initialized();
+
     let filename = PathBuf::from(format!(
         "{}/models/mobilenet.relay",
         env!("CARGO_MANIFEST_DIR")
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay);
+    info!("parsed relay source to IRModule");
 
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, true);
+    info!("ingested Relay code into Glenside");
 
     let mut env = HashMap::default();
     for (k, v) in &shapes_vec {
@@ -80,6 +84,7 @@ fn mobilenet_end_to_end() {
         .run(&rws);
 
     runner.print_report();
+    info!("rewrites complete");
 
     let env = Env::new().unwrap();
     let mut model = create_generic_egraph_lp_model(&env, &runner.egraph, &[id], "mobilenet");
@@ -87,25 +92,15 @@ fn mobilenet_end_to_end() {
         .problem
         .set_objective_type(ObjectiveType::Minimize)
         .unwrap();
-    let result = model.problem.solve().unwrap();
+    info!("ilp problem created");
 
-    println!(
-        "{}",
-        result
-            .variables
-            .iter()
-            .filter(|var| match var {
-                VariableValue::Binary(b) => *b == true,
-                _ => true,
-            })
-            .count()
-    );
+    let result = model.problem.solve().unwrap();
+    info!("ilp problem solved");
 
     assert!(result.objective > 0.0);
 
-    println!("hi");
-    let out_expr = into_recexpr(&model, &result.variables);
-    println!("{}", out_expr.pretty(80));
+    let _out_expr = into_recexpr(&model, &result.variables);
+    info!("Glenside expression extracted using solution of ILP problem");
 
     // Did tensorization to 64x64 happen? (Harder than tensorizing to just
     // anything)
