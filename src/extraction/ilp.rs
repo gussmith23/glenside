@@ -36,6 +36,7 @@ pub struct EGraphLpProblem<'a> {
     pub problem: Problem<'a>,
     pub bq_vars: HashMap<Id, usize>,
     pub bn_vars: HashMap<&'a Language, usize>,
+    pub topo_sort_vars: HashMap<Id, usize>,
 }
 
 /// From an egraph, create an LP model with a few useful base constraints
@@ -191,6 +192,7 @@ pub fn create_generic_egraph_lp_model<'a>(
         problem,
         bq_vars,
         bn_vars,
+        topo_sort_vars,
     }
 }
 
