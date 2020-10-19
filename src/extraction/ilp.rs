@@ -58,6 +58,9 @@ pub fn create_generic_egraph_lp_model<'a>(
     // Variables for topographically sorting selected eclasses, to ensure there are no loops.
     let mut topo_sort_vars = HashMap::new();
 
+    // Calculating this in the loop was slowing things down a LOT! Is the
+    // conversion to f64 slow?
+    let number_of_classes_f64 = egraph.number_of_classes() as f64;
     // Create all of the variables
     for eclass in egraph.classes() {
         {
@@ -75,7 +78,7 @@ pub fn create_generic_egraph_lp_model<'a>(
                 VariableType::Integer,
                 1.0,
                 0.0,
-                egraph.number_of_classes() as f64,
+                number_of_classes_f64,
                 topo_sort_var_name,
             );
             let column_index = problem.add_variable(topo_sort_var).unwrap();
@@ -168,7 +171,7 @@ pub fn create_generic_egraph_lp_model<'a>(
             for child_eclass in node.children().iter() {
                 let child_eclass_topo_sort_var = topo_sort_vars.get(child_eclass).unwrap();
                 // TODO(@gussmith23) potential bug
-                let large_number = egraph.number_of_classes() as f64;
+                let large_number = number_of_classes_f64;
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
                     1.0 - large_number,
