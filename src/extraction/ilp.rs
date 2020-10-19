@@ -18,7 +18,6 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use egg::{Id, Language as LangugeTrait, RecExpr};
@@ -199,100 +198,39 @@ pub fn create_generic_egraph_lp_model<'a>(
 pub fn into_recexpr(
     egraph_lp_problem: &EGraphLpProblem,
     results: &Vec<VariableValue>,
-    roots: &[Id],
 ) -> RecExpr<Language> {
-    /// Adds an eclass to the worklist, making sure the eclass's children go on
-    /// the worklist first.
-    fn make_worklist(
-        egraph_lp_problem: &EGraphLpProblem,
-        results: &Vec<VariableValue>,
-        id: Id,
-        worklist: &mut Vec<Id>,
-        already_visited: &mut HashSet<Id>,
-    ) {
-        if already_visited.contains(&id) {
-            println!("already contains {}", id);
-            return;
-        }
-
-        // Mark this eclass as visited, so that we don't loop.
-        println!("inserting {}", id);
-        already_visited.insert(id);
-
-        fn add_to_worklist(id: Id, worklist: &mut Vec<Id>) {
-            debug_assert!(!worklist.contains(&id));
-            worklist.push(id);
-        }
-
-        // This id should be selected.
-        assert_eq!(
-            match results[*egraph_lp_problem.bq_vars.get(&id).unwrap()] {
+    // Use the values assigned to the topological sorting variables to generate
+    // the topological sort.
+    let mut eclasses_in_topological_order = egraph_lp_problem
+        .topo_sort_vars
+        .iter()
+        // Filter out any eclasses that weren't selected.
+        .filter(|&(&eclass_id, _column_index): &(&Id, &usize)| {
+            // Get the bq variable for this eclass (i.e. get its column index)
+            // and use that to index into the solution.
+            let bq_column_index = egraph_lp_problem.bq_vars[&eclass_id];
+            match results[bq_column_index] {
+                // We filter out this eclass if this bq variable indicates that
+                // this eclass wasn't selected.
                 VariableValue::Binary(b) => b,
                 _ => panic!(),
-            },
-            true
-        );
+            }
+        })
+        .collect::<Vec<_>>();
+    // Finally, sort by variable value.
+    eclasses_in_topological_order.sort_unstable_by_key(
+        |&(_eclass_id, &column_index): &(&Id, &usize)| match results[column_index] {
+            VariableValue::Integer(i) => i,
+            _ => panic!(),
+        },
+    );
 
-        // Find a variant of this eclass that's selected.
-        let variants = egraph_lp_problem.egraph[id]
-            .nodes
-            .iter()
-            .filter_map(
-                |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
-                    VariableValue::Binary(b) => {
-                        if b {
-                            Some(node)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => panic!(),
-                },
-            )
-            .collect::<Vec<_>>();
-        assert_eq!(variants.len(), 1);
-        let selected_variant = variants[0];
-
-        println!("{:?}", selected_variant);
-
-        // Build the worklist for the children
-        for child in selected_variant.children() {
-            make_worklist(
-                egraph_lp_problem,
-                results,
-                *child,
-                worklist,
-                already_visited,
-            );
-        }
-
-        // Add ourselves to worklist.
-        add_to_worklist(id, worklist);
-    }
-
-    let mut worklist = Vec::default();
-    let mut already_visited = HashSet::default();
-
-    println!("Beginning to build worklist");
-
-    for root in roots {
-        make_worklist(
-            egraph_lp_problem,
-            results,
-            *root,
-            &mut worklist,
-            &mut already_visited,
-        );
-    }
-
-    println!("done building worklist,  {:?}", worklist);
-
-    // Maps old ids to new ids
-    let mut new_ids: HashMap<Id, Id> = HashMap::default();
+    let mut old_id_to_new_id_map = HashMap::new();
     let mut expr = RecExpr::default();
-    for id in worklist {
+
+    for (&id, _column_index) in eclasses_in_topological_order.iter() {
         // This id should be selected.
-        assert_eq!(
+        debug_assert_eq!(
             match results[*egraph_lp_problem.bq_vars.get(&id).unwrap()] {
                 VariableValue::Binary(b) => b,
                 _ => panic!(),
@@ -301,34 +239,43 @@ pub fn into_recexpr(
         );
 
         // Find a variant of this eclass that's selected.
-        // TODO(@gussmith23) We're repeating work here!
-        // TODO(@gussmith23) Potential bug; do they find the same node?
         let variants = egraph_lp_problem.egraph[id]
             .nodes
             .iter()
-            .filter_map(
+            .filter(
                 |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
-                    VariableValue::Binary(b) => {
-                        if b {
-                            Some(node)
-                        } else {
-                            None
-                        }
-                    }
+                    VariableValue::Binary(b) => b,
                     _ => panic!(),
                 },
             )
             .collect::<Vec<_>>();
-        assert_eq!(variants.len(), 1);
-        let selected_variant = variants[0];
-        println!("{:?}", selected_variant);
+        debug_assert!(variants.len() > 0);
 
-        let converted_node = selected_variant
-            .clone()
-            .map_children(|id| *new_ids.get(&id).unwrap());
+        // TODO(@gussmith23) This isn't always true and/or it doesn't matter
+        // It may or may not be true. A minimal solution to the ILP problem will
+        // likely ensure that one node is extracted per node. However, it also
+        // doesn't matter for us; if a node is extracted, then the ILP problem
+        // will guarantee that its dependent eclasses are extracted. So this
+        // check truly just exists because of my own curiosity...if it fails, it
+        // shouldn't actually break anything, other than my hypothesis.
+        debug_assert_eq!(variants.len(), 1);
+
+        let selected_variant = variants[0];
+
+        // The selected enode, but we convert its children to use the IDs in the
+        // new expression.
+        let converted_node = selected_variant.clone().map_children(|id| {
+            *old_id_to_new_id_map
+                .get(&id)
+                .unwrap_or_else(|| panic!("id {} in enode {:?} not found!", id, selected_variant))
+        });
+
         let new_id = expr.add(converted_node);
-        assert!(!new_ids.contains_key(&id));
-        new_ids.insert(id, new_id);
+
+        assert!(
+            old_id_to_new_id_map.insert(id, new_id).is_none(),
+            "This id was already in the map!"
+        );
     }
 
     expr
@@ -339,6 +286,7 @@ mod tests {
     use super::*;
     use std::str::FromStr;
 
+    // TODO(@gussmith23) This test doesn't have to depend on running CPLEX.
     #[test]
     fn extract_trivial() {
         let shape = vec![1, 20, 300, 3];
@@ -352,8 +300,10 @@ mod tests {
         let mut model = create_generic_egraph_lp_model(&env, &egraph, &[id], "trivial");
         let result = model.problem.solve().unwrap();
 
-        let out_expr = into_recexpr(&model, &result.variables, &[id]);
+        let out_expr = into_recexpr(&model, &result.variables);
 
-        assert_eq!(expr, out_expr);
+        // This is an odd way to check expression equality, but normal equality
+        // will fail if the underlying ids are different!
+        assert_eq!(expr.pretty(80), out_expr.pretty(80));
     }
 }

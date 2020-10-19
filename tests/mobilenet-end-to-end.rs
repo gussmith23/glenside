@@ -105,7 +105,7 @@ fn mobilenet_end_to_end() {
     assert!(result.objective > 0.0);
 
     println!("hi");
-    let out_expr = into_recexpr(&model, &result.variables, &[id]);
+    let out_expr = into_recexpr(&model, &result.variables);
     println!("{}", out_expr.pretty(80));
 
     // Did tensorization to 64x64 happen? (Harder than tensorizing to just
