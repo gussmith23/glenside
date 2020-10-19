@@ -21,13 +21,13 @@ use std::path::PathBuf;
 #[test]
 fn mobilenet_end_to_end() {
     let filename = PathBuf::from(format!(
-        "{}/models/mobilenet-simplified-for-inference.relay",
+        "{}/models/mobilenet.relay",
         env!("CARGO_MANIFEST_DIR")
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay);
 
-    let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, false);
+    let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, true);
 
     let mut env = HashMap::default();
     for (k, v) in &shapes_vec {
