@@ -9,7 +9,6 @@ use glenside::extraction::ilp::create_generic_egraph_lp_model;
 use glenside::extraction::ilp::into_recexpr;
 use glenside::language::rewrites::PadLocation;
 use glenside::language::rewrites::PadSliceStrategy;
-use glenside::language::rewrites::SliceConcatenateStrategy;
 use glenside::language::MyAnalysis;
 use glenside::language::PadType;
 use rplex::Env;
