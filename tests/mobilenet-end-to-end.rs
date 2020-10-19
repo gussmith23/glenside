@@ -49,7 +49,7 @@ fn mobilenet_end_to_end() {
         glenside::language::rewrites::bubble_access_concatenate_through_compute_dot_product_item_axis(),
         glenside::language::rewrites::bubble_access_concatenate_through_compute_dot_product_not_item_axis(),
         glenside::language::rewrites::bubble_access_slice_through_access_pad_inequal_axes(),
-        glenside::language::rewrites::systolic_array(),
+        glenside::language::rewrites::systolic_array_with_blocking(64,64),
         glenside::language::rewrites::pad_slice_accesses(
             0,
             PadSliceStrategy::PadToClosestMultipleOf {
@@ -65,14 +65,6 @@ fn mobilenet_end_to_end() {
                 pad_location: PadLocation::End,
                 pad_type: PadType::ZeroPadding,
             },
-        ),
-        glenside::language::rewrites::slice_concatenate_accesses(
-            0,
-            SliceConcatenateStrategy::DivideInto { segment_size: 64 },
-        ),
-        glenside::language::rewrites::slice_concatenate_accesses(
-            1,
-            SliceConcatenateStrategy::DivideInto { segment_size: 64 },
         ),
         glenside::language::rewrites::bubble_access_slice_through_access_cartesian_product_not_item_axis_left(),
         glenside::language::rewrites::bubble_access_slice_through_access_cartesian_product_not_item_axis_right(),
