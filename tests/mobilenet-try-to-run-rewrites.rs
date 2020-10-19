@@ -131,7 +131,7 @@ fn mobilenet_try_to_run_rewrites() {
             .iter()
             .filter(|var| match var {
                 VariableValue::Binary(b) => *b == true,
-                _ => panic!(),
+                _ => true,
             })
             .count()
     );
