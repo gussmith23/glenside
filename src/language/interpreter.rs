@@ -75,7 +75,8 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
-        &Language::BatchNormInference(_) => todo!(),
+        &Language::RelayOperatorCall(_) => todo!(),
+        &Language::RelayOperator(_) => todo!(),
         &Language::AccessShape([shape_id, item_shape_id]) => {
             let shape = match interpret(expr, shape_id.into(), env) {
                 Value::Shape(s) => s,

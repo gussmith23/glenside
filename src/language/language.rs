@@ -81,17 +81,6 @@ define_language! {
         // smaller systolic array.
         "systolic-array-with-blocking" = SystolicArrayWithBlocking([Id; 4]),
 
-
-        // (batch-norm-inference <data: access>
-        //  <gamma: access> <beta: access>
-        //  <moving_mean: access> <moving_var: access>
-        //  <axis: usize> <epsilon: float>)
-        // The batch-norm-at-inference-time operator. We don't currently support
-        // normal batch norm, which is a training-time operator, but we do
-        // support its inference-time simplified version.
-        // TODO(@gussmith23) How to handle batch norms?
-        "batch-norm-inference" = BatchNormInference([Id; 7]),
-
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
@@ -242,12 +231,16 @@ define_language! {
         // in the future, we can and should support array constants.
         "literal" = Literal(Id),
 
+        // (relay-operator-call <relay-operator: RelayOperator> <args>...)
+        "relay-operator-call" = RelayOperatorCall(Box<[Id]>),
 
         Usize(usize),
 
         // Important that this go after usize, so that usizes are parsed as
         // usizes, not as floats.
         NotNanFloat64(NotNan<f64>),
+
+        RelayOperator(RelayOperator),
 
         // pad-type: zero-padding
         // (No other options right now)
@@ -256,6 +249,39 @@ define_language! {
         ComputeType(ComputeType),
 
         Symbol(String),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RelayOperator {
+    // (relay-operator batch-norm-inference <data: access>
+    //  <gamma: access> <beta: access>
+    //  <moving_mean: access> <moving_var: access>
+    //  <axis: usize> <epsilon: float>)
+    // The batch-norm-at-inference-time operator. We don't currently support
+    // normal batch norm, which is a training-time operator, but we do support
+    // its inference-time simplified version.
+    // TODO(@gussmith23) How to handle batch norms?
+    BatchNormInference,
+}
+impl FromStr for RelayOperator {
+    type Err = ();
+    fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
+        match input {
+            "batch-norm-inference" => Ok(RelayOperator::BatchNormInference),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for RelayOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RelayOperator::BatchNormInference => "batch-norm-inference",
+            }
+        )
     }
 }
 
@@ -370,6 +396,7 @@ pub enum MyAnalysisData {
     ComputeType(ComputeType),
     PadType(PadType),
     List(Vec<usize>),
+    RelayOperator(RelayOperator),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -966,27 +993,39 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
-            &BatchNormInference(params) => {
-                let mut access = match params
-                    .iter()
-                    .map(|id| &egraph[*id].data)
-                    .collect::<Vec<_>>()[..]
-                {
-                    [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_), MyAnalysisData::Literal(_)] => {
-                        a.clone()
-                    }
-                    _ => panic!("Parameters do not type check"),
+            RelayOperator(op) => MyAnalysisData::RelayOperator(op.clone()),
+            RelayOperatorCall(params) => {
+                assert!(params.len() > 0);
+
+                let op_type = match &egraph[params[0]].data {
+                    MyAnalysisData::RelayOperator(op_type) => op_type,
+                    _ => panic!(),
                 };
 
-                if !access.zero_regions.is_empty() {
-                    debug!(
-                        "Throwing away zero region analysis data on line {}",
-                        std::line!()
-                    );
-                }
-                access.zero_regions = HashMap::default();
+                match op_type {
+                    crate::language::RelayOperator::BatchNormInference => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_), MyAnalysisData::Literal(_)] => {
+                                a.clone()
+                            }
+                            _ => panic!("Parameters do not type check"),
+                        };
 
-                MyAnalysisData::AccessPattern(access)
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                }
             }
             &AccessLiteral(id) => match &egraph[id].data {
                 MyAnalysisData::Literal(t) => MyAnalysisData::AccessPattern(AccessPatternData {
@@ -3957,7 +3996,7 @@ mod tests {
         map.insert("d".to_string(), vec![3, 3, 3, 3, 3, 3]);
         map.insert("e".to_string(), vec![]);
         let program = "
-         (batch-norm-inference
+         (relay-operator-call batch-norm-inference
           (access-tensor a)
           (access-tensor b)
           (access-tensor c)
@@ -3990,7 +4029,7 @@ mod tests {
         map.insert("d".to_string(), vec![3, 3, 3, 3, 3, 3]);
         map.insert("e".to_string(), vec![]);
         let program = "
-         (batch-norm-inference
+         (relay-operator-call batch-norm-inference
           (access-tensor a)
           (access-tensor b)
           (access-tensor c)

@@ -168,7 +168,7 @@ fn mobilenet_end_to_end() {
             }
 
             // Hack constructs that we temporarily need.
-            Language::BatchNormInference(_) => 1.0,
+            Language::RelayOperatorCall(_) | Language::RelayOperator(_) => 1.0,
 
             // Old constructs.
             Language::MoveAxis(_)

@@ -491,7 +491,7 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
 /// Note that the shapes are a Vec rather than a HashMap to preserve ordering.
 ///
 /// If `simplify_batch_norm_for_inference_hack` is enabled, any batch norm found
-/// in the Relay program will be converted to a BatchNormInference node in
+/// in the Relay program will be converted to a RelayOperatorCall node in
 /// Glenside. Otherwise, the function will panic.
 ///
 /// TODO(@gussmith23) Get rid of this hack eventually
@@ -692,15 +692,23 @@ fn compile_expression(
                     let epsilon_id = glenside_expr
                         .add(Language::NotNanFloat64(NotNan::new(attrs.epsilon).unwrap()));
 
-                    glenside_expr.add(Language::BatchNormInference([
-                        data_id,
-                        gamma_id,
-                        beta_id,
-                        moving_mean_id,
-                        moving_var_id,
-                        axis_id,
-                        epsilon_id,
-                    ]))
+                    let batch_norm_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::BatchNormInference,
+                    ));
+
+                    glenside_expr.add(Language::RelayOperatorCall(
+                        vec![
+                            batch_norm_op_id,
+                            data_id,
+                            gamma_id,
+                            beta_id,
+                            moving_mean_id,
+                            moving_var_id,
+                            axis_id,
+                            epsilon_id,
+                        ]
+                        .into_boxed_slice(),
+                    ))
                 }
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
