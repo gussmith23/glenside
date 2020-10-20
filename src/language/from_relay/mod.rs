@@ -15,6 +15,7 @@ use tvm::DataType;
 
 use super::ComputeType;
 use super::PadType;
+use super::RelayOperator;
 
 pub fn list(expr: &mut RecExpr<Language>, list: &[usize]) -> Id {
     let mut id_list: Vec<Id> = Vec::default();
@@ -495,9 +496,16 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
 /// Glenside. Otherwise, the function will panic.
 ///
 /// TODO(@gussmith23) Get rid of this hack eventually
+///
+/// `use_opaque_operators_for` is a list of [`RelayOperator`]s which should be
+/// replaced with opaque versions of their operators, instead of expanding them
+/// into Glenside code. This is a hack; this allows us to mostly ignore
+/// operators that we don't yet do rewrites over (e.g. batch norms, pooling,
+/// softmax) and allows us to more easily generate somewhat good code for them.
 pub fn from_relay(
     module: &IRModule,
     simplify_batch_norm_for_inference_hack: bool,
+    use_opaque_operators_for: &Vec<RelayOperator>,
 ) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>) {
     let main = module
         .lookup(module.get_global_var("main".to_string().into()).unwrap())
@@ -525,6 +533,7 @@ pub fn from_relay(
                     })
                 },
                 simplify_batch_norm_for_inference_hack,
+                use_opaque_operators_for,
             ),
         );
     }
@@ -582,12 +591,19 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
 /// If `simplify_batch_norm_for_inference_hack` is enabled, any batch norm found
 /// in the Relay program will be converted to a BatchNormInference node in
 /// Glenside. Otherwise, the function will panic.
+///
+/// `use_opaque_operators_for` is a list of [`RelayOperator`]s which should be
+/// replaced with opaque versions of their operators, instead of expanding them
+/// into Glenside code. This is a hack; this allows us to mostly ignore
+/// operators that we don't yet do rewrites over (e.g. batch norms, pooling,
+/// softmax) and allows us to more easily generate somewhat good code for them.
 fn compile_expression(
     relay_expr: Expr,
     glenside_expr: &mut RecExpr<Language>,
     // TODO(@gussmith23) Do we need to pass the recexpr into this closure?
     get_compiled_expression: impl Fn(Expr) -> Id,
     simplify_batch_norm_for_inference_hack: bool,
+    use_opaque_operators_for: &Vec<RelayOperator>,
 ) -> Id {
     if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
         let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
@@ -672,6 +688,11 @@ fn compile_expression(
             match primitive_op.name.as_str().unwrap() {
                 "nn.batch_norm" => {
                     assert!(simplify_batch_norm_for_inference_hack);
+                    assert!(
+                        use_opaque_operators_for
+                            .contains(&crate::language::RelayOperator::BatchNormInference),
+                        "non-opaque implementation of batch norm not implemented!"
+                    );
 
                     assert_eq!(call.args.len(), 5);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
@@ -1317,7 +1338,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str);
 
-                let (expr, shapes_vec) = super::from_relay(&module, false);
+                let (expr, shapes_vec) = super::from_relay(&module, false, &vec![]);
 
                 let mut env = HashMap::default();
                 for (k, v) in &shapes_vec {
