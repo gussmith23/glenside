@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[test]
+#[should_panic(expected = "test is not yet end-to-end")]
 fn mobilenet_end_to_end() {
     test_logger::ensure_env_logger_initialized();
 
@@ -208,8 +209,8 @@ fn mobilenet_end_to_end() {
 
     assert!(result.objective > 0.0);
 
-    let expr = into_recexpr(&model, &result.variables);
+    let _expr = into_recexpr(&model, &result.variables);
     info!("Glenside expression extracted using solution of ILP problem");
 
-    println!("{}", expr.pretty(80));
+    todo!("test is not yet end-to-end")
 }
