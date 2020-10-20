@@ -37,7 +37,7 @@ macro_rules! benchmark_model {
 
             let module = tvm::ir::module::IRModule::parse("", relay_str.clone());
 
-            let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module);
+            let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, false);
 
             // Run interpreters and compare output.
             let script_filepath = format!(
