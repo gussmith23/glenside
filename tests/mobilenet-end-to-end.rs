@@ -33,7 +33,11 @@ fn mobilenet_end_to_end() {
     let module = tvm::ir::module::IRModule::parse("", relay);
     info!("parsed relay source to IRModule");
 
-    let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, true);
+    let (expr, shapes_vec) = glenside::language::from_relay::from_relay(
+        &module,
+        true,
+        &vec![glenside::language::RelayOperator::BatchNormInference],
+    );
     info!("ingested Relay code into Glenside");
 
     let mut env = HashMap::default();
