@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[test]
+#[ignore = "test is not yet complete and is also very slow, should probably be moved to other repo"]
 #[should_panic(expected = "test is not yet end-to-end")]
 fn mobilenet_end_to_end() {
     test_logger::ensure_env_logger_initialized();
