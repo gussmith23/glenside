@@ -2,9 +2,7 @@
 #![cfg(feature = "cplex")]
 
 use egg::EGraph;
-use egg::Pattern;
 use egg::Runner;
-use egg::Searcher;
 use glenside::extraction::ilp::create_generic_egraph_lp_model;
 use glenside::extraction::ilp::into_recexpr;
 use glenside::language::rewrites::PadLocation;
