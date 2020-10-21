@@ -36,7 +36,7 @@ fn mobilenet_end_to_end() {
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![glenside::language::RelayOperator::BatchNormInference],
+        &vec![glenside::language::RelayOperator::RelayBatchNormInference],
     );
     info!("ingested Relay code into Glenside");
 
