@@ -739,6 +739,18 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
                         .unwrap();
+
+                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::Softmax) {
+                        let softmax_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::Softmax,
+                        ));
+                        let axis_id =
+                            glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));
+                        return glenside_expr.add(Language::RelayOperatorCall(
+                            vec![softmax_id, data_id, axis_id].into_boxed_slice(),
+                        ));
+                    }
+
                     match attrs.axis {
                         -1 => {
                             let data_id = access(

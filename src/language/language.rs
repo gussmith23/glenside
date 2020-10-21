@@ -263,12 +263,16 @@ pub enum RelayOperator {
     // its inference-time simplified version.
     // TODO(@gussmith23) How to handle batch norms?
     BatchNormInference,
+
+    // (relay-operator softmax <data: access> <axis: usize>)
+    Softmax,
 }
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
         match input {
             "batch-norm-inference" => Ok(RelayOperator::BatchNormInference),
+            "softmax" => Ok(RelayOperator::Softmax),
             _ => Err(()),
         }
     }
@@ -280,6 +284,7 @@ impl Display for RelayOperator {
             "{}",
             match self {
                 RelayOperator::BatchNormInference => "batch-norm-inference",
+                RelayOperator::Softmax => "softmax",
             }
         )
     }
@@ -1003,6 +1008,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::Softmax => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Legacy(_)] => {
+                                a.clone()
+                            }
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::BatchNormInference => {
                         let mut access = match params[1..]
                             .iter()
@@ -4036,6 +4063,55 @@ mod tests {
           (access-tensor d)
           (access-tensor e)
           1e-5 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_softmax() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        let program = "
+         (relay-operator-call softmax
+          (access-tensor a)
+          1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameters do not type check")]
+    fn relay_operator_call_softmax_panic() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![32]);
+        let program = "
+         (relay-operator-call softmax
+          (access-tensor a)
+          (access-tensor b)
+          )
          "
         .parse()
         .unwrap();
