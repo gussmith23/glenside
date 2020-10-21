@@ -690,7 +690,7 @@ fn compile_expression(
                     assert!(simplify_batch_norm_for_inference_hack);
                     assert!(
                         use_opaque_operators_for
-                            .contains(&crate::language::RelayOperator::BatchNormInference),
+                            .contains(&crate::language::RelayOperator::RelayBatchNormInference),
                         "non-opaque implementation of batch norm not implemented!"
                     );
 
@@ -714,7 +714,7 @@ fn compile_expression(
                         .add(Language::NotNanFloat64(NotNan::new(attrs.epsilon).unwrap()));
 
                     let batch_norm_op_id = glenside_expr.add(Language::RelayOperator(
-                        crate::language::RelayOperator::BatchNormInference,
+                        crate::language::RelayOperator::RelayBatchNormInference,
                     ));
 
                     glenside_expr.add(Language::RelayOperatorCall(
@@ -740,9 +740,11 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
                         .unwrap();
 
-                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::Softmax) {
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelaySoftmax)
+                    {
                         let softmax_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::Softmax,
+                            crate::language::RelayOperator::RelaySoftmax,
                         ));
                         let axis_id =
                             glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));

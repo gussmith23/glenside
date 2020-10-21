@@ -254,7 +254,7 @@ define_language! {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RelayOperator {
-    // (relay-operator batch-norm-inference <data: access>
+    // (relay-operator relay-batch-norm-inference <data: access>
     //  <gamma: access> <beta: access>
     //  <moving_mean: access> <moving_var: access>
     //  <axis: usize> <epsilon: float>)
@@ -262,17 +262,17 @@ pub enum RelayOperator {
     // normal batch norm, which is a training-time operator, but we do support
     // its inference-time simplified version.
     // TODO(@gussmith23) How to handle batch norms?
-    BatchNormInference,
+    RelayBatchNormInference,
 
-    // (relay-operator softmax <data: access> <axis: usize>)
-    Softmax,
+    // (relay-operator relay-softmax <data: access> <axis: usize>)
+    RelaySoftmax,
 }
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
         match input {
-            "batch-norm-inference" => Ok(RelayOperator::BatchNormInference),
-            "softmax" => Ok(RelayOperator::Softmax),
+            "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
+            "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
             _ => Err(()),
         }
     }
@@ -283,8 +283,8 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
-                RelayOperator::BatchNormInference => "batch-norm-inference",
-                RelayOperator::Softmax => "softmax",
+                RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
+                RelayOperator::RelaySoftmax => "relay-softmax",
             }
         )
     }
@@ -1008,7 +1008,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                    crate::language::RelayOperator::Softmax => {
+                    crate::language::RelayOperator::RelaySoftmax => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
@@ -1030,7 +1030,7 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::BatchNormInference => {
+                    crate::language::RelayOperator::RelayBatchNormInference => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
@@ -4023,7 +4023,7 @@ mod tests {
         map.insert("d".to_string(), vec![3, 3, 3, 3, 3, 3]);
         map.insert("e".to_string(), vec![]);
         let program = "
-         (relay-operator-call batch-norm-inference
+         (relay-operator-call relay-batch-norm-inference
           (access-tensor a)
           (access-tensor b)
           (access-tensor c)
@@ -4056,7 +4056,7 @@ mod tests {
         map.insert("d".to_string(), vec![3, 3, 3, 3, 3, 3]);
         map.insert("e".to_string(), vec![]);
         let program = "
-         (relay-operator-call batch-norm-inference
+         (relay-operator-call relay-batch-norm-inference
           (access-tensor a)
           (access-tensor b)
           (access-tensor c)
@@ -4083,7 +4083,7 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![32, 64]);
         let program = "
-         (relay-operator-call softmax
+         (relay-operator-call relay-softmax
           (access-tensor a)
           1)
          "
@@ -4108,7 +4108,7 @@ mod tests {
         map.insert("a".to_string(), vec![32, 64]);
         map.insert("b".to_string(), vec![32]);
         let program = "
-         (relay-operator-call softmax
+         (relay-operator-call relay-softmax
           (access-tensor a)
           (access-tensor b)
           )

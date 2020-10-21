@@ -64,7 +64,7 @@ fn parse_mobilenet() {
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![glenside::language::RelayOperator::BatchNormInference],
+        &vec![glenside::language::RelayOperator::RelayBatchNormInference],
     );
 
     let mut env = HashMap::default();
