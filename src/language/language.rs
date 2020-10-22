@@ -273,6 +273,9 @@ pub enum RelayOperator {
     /// (relay-operator relay-max-pool2d <data: access>
     ///  <pool size: shape> <strides: shape> <padding: shape>)
     RelayMaxPool2D,
+
+    /// (relay-operator global-avg-pool2d <data: access>)
+    RelayGlobalAvgPool2D,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -282,6 +285,7 @@ impl FromStr for RelayOperator {
             "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
             "relay-relu" => Ok(RelayOperator::RelayReLU),
             "relay-max-pool2d" => Ok(RelayOperator::RelayMaxPool2D),
+            "relay-global-avg-pool2d" => Ok(RelayOperator::RelayGlobalAvgPool2D),
             _ => Err(()),
         }
     }
@@ -296,6 +300,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelaySoftmax => "relay-softmax",
                 RelayOperator::RelayReLU => "relay-relu",
                 RelayOperator::RelayMaxPool2D => "relay-max-pool2d",
+                RelayOperator::RelayGlobalAvgPool2D => "relay-global-avg-pool2d",
             }
         )
     }
@@ -1019,6 +1024,32 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayGlobalAvgPool2D => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a)] => a.clone(),
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        assert_eq!(access.shape.ndim() + access.item_shape.ndim(), 4);
+
+                        // TODO(@gussmith23) Assuming NCHW layout
+                        access[2] = 1;
+                        access[3] = 1;
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::RelayMaxPool2D => {
                         let (mut access, pool_size, strides, padding) = match params[1..]
                             .iter()
@@ -4284,6 +4315,54 @@ mod tests {
           (access-tensor a)
           (shape 3 4)
           (shape 5 6 7 8)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_global_avg_pool2d() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 3, 32, 64]);
+        let program = "
+         (relay-operator-call relay-global-avg-pool2d
+          (access-tensor a)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 3, 1, 1]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameters do not type check")]
+    fn relay_operator_call_global_avg_pool2d_panic() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 3, 32, 64]);
+        let program = "
+         (relay-operator-call relay-max-pool2d
+          (access-tensor a)
+          (access-tensor a)
          )
          "
         .parse()
