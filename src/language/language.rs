@@ -1075,6 +1075,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         assert_eq!(strides.shape.ndim(), 2);
                         assert_eq!(padding.shape.ndim(), 4);
 
+                        // TODO(@gussmith23) Assuming NCHW layout
                         access[2] =
                             // The dimension plus padding
                             (((padding.shape[0] + access[2] + padding.shape[2])
