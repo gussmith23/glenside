@@ -777,7 +777,22 @@ fn compile_expression(
                         other @ _ => todo!("Softmax with axis value {} not yet supported", other),
                     }
                 }
-                "nn.relu" | "sqrt" | "negative" => {
+                "nn.relu" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelayReLU)
+                    {
+                        let relu_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayReLU,
+                        ));
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relu_id, data_id].into_boxed_slice(),
+                        ))
+                    } else {
+                        compute(glenside_expr, ComputeType::ReLU, data_id)
+                    }
+                }
+                "sqrt" | "negative" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     compute(
