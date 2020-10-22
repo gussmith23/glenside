@@ -269,6 +269,10 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-relu <data: access>)
     RelayReLU,
+
+    /// (relay-operator relay-max-pool2d
+    ///  <pool size: shape> <strides: shape> <padding: shape>)
+    RelayMaxPool2D,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -277,6 +281,7 @@ impl FromStr for RelayOperator {
             "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
             "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
             "relay-relu" => Ok(RelayOperator::RelayReLU),
+            "relay-max-pool2d" => Ok(RelayOperator::RelayMaxPool2D),
             _ => Err(()),
         }
     }
@@ -290,6 +295,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
                 RelayOperator::RelaySoftmax => "relay-softmax",
                 RelayOperator::RelayReLU => "relay-relu",
+                RelayOperator::RelayMaxPool2D => "relay-max-pool2d",
             }
         )
     }
@@ -1013,6 +1019,52 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayMaxPool2D => {
+                        let (mut access, pool_size, strides, padding) = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(pool_size), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding)] => {
+                                (a.clone(), pool_size, strides, padding)
+                            }
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        assert_eq!(access.shape.ndim() + access.item_shape.ndim(), 4);
+                        assert_eq!(pool_size.shape.ndim(), 2);
+                        assert_eq!(strides.shape.ndim(), 2);
+                        assert_eq!(padding.shape.ndim(), 4);
+
+                        access[2] =
+                            // The dimension plus padding
+                            (((padding.shape[0] + access[2] + padding.shape[2])
+                                // Get the number of spots where we could pool
+                                - (pool_size.shape[0] - 1))
+                                // Then calculate the spots we actually pool at
+                                // using the stride
+                                + strides.shape[0]
+                                - 1)
+                                / strides.shape[0];
+                        access[3] = (((padding.shape[1] + access[3] + padding.shape[3])
+                              // Get the number of spots where we could pool
+                              - (pool_size.shape[1] - 1))
+                             // Then calculate the spots we actually pool at
+                             // using the stride
+                             + strides.shape[1]
+                            - 1)
+                            / strides.shape[1];
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::RelayReLU => {
                         let mut access = match params[1..]
                             .iter()
@@ -4185,6 +4237,59 @@ mod tests {
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
             name_to_shape: HashMap::default(),
         });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_max_pool2d() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 3, 32, 64]);
+        let program = "
+         (relay-operator-call relay-max-pool2d
+          (access-tensor a)
+          (shape 1 2)
+          (shape 3 4)
+          (shape 5 6 7 8)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 3, 15, 20]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameters do not type check")]
+    fn relay_operator_call_max_pool2d_panic() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 3, 32, 64]);
+        let program = "
+         (relay-operator-call relay-max-pool2d
+          (access-tensor a)
+          (access-tensor a)
+          (shape 3 4)
+          (shape 5 6 7 8)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
