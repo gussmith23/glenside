@@ -791,6 +791,16 @@ impl std::ops::Index<usize> for AccessPatternData {
     }
 }
 
+impl std::ops::IndexMut<usize> for AccessPatternData {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        if index < self.shape.ndim() {
+            &mut self.shape[index]
+        } else {
+            &mut self.item_shape[index - self.shape.ndim()]
+        }
+    }
+}
+
 pub fn access_windows_resulting_shape(
     access_shape: &IxDyn,
     filters_shape: &IxDyn,
