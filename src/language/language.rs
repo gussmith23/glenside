@@ -274,7 +274,7 @@ pub enum RelayOperator {
     ///  <pool size: shape> <strides: shape> <padding: shape>)
     RelayMaxPool2D,
 
-    /// (relay-operator global-avg-pool2d <data: access>)
+    /// (relay-operator relay-global-avg-pool2d <data: access>)
     RelayGlobalAvgPool2D,
 }
 impl FromStr for RelayOperator {
