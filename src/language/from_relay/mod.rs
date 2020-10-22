@@ -1196,6 +1196,18 @@ fn compile_expression(
                     );
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayBatchFlatten)
+                    {
+                        let batch_flatten_operator_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayBatchFlatten,
+                        ));
+                        return glenside_expr.add(Language::RelayOperatorCall(
+                            vec![batch_flatten_operator_id, data_id].into_boxed_slice(),
+                        ));
+                    }
+
                     let data_id = access(glenside_expr, data_id, 1);
                     glenside_expr.add(Language::AccessFlatten(data_id))
                 }
