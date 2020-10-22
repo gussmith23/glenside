@@ -830,6 +830,92 @@ fn compile_expression(
                     assert_eq!(attrs.strides.len(), 2);
                     assert_eq!(attrs.ceil_mode, false);
 
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayMaxPool2D)
+                    {
+                        assert_eq!(attrs.layout.as_str().unwrap(), "NCHW");
+                        let pool_size_id = shape(
+                            glenside_expr,
+                            vec![
+                                attrs
+                                    .pool_size
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .pool_size
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ],
+                        );
+                        let strides_id = shape(
+                            glenside_expr,
+                            vec![
+                                attrs
+                                    .strides
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .strides
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ],
+                        );
+                        let padding_id = shape(
+                            glenside_expr,
+                            vec![
+                                attrs
+                                    .padding
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .padding
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .padding
+                                    .get(2)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .padding
+                                    .get(3)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ],
+                        );
+
+                        let max_pool_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayMaxPool2D,
+                        ));
+
+                        return glenside_expr.add(Language::RelayOperatorCall(
+                            vec![max_pool_id, pool_size_id, strides_id, padding_id]
+                                .into_boxed_slice(),
+                        ));
+                    }
+
                     match attrs.layout.as_str().unwrap() {
                         "NCHW" => {
                             let data_id = get_compiled_expression(call.args.get(0).unwrap());
