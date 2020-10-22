@@ -266,6 +266,9 @@ pub enum RelayOperator {
 
     // (relay-operator relay-softmax <data: access> <axis: usize>)
     RelaySoftmax,
+
+    /// (relay-operator relay-relu <data: access>)
+    RelayReLU,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -273,6 +276,7 @@ impl FromStr for RelayOperator {
         match input {
             "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
             "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
+            "relay-relu" => Ok(RelayOperator::RelayReLU),
             _ => Err(()),
         }
     }
@@ -285,6 +289,7 @@ impl Display for RelayOperator {
             match self {
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
                 RelayOperator::RelaySoftmax => "relay-softmax",
+                RelayOperator::RelayReLU => "relay-relu",
             }
         )
     }
@@ -1008,6 +1013,26 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayReLU => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a)] => a.clone(),
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::RelaySoftmax => {
                         let mut access = match params[1..]
                             .iter()
@@ -4117,6 +4142,49 @@ mod tests {
         .unwrap();
         let mut egraph =
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_relu() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        let program = "
+         (relay-operator-call relay-relu
+          (access-tensor a))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameters do not type check")]
+    fn relay_operator_call_relu_panic() {
+        let program = "
+         (relay-operator-call relay-relu 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
