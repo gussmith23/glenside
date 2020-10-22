@@ -254,17 +254,17 @@ define_language! {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RelayOperator {
-    // (relay-operator relay-batch-norm-inference <data: access>
-    //  <gamma: access> <beta: access>
-    //  <moving_mean: access> <moving_var: access>
-    //  <axis: usize> <epsilon: float>)
-    // The batch-norm-at-inference-time operator. We don't currently support
-    // normal batch norm, which is a training-time operator, but we do support
-    // its inference-time simplified version.
-    // TODO(@gussmith23) How to handle batch norms?
+    /// (relay-operator relay-batch-norm-inference <data: access>
+    ///  <gamma: access> <beta: access>
+    ///  <moving_mean: access> <moving_var: access>
+    ///  <axis: usize> <epsilon: float>)
+    /// The batch-norm-at-inference-time operator. We don't currently support
+    /// normal batch norm, which is a training-time operator, but we do support
+    /// its inference-time simplified version.
+    /// TODO(@gussmith23) How to handle batch norms?
     RelayBatchNormInference,
 
-    // (relay-operator relay-softmax <data: access> <axis: usize>)
+    /// (relay-operator relay-softmax <data: access> <axis: usize>)
     RelaySoftmax,
 
     /// (relay-operator relay-relu <data: access>)
