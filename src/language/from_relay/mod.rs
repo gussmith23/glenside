@@ -1031,9 +1031,22 @@ fn compile_expression(
                         "NCHW is the only layout currently supported"
                     );
 
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayGlobalAvgPool2D)
+                    {
+                        let global_avg_pool2d_operator_id =
+                            glenside_expr.add(Language::RelayOperator(
+                                crate::language::RelayOperator::RelayGlobalAvgPool2D,
+                            ));
+                        return glenside_expr.add(Language::RelayOperatorCall(
+                            vec![global_avg_pool2d_operator_id, data_id].into_boxed_slice(),
+                        ));
+                    }
+
                     match attrs.layout.as_str().unwrap() {
                         "NCHW" => {
-                            let data_id = get_compiled_expression(call.args.get(0).unwrap());
                             let data_id = access(glenside_expr, data_id, 2);
                             let data_id = compute(glenside_expr, ComputeType::ReduceMean, data_id);
                             let data_id = access_insert_axis(glenside_expr, data_id, 2);
