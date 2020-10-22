@@ -1255,6 +1255,19 @@ fn compile_expression(
                     };
                     assert!(axis >= 0);
 
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayBiasAdd)
+                    {
+                        let bias_add_operator_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayBiasAdd,
+                        ));
+                        let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                        return glenside_expr.add(Language::RelayOperatorCall(
+                            vec![bias_add_operator_id, data_id, bias_id, axis_id]
+                                .into_boxed_slice(),
+                        ));
+                    }
+
                     // Insert axes before
                     for _ in 0..axis {
                         let zero_id = glenside_expr.add(Language::Usize(0));
