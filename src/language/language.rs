@@ -270,7 +270,7 @@ pub enum RelayOperator {
     /// (relay-operator relay-relu <data: access>)
     RelayReLU,
 
-    /// (relay-operator relay-max-pool2d
+    /// (relay-operator relay-max-pool2d <data: access>
     ///  <pool size: shape> <strides: shape> <padding: shape>)
     RelayMaxPool2D,
 }
