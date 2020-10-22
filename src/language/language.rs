@@ -279,6 +279,10 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-batch-flatten <data: access>)
     RelayBatchFlatten,
+
+    /// (relay-operator relay-bias-add <data: access> <bias: access>
+    ///  <axis: usize>)
+    RelayBiasAdd,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -290,6 +294,7 @@ impl FromStr for RelayOperator {
             "relay-max-pool2d" => Ok(RelayOperator::RelayMaxPool2D),
             "relay-global-avg-pool2d" => Ok(RelayOperator::RelayGlobalAvgPool2D),
             "relay-batch-flatten" => Ok(RelayOperator::RelayBatchFlatten),
+            "relay-bias-add" => Ok(RelayOperator::RelayBiasAdd),
             _ => Err(()),
         }
     }
@@ -306,6 +311,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayMaxPool2D => "relay-max-pool2d",
                 RelayOperator::RelayGlobalAvgPool2D => "relay-global-avg-pool2d",
                 RelayOperator::RelayBatchFlatten => "relay-batch-flatten",
+                RelayOperator::RelayBiasAdd => "relay-bias-add",
             }
         )
     }
@@ -1029,6 +1035,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayBiasAdd => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_)] => {
+                                a.clone()
+                            }
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::RelayBatchFlatten => {
                         let mut access = match params[1..]
                             .iter()
@@ -4455,6 +4483,57 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_bias_add() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 32]);
+        map.insert("b".to_string(), vec![32]);
+        let program = "
+         (relay-operator-call relay-bias-add
+          (access-tensor a)
+          (access-tensor b)
+          1
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Parameters do not type check")]
+    fn relay_operator_call_bias_add_panic() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 32]);
+        let program = "
+         (relay-operator-call relay-bias-add
+          (access-tensor a)
+          2 3
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 32]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
