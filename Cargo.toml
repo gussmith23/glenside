@@ -38,7 +38,7 @@ git = "https://github.com/emallson/rplex.git"
 # TODO(@gussmith23) Change this to tvm mainline once BatchNormAttrs merged in
 # NOTE Keep glenside-evaluation in sync with this
 # If the versions get out of whack, we'll probably have some weird errors.
-rev = "14a786d3885304e5964df397a50edd19a759f903"
+rev = "81085832e936414bbf90617e5b2bf51d5efadfde"
 git = "https://github.com/gussmith23/tvm"
 optional = true
 
