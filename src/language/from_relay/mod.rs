@@ -746,8 +746,25 @@ fn compile_expression(
                         let softmax_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelaySoftmax,
                         ));
+                        let ndims = call
+                            .args
+                            .get(0)
+                            .unwrap()
+                            .checked_type
+                            .clone()
+                            .downcast::<TensorType>()
+                            .unwrap()
+                            .shape
+                            .len();
+
+                        let axis: i64 = if attrs.axis < 0 {
+                            ndims + i64::from(attrs.axis)
+                        } else {
+                            attrs.axis.into()
+                        };
+                        assert!(axis >= 0 && i64::from(axis) < ndims);
                         let axis_id =
-                            glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));
+                            glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
                         return glenside_expr.add(Language::RelayOperatorCall(
                             vec![softmax_id, data_id, axis_id].into_boxed_slice(),
                         ));
