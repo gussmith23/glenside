@@ -54,47 +54,55 @@ pub fn create_generic_egraph_lp_model<'a>(
     /// extractable or not.
     fn filter_enode(enode: &Language, _egraph: &EGraph) -> bool {
         match enode {
-            Language::CartesianProduct(_) => panic!(),
-            Language::MapDotProduct(_) => panic!(),
-            Language::Slice(_) => panic!(),
-            Language::Concatenate(_) => panic!(),
-            Language::ElementwiseAdd(_) => panic!(),
-            Language::BsgSystolicArray(_) => panic!(),
-            Language::SystolicArray(_) => true,
-            Language::SystolicArrayWithBlocking(_) => true,
-            Language::AccessWindows(_) => true,
-            Language::ShapeOf(_) => panic!(),
-            Language::SliceShape(_) => panic!(),
-            Language::ShapeInsertAxis(_) => panic!(),
-            Language::ShapeRemoveAxis(_) => panic!(),
-            Language::Access(_) => true,
-            Language::AccessTranspose(_) => true,
-            Language::AccessCartesianProduct(_) => false,
-            Language::Compute(_) => false,
-            Language::AccessReshape(_) => true,
-            Language::AccessFlatten(_) => true,
-            Language::Shape(_) => true,
-            Language::List(_) => true,
-            Language::AccessShape(_) => true,
-            Language::AccessSlice(_) => true,
-            Language::AccessConcatenate(_) => false,
-            Language::AccessPair(_) => false,
-            Language::AccessShiftRight(_) => false,
-            Language::AccessTensor(_) => true,
-            Language::AccessPad(_) => true,
-            Language::AccessSqueeze(_) => true,
-            Language::AccessInsertAxis(_) => true,
-            Language::AccessBroadcast(_) => true,
-            Language::AccessLiteral(_) => true,
-            Language::Literal(_) => true,
-            Language::RelayOperatorCall(_) => true,
-            Language::Usize(_) => true,
-            Language::NotNanFloat64(_) => true,
-            Language::RelayOperator(_) => true,
-            Language::PadType(_) => true,
-            Language::Symbol(_) => true,
-            Language::ComputeType(_) => false,
-            Language::MoveAxis(_) => panic!(),
+            // Things we should never see.
+            Language::CartesianProduct(_)
+            | Language::MapDotProduct(_)
+            | Language::Slice(_)
+            | Language::Concatenate(_)
+            | Language::ElementwiseAdd(_)
+            | Language::BsgSystolicArray(_)
+            | Language::ShapeOf(_)
+            | Language::SliceShape(_)
+            | Language::ShapeInsertAxis(_)
+            | Language::ShapeRemoveAxis(_)
+            | Language::MoveAxis(_) => panic!(),
+
+            // Things that should always pass through.
+            Language::SystolicArray(_)
+            | Language::SystolicArrayWithBlocking(_)
+            | Language::Literal(_)
+            | Language::RelayOperatorCall(_)
+            | Language::Usize(_)
+            | Language::NotNanFloat64(_)
+            | Language::RelayOperator(_)
+            | Language::Symbol(_) => true,
+
+            // Things I'm not sure about.
+            Language::Shape(_) | Language::List(_) | Language::AccessTensor(_) => true,
+
+            // Things that we allow to pass through for now, but shouldn't in
+            // the future (once we implement things like memory constructs).
+            Language::AccessWindows(_)
+            | Language::Access(_)
+            | Language::AccessTranspose(_)
+            | Language::AccessReshape(_)
+            | Language::AccessFlatten(_)
+            | Language::AccessShape(_)
+            | Language::AccessSlice(_)
+            | Language::AccessPad(_)
+            | Language::PadType(_)
+            | Language::AccessSqueeze(_)
+            | Language::AccessInsertAxis(_)
+            | Language::AccessBroadcast(_)
+            | Language::AccessLiteral(_) => true,
+
+            // Things that should never pass through.
+            Language::Compute(_)
+            | Language::ComputeType(_)
+            | Language::AccessCartesianProduct(_)
+            | Language::AccessConcatenate(_)
+            | Language::AccessPair(_)
+            | Language::AccessShiftRight(_) => false,
         }
     }
 
