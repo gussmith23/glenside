@@ -50,6 +50,54 @@ pub fn create_generic_egraph_lp_model<'a>(
     roots: &[Id],
     name: &'static str,
 ) -> EGraphLpProblem<'a> {
+    /// Filtering function which determines whether this node should be
+    /// extractable or not.
+    fn filter_enode(enode: &Language, _egraph: &EGraph) -> bool {
+        match enode {
+            Language::CartesianProduct(_) => panic!(),
+            Language::MapDotProduct(_) => panic!(),
+            Language::Slice(_) => panic!(),
+            Language::Concatenate(_) => panic!(),
+            Language::ElementwiseAdd(_) => panic!(),
+            Language::BsgSystolicArray(_) => panic!(),
+            Language::SystolicArray(_) => true,
+            Language::SystolicArrayWithBlocking(_) => true,
+            Language::AccessWindows(_) => false,
+            Language::ShapeOf(_) => panic!(),
+            Language::SliceShape(_) => panic!(),
+            Language::ShapeInsertAxis(_) => panic!(),
+            Language::ShapeRemoveAxis(_) => panic!(),
+            Language::Access(_) => true,
+            Language::AccessTranspose(_) => true,
+            Language::AccessCartesianProduct(_) => false,
+            Language::Compute(_) => false,
+            Language::AccessReshape(_) => true,
+            Language::AccessFlatten(_) => true,
+            Language::Shape(_) => true,
+            Language::List(_) => true,
+            Language::AccessShape(_) => false,
+            Language::AccessSlice(_) => true,
+            Language::AccessConcatenate(_) => false,
+            Language::AccessPair(_) => false,
+            Language::AccessShiftRight(_) => false,
+            Language::AccessTensor(_) => true,
+            Language::AccessPad(_) => true,
+            Language::AccessSqueeze(_) => true,
+            Language::AccessInsertAxis(_) => true,
+            Language::AccessBroadcast(_) => true,
+            Language::AccessLiteral(_) => true,
+            Language::Literal(_) => true,
+            Language::RelayOperatorCall(_) => true,
+            Language::Usize(_) => true,
+            Language::NotNanFloat64(_) => true,
+            Language::RelayOperator(_) => true,
+            Language::PadType(_) => true,
+            Language::Symbol(_) => true,
+            Language::ComputeType(_) => false,
+            Language::MoveAxis(_) => panic!(),
+        }
+    }
+
     let mut problem = Problem::new(&env, name).unwrap();
 
     // Variables representing each class
@@ -109,7 +157,14 @@ pub fn create_generic_egraph_lp_model<'a>(
     for eclass in egraph.classes() {
         let bq_column_index = bq_vars.get(&eclass.id).unwrap();
 
-        if eclass.nodes.is_empty() {
+        // We only allow the extraction of certain nodes.
+        let nodes = eclass
+            .nodes
+            .iter()
+            .filter(|node| filter_enode(node, egraph))
+            .collect::<Vec<_>>();
+
+        if nodes.is_empty() {
             // Can't extract if this eclass has no variants to be extracted.
             let mut con = Constraint::new(
                 ConstraintType::Eq,
@@ -130,7 +185,7 @@ pub fn create_generic_egraph_lp_model<'a>(
                 format!("must select enode for {}", eclass.id),
             );
             con.add_wvar(WeightedVariable::new_idx(*bq_column_index, -1.0));
-            for bn in eclass.nodes.iter().map(|node| bn_vars.get(&node).unwrap()) {
+            for bn in nodes.iter().map(|node| bn_vars.get(node).unwrap()) {
                 con.add_wvar(WeightedVariable::new_idx(*bn, 1.0));
             }
             problem.add_constraint(con).unwrap();
