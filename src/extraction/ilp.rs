@@ -75,7 +75,7 @@ pub fn create_generic_egraph_lp_model<'a>(
             Language::AccessFlatten(_) => true,
             Language::Shape(_) => true,
             Language::List(_) => true,
-            Language::AccessShape(_) => false,
+            Language::AccessShape(_) => true,
             Language::AccessSlice(_) => true,
             Language::AccessConcatenate(_) => false,
             Language::AccessPair(_) => false,
