@@ -62,7 +62,7 @@ pub fn create_generic_egraph_lp_model<'a>(
             Language::BsgSystolicArray(_) => panic!(),
             Language::SystolicArray(_) => true,
             Language::SystolicArrayWithBlocking(_) => true,
-            Language::AccessWindows(_) => false,
+            Language::AccessWindows(_) => true,
             Language::ShapeOf(_) => panic!(),
             Language::SliceShape(_) => panic!(),
             Language::ShapeInsertAxis(_) => panic!(),
