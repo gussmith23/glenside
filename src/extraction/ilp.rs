@@ -90,6 +90,7 @@ pub fn create_generic_egraph_lp_model<'a>(
             | Language::AccessShape(_)
             // Concatenate needed for grouped convs
             | Language::AccessConcatenate(_)
+            // Slice needed for slice-pad rewrite, grouped convs
             | Language::AccessSlice(_)
             | Language::AccessPad(_)
             | Language::PadType(_)
