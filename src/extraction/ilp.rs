@@ -88,6 +88,8 @@ pub fn create_generic_egraph_lp_model<'a>(
             | Language::AccessReshape(_)
             | Language::AccessFlatten(_)
             | Language::AccessShape(_)
+            // Concatenate needed for grouped convs
+            | Language::AccessConcatenate(_)
             | Language::AccessSlice(_)
             | Language::AccessPad(_)
             | Language::PadType(_)
@@ -100,7 +102,6 @@ pub fn create_generic_egraph_lp_model<'a>(
             Language::Compute(_)
             | Language::ComputeType(_)
             | Language::AccessCartesianProduct(_)
-            | Language::AccessConcatenate(_)
             | Language::AccessPair(_)
             | Language::AccessShiftRight(_) => false,
         }
