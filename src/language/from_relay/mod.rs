@@ -846,6 +846,8 @@ fn compile_expression(
                     assert_eq!(attrs.strides.len(), 2);
                     assert_eq!(attrs.ceil_mode, false);
 
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayMaxPool2D)
                     {
@@ -927,14 +929,13 @@ fn compile_expression(
                         ));
 
                         return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![max_pool_id, pool_size_id, strides_id, padding_id]
+                            vec![max_pool_id, data_id, pool_size_id, strides_id, padding_id]
                                 .into_boxed_slice(),
                         ));
                     }
 
                     match attrs.layout.as_str().unwrap() {
                         "NCHW" => {
-                            let data_id = get_compiled_expression(call.args.get(0).unwrap());
                             let data_id = access_pad(
                                 glenside_expr,
                                 data_id,
