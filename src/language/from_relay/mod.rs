@@ -1153,6 +1153,18 @@ fn compile_expression(
                     let mut b_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
 
+                    if primitive_op.name.as_str().unwrap() == "add"
+                        && use_opaque_operators_for
+                            .contains(&crate::language::RelayOperator::RelayAdd)
+                    {
+                        let add_operator_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayAdd,
+                        ));
+                        return glenside_expr.add(Language::RelayOperatorCall(
+                            vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                        ));
+                    }
+
                     while a_shape.len() < b_shape.len() {
                         a_id = access_insert_axis(glenside_expr, a_id, 0);
                         a_shape.insert(0, 1);
