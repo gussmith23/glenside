@@ -38,6 +38,72 @@ pub struct EGraphLpProblem<'a> {
     pub topo_sort_vars: HashMap<Id, usize>,
 }
 
+/// Filtering function which determines whether this node should be
+/// extractable or not.
+pub fn filter_eclass_variants(mut enodes: Vec<Language>) -> Vec<Language> {
+    let enodes = enodes
+        .drain(..)
+        .filter(|enode| {
+            match enode {
+                // Things we should never see.
+                Language::CartesianProduct(_)
+                    | Language::MapDotProduct(_)
+                    | Language::Slice(_)
+                    | Language::Concatenate(_)
+                    | Language::ElementwiseAdd(_)
+                    | Language::BsgSystolicArray(_)
+                    | Language::ShapeOf(_)
+                    | Language::SliceShape(_)
+                    | Language::ShapeInsertAxis(_)
+                    | Language::ShapeRemoveAxis(_)
+                    | Language::MoveAxis(_) => panic!(),
+
+                // Things that should always pass through.
+                Language::SystolicArray(_)
+                    | Language::SystolicArrayWithBlocking(_)
+                    | Language::Literal(_)
+                    | Language::RelayOperatorCall(_)
+                    | Language::Usize(_)
+                    | Language::NotNanFloat64(_)
+                    | Language::RelayOperator(_)
+                    | Language::Symbol(_) => true,
+
+                // Things I'm not sure about.
+                Language::Shape(_) | Language::List(_) | Language::AccessTensor(_) => true,
+
+                // Things that we allow to pass through for now, but shouldn't
+                // in the future (once we implement things like memory
+                // constructs).
+                Language::AccessWindows(_)
+                    | Language::Access(_)
+                    | Language::AccessTranspose(_)
+                    | Language::AccessReshape(_)
+                    | Language::AccessFlatten(_)
+                    | Language::AccessShape(_)
+                // Concatenate needed for grouped convs
+                    | Language::AccessConcatenate(_)
+                // Slice needed for slice-pad rewrite, grouped convs
+                    | Language::AccessSlice(_)
+                    | Language::AccessPad(_)
+                    | Language::PadType(_)
+                    | Language::AccessSqueeze(_)
+                    | Language::AccessInsertAxis(_)
+                    | Language::AccessBroadcast(_)
+                    | Language::AccessLiteral(_) => true,
+
+                // Things that should never pass through.
+                Language::Compute(_)
+                    | Language::ComputeType(_)
+                    | Language::AccessCartesianProduct(_)
+                    | Language::AccessPair(_)
+                    | Language::AccessShiftRight(_) => false,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    enodes
+}
+
 /// From an egraph, create an LP model with a few useful base constraints
 ///
 /// Gives a variable to each eclass and each enode.
@@ -47,67 +113,10 @@ pub struct EGraphLpProblem<'a> {
 pub fn create_generic_egraph_lp_model<'a>(
     env: &'a Env,
     egraph: &'a EGraph,
+    filter_eclass_variants: impl Fn(Vec<Language>) -> Vec<Language>,
     roots: &[Id],
     name: &'static str,
 ) -> EGraphLpProblem<'a> {
-    /// Filtering function which determines whether this node should be
-    /// extractable or not.
-    fn filter_enode(enode: &Language, _egraph: &EGraph) -> bool {
-        match enode {
-            // Things we should never see.
-            Language::CartesianProduct(_)
-            | Language::MapDotProduct(_)
-            | Language::Slice(_)
-            | Language::Concatenate(_)
-            | Language::ElementwiseAdd(_)
-            | Language::BsgSystolicArray(_)
-            | Language::ShapeOf(_)
-            | Language::SliceShape(_)
-            | Language::ShapeInsertAxis(_)
-            | Language::ShapeRemoveAxis(_)
-            | Language::MoveAxis(_) => panic!(),
-
-            // Things that should always pass through.
-            Language::SystolicArray(_)
-            | Language::SystolicArrayWithBlocking(_)
-            | Language::Literal(_)
-            | Language::RelayOperatorCall(_)
-            | Language::Usize(_)
-            | Language::NotNanFloat64(_)
-            | Language::RelayOperator(_)
-            | Language::Symbol(_) => true,
-
-            // Things I'm not sure about.
-            Language::Shape(_) | Language::List(_) | Language::AccessTensor(_) => true,
-
-            // Things that we allow to pass through for now, but shouldn't in
-            // the future (once we implement things like memory constructs).
-            Language::AccessWindows(_)
-            | Language::Access(_)
-            | Language::AccessTranspose(_)
-            | Language::AccessReshape(_)
-            | Language::AccessFlatten(_)
-            | Language::AccessShape(_)
-            // Concatenate needed for grouped convs
-            | Language::AccessConcatenate(_)
-            // Slice needed for slice-pad rewrite, grouped convs
-            | Language::AccessSlice(_)
-            | Language::AccessPad(_)
-            | Language::PadType(_)
-            | Language::AccessSqueeze(_)
-            | Language::AccessInsertAxis(_)
-            | Language::AccessBroadcast(_)
-            | Language::AccessLiteral(_) => true,
-
-            // Things that should never pass through.
-            Language::Compute(_)
-            | Language::ComputeType(_)
-            | Language::AccessCartesianProduct(_)
-            | Language::AccessPair(_)
-            | Language::AccessShiftRight(_) => false,
-        }
-    }
-
     let mut problem = Problem::new(&env, name).unwrap();
 
     // Variables representing each class
@@ -168,11 +177,7 @@ pub fn create_generic_egraph_lp_model<'a>(
         let bq_column_index = bq_vars.get(&eclass.id).unwrap();
 
         // We only allow the extraction of certain nodes.
-        let nodes = eclass
-            .nodes
-            .iter()
-            .filter(|node| filter_enode(node, egraph))
-            .collect::<Vec<_>>();
+        let nodes = filter_eclass_variants(eclass.nodes.clone());
 
         if nodes.is_empty() {
             // Can't extract if this eclass has no variants to be extracted.
@@ -362,7 +367,8 @@ mod tests {
         let id = egraph.add_expr(&expr);
 
         let env = Env::new().unwrap();
-        let mut model = create_generic_egraph_lp_model(&env, &egraph, &[id], "trivial");
+        let mut model =
+            create_generic_egraph_lp_model(&env, &egraph, filter_eclass_variants, &[id], "trivial");
         let result = model.problem.solve().unwrap();
 
         let out_expr = into_recexpr(&model, &result.variables);
