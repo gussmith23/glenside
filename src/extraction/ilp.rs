@@ -78,6 +78,7 @@ pub fn create_generic_egraph_lp_model<'a>(
 
     // Calculating this in the loop was slowing things down a LOT! Is the
     // conversion to f64 slow?
+    // TODO(@gussmith23) potential bug
     let number_of_classes_f64 = egraph.number_of_classes() as f64;
     // Create all of the variables
     for eclass in egraph.classes() {
