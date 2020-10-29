@@ -53,12 +53,17 @@ pub struct EGraphLpProblem<'a> {
 /// topological sorting variables. See the definition of [`EGraphLpProblem`] for
 /// more detail on these variables.
 ///
+/// The `filter_enode` argument is a function which, given a reference to the
+/// enode, plus the id of its containing [`EClass`] and a reference to the
+/// [`egg::EGraph`] itself, determines whether to create a variable in the ILP
+/// problem for this enode. This can be used to filter "useless" enodes.
+///
 /// Code taken from Remy Wang's [`warp`
 /// repository](https://github.com/wormhole-optimization/warp/blob/d7db4a89ec47803bc2e7729946ca3810b6fb1d03/src/extract.rs).
 pub fn create_generic_egraph_lp_model<'a>(
     env: &'a Env,
     egraph: &'a EGraph,
-    filter_eclass_variants: impl Fn(Vec<Language>) -> Vec<Language>,
+    filter_enode: impl Fn(&Language, Id, &EGraph) -> bool,
     roots: &[Id],
     name: &'static str,
 ) -> EGraphLpProblem<'a> {
@@ -99,7 +104,12 @@ pub fn create_generic_egraph_lp_model<'a>(
             topo_sort_vars.insert(eclass.id, column_index);
         }
 
-        for enode in eclass.nodes.iter() {
+        // Filter out enodes that the user doesn't want variables for.
+        for enode in eclass
+            .nodes
+            .iter()
+            .filter(|node| filter_enode(node, eclass.id, egraph))
+        {
             let mut s = DefaultHasher::new();
             enode.hash(&mut s);
             let bn_name = "bn_".to_owned() + &s.finish().to_string();
@@ -118,20 +128,25 @@ pub fn create_generic_egraph_lp_model<'a>(
         problem.add_constraint(con).unwrap();
     }
 
-    for eclass in egraph.classes() {
-        let bq_column_index = bq_vars.get(&eclass.id).unwrap();
+    for (id, bq_idx) in bq_vars.iter() {
+        // We only allow the extraction of certain nodes. This gets a list of
+        // all of ILP variable indices for enode variables and their
+        // corresponding enodes, for enodes that passed through the
+        // `enode_filter` above.
+        let bn_idxs_and_nodes = egraph[*id]
+            .nodes
+            .iter()
+            .filter_map(|node| bn_vars.get(node).and_then(|idx| Some((*idx, node))))
+            .collect::<Vec<_>>();
 
-        // We only allow the extraction of certain nodes.
-        let nodes = filter_eclass_variants(eclass.nodes.clone());
-
-        if nodes.is_empty() {
+        if bn_idxs_and_nodes.is_empty() {
             // Can't extract if this eclass has no variants to be extracted.
             let mut con = Constraint::new(
                 ConstraintType::Eq,
                 0.0,
-                format!("can't extract {}", eclass.id),
+                format!("can't extract eclass {}", id),
             );
-            con.add_wvar(WeightedVariable::new_idx(*bq_column_index, 1.0));
+            con.add_wvar(WeightedVariable::new_idx(*bq_idx, 1.0));
             problem.add_constraint(con).unwrap();
         } else {
             // bq => OR bn
@@ -142,11 +157,11 @@ pub fn create_generic_egraph_lp_model<'a>(
             let mut con = Constraint::new(
                 ConstraintType::GreaterThanEq,
                 0.0,
-                format!("must select enode for {}", eclass.id),
+                format!("must select enode for eclass {}", id),
             );
-            con.add_wvar(WeightedVariable::new_idx(*bq_column_index, -1.0));
-            for bn in nodes.iter().map(|node| bn_vars.get(node).unwrap()) {
-                con.add_wvar(WeightedVariable::new_idx(*bn, 1.0));
+            con.add_wvar(WeightedVariable::new_idx(*bq_idx, -1.0));
+            for (bn_idx, _) in &bn_idxs_and_nodes {
+                con.add_wvar(WeightedVariable::new_idx(*bn_idx, 1.0));
             }
             problem.add_constraint(con).unwrap();
         }
@@ -154,17 +169,16 @@ pub fn create_generic_egraph_lp_model<'a>(
         // If an enode is selected, then its child eclasses must be selected.
         // Implemented as
         // -bn + bq >= 0 for each bq
-        for node in eclass.nodes.iter() {
-            let bn = bn_vars.get(&node).unwrap();
-            for eclass in node.children().iter() {
-                let bq = bq_vars.get(eclass).unwrap();
+        for (bn_idx, node) in &bn_idxs_and_nodes {
+            for eclass_id in node.children().iter() {
+                let bq_idx = bq_vars.get(eclass_id).unwrap();
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
                     0.0,
-                    format!("must select eclass {} if parent enode selected", eclass),
+                    format!("must select eclass {} if parent enode selected", eclass_id),
                 );
-                con.add_wvar(WeightedVariable::new_idx(*bn, -1.0));
-                con.add_wvar(WeightedVariable::new_idx(*bq, 1.0));
+                con.add_wvar(WeightedVariable::new_idx(*bn_idx, -1.0));
+                con.add_wvar(WeightedVariable::new_idx(*bq_idx, 1.0));
                 problem.add_constraint(con).unwrap();
             }
         }
@@ -181,20 +195,18 @@ pub fn create_generic_egraph_lp_model<'a>(
         // === topo_var[i] + some_large_number - some_large_number*bn_vars[n] - topo_var[j] >= 1
         // === topo_var[i] - some_large_number*bn_vars[n] - topo_var[j] >= 1 - some_large_number
         // some_large_number, in this case, can just be num_classes
-        let this_eclass_topo_sort_var = topo_sort_vars.get(&eclass.id).unwrap();
-        for node in eclass.nodes.iter() {
-            let bn = bn_vars.get(&node).unwrap();
-            for child_eclass in node.children().iter() {
-                let child_eclass_topo_sort_var = topo_sort_vars.get(child_eclass).unwrap();
-                // TODO(@gussmith23) potential bug
+        let this_eclass_topo_sort_var = topo_sort_vars.get(id).unwrap();
+        for (bn_idx, node) in &bn_idxs_and_nodes {
+            for child_eclass_id in node.children().iter() {
+                let child_eclass_topo_sort_var = topo_sort_vars.get(child_eclass_id).unwrap();
                 let large_number = number_of_classes_f64;
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
                     1.0 - large_number,
-                    format!("topo sort {}", child_eclass),
+                    format!("topo sort eclass {}", child_eclass_id),
                 );
                 con.add_wvar(WeightedVariable::new_idx(*this_eclass_topo_sort_var, 1.0));
-                con.add_wvar(WeightedVariable::new_idx(*bn, -large_number));
+                con.add_wvar(WeightedVariable::new_idx(*bn_idx, -large_number));
                 con.add_wvar(WeightedVariable::new_idx(*child_eclass_topo_sort_var, -1.0));
                 problem.add_constraint(con).unwrap();
             }
@@ -313,7 +325,7 @@ mod tests {
 
         let env = Env::new().unwrap();
         let mut model =
-            create_generic_egraph_lp_model(&env, &egraph, std::convert::identity, &[id], "trivial");
+            create_generic_egraph_lp_model(&env, &egraph, |_, _, _| true, &[id], "trivial");
         let result = model.problem.solve().unwrap();
 
         let out_expr = into_recexpr(&model, &result.variables);
