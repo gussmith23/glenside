@@ -32,15 +32,26 @@ type EGraph = egg::EGraph<Language, MyAnalysis>;
 /// Thin wrapper over [`lp_modeler::LpProblem`].
 pub struct EGraphLpProblem<'a> {
     pub egraph: &'a EGraph,
+    /// A [`Problem`] which contains all of the variables listed below, plus
+    /// constraints over these variables. The user should set the optimization
+    /// objective as they see fit, using the variables provided below.
     pub problem: Problem<'a>,
+    /// Eclass variables. There is a variable for each eclass in the egraph.
     pub bq_vars: HashMap<Id, usize>,
+    /// Enode variables. There is not necessarily a variable for each enode, as
+    /// some will have been filtered out as unextractable. See
+    /// [`create_generic_egraph_lp_model`]'s `filter_eclass_variants` argument.
     pub bn_vars: HashMap<&'a Language, usize>,
+    /// Variables used to ensure that the extracted eclasses can be
+    /// topologically sorted.
     pub topo_sort_vars: HashMap<Id, usize>,
 }
 
 /// From an egraph, create an LP model with a few useful base constraints
 ///
-/// Gives a variable to each eclass and each enode.
+/// We create three types of variables: eclass variables, enode variables, and
+/// topological sorting variables. See the definition of [`EGraphLpProblem`] for
+/// more detail on these variables.
 ///
 /// Code taken from Remy Wang's [`warp`
 /// repository](https://github.com/wormhole-optimization/warp/blob/d7db4a89ec47803bc2e7729946ca3810b6fb1d03/src/extract.rs).
