@@ -270,12 +270,21 @@ pub fn into_recexpr(
         let variants = egraph_lp_problem.egraph[id]
             .nodes
             .iter()
-            .filter(
-                |node| match results[*egraph_lp_problem.bn_vars.get(node).unwrap()] {
-                    VariableValue::Binary(b) => b,
-                    _ => panic!(),
-                },
-            )
+            // Filter out enodes that weren't selected.
+            .filter(|node| {
+                egraph_lp_problem
+                    .bn_vars
+                    .get(node)
+                    // If we get a valid index (i.e. there's a variable for this
+                    // enode, because not all enodes have variables!) then use
+                    // it to look up the result value.
+                    .and_then(|&bn_idx: &usize| match results[bn_idx] {
+                        VariableValue::Binary(b) => Some(b),
+                        _ => panic!(),
+                    })
+                    .or(Some(false))
+                    .unwrap()
+            })
             .collect::<Vec<_>>();
         debug_assert!(variants.len() > 0);
 
