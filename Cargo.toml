@@ -30,8 +30,8 @@ ordered-float = "2.0.0"
 
 [dependencies.rplex]
 optional = true
-version = "0.2"
-git = "https://github.com/emallson/rplex.git"
+# TODO(@gussmith23) See if we can get these changes merged in
+git = "https://github.com/gussmith23/rplex"
 
 
 [dependencies.tvm]
