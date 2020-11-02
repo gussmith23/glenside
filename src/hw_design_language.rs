@@ -26,6 +26,7 @@ impl DType {
     pub fn to_c_type_string(&self) -> String {
         match &self {
             &DType::Fp32 => "float",
+            &DType::Int32 => "int",
             _ => panic!(),
         }
         .to_string()
