@@ -1,7 +1,7 @@
 use crate::hw_design_language::*;
 use crate::language::MyAnalysis;
 use crate::language::MyAnalysisData;
-use crate::language::{Language, PadType};
+use crate::language::{Language, PadType, RelayOperator};
 use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
@@ -503,7 +503,472 @@ fn codegen_recursive_helper(
         assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
     } {
-        Language::RelayOperatorCall(_) => todo!(),
+        Language::RelayOperatorCall(ids) => {
+            let relay_op = match &expr[ids[0]].data {
+                MyAnalysisData::RelayOperator(op) => op,
+                _ => panic!()
+            };
+
+            match relay_op {
+                RelayOperator::RelayBatchNormInference => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let gamma = codegen_recursive_helper(
+                        expr,
+                        ids[2],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let beta = codegen_recursive_helper(
+                        expr,
+                        ids[3],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    
+                    let moving_mean = codegen_recursive_helper(
+                        expr,
+                        ids[4],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    let moving_var = codegen_recursive_helper(
+                        expr,
+                        ids[5],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    let axis = MyAnalysis::get_usize(ids[6], expr);
+
+                    // expect NHWC format data
+                    assert!(axis == 3);
+                    let epsilon = match &expr[ids[7]].data {
+                        MyAnalysisData::Literal(l) => {
+                            print!("shape of batchnorm inference epsilon: {:?}", &l.shape());
+                            l[0]
+                        },
+                        _ => panic!()
+                    };
+
+                    let new_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+
+                    let batchnorm_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_batchnorminference_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean}, {moving_var}, {epsilon});
+",                      X = data,
+                        Y = batchnorm_out,
+                        N = new_shape[0],
+                        H = new_shape[1],
+                        W = new_shape[2],
+                        C = new_shape[3],
+                        gamma = gamma,
+                        beta = beta,
+                        moving_mean = moving_mean,
+                        moving_var = moving_var,
+                        epsilon = epsilon
+                    )
+                    .as_str());
+
+                    batchnorm_out
+                },
+                RelayOperator::RelaySoftmax => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    let axis = MyAnalysis::get_usize(ids[2], expr);
+
+                    let new_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+
+                    // TODO: axis currently not used...
+                    let softmax_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_softmax_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+softmax({X}, {Y}, {N}, {H}, {W}, {C});
+",                      X = data,
+                        Y = softmax_out,
+                        N = new_shape[0],
+                        H = new_shape[1],
+                        W = new_shape[2],
+                        C = new_shape[3]
+                    )
+                    .as_str());
+
+                    softmax_out
+                },
+                RelayOperator::RelayReLU => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    let new_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+
+                    // TODO: axis currently not used...
+                    let relu_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_relu_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+softmax({X}, {Y}, {N}, {H}, {W}, {C});
+",                      X = data,
+                        Y = relu_out,
+                        N = new_shape[0],
+                        H = new_shape[1],
+                        W = new_shape[2],
+                        C = new_shape[3]
+                    )
+                    .as_str());
+
+                    relu_out
+                },
+                RelayOperator::RelayMaxPool2D => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    let pool_size = MyAnalysis::get_shape_of_value(ids[2], expr);
+                    let strides = MyAnalysis::get_shape_of_value(ids[3], expr);
+                    let padding = MyAnalysis::get_shape_of_value(ids[4], expr);
+
+                    // TODO: currently hardcoded shape for max pool2d for resnet
+                    let old_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+
+                    let new_shape = vec![old_shape[0], 56, 56, old_shape[3]];
+                    let maxpool2d_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_maxpool2d_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+maxpool2D3x3_resnet18_op6({X}, {Y});
+",                      X = data,
+                        Y = data
+                    )
+                    .as_str());
+
+                    maxpool2d_out
+                },
+                RelayOperator::RelayGlobalAvgPool2D => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    // TODO: support broadcasting
+                    let old_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+
+                    let new_shape = vec![old_shape[0], old_shape[3]];
+                    let globalavgpool2d_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_globalavgpool2d_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
+",                      X = data,
+                        Y = globalavgpool2d_out,
+                        N = old_shape[0],
+                        H = old_shape[1],
+                        W = old_shape[2],
+                        C = old_shape[3]
+                    )
+                    .as_str());
+
+                    globalavgpool2d_out
+                },
+                RelayOperator::RelayBatchFlatten => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    // just a reshape, which is a no-op!
+                    data
+                },
+                RelayOperator::RelayBiasAdd => {
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let bias = codegen_recursive_helper(
+                        expr,
+                        ids[2],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+
+                    // TODO: support broadcasting
+                    let new_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+                    let add_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_add_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
+",                      X = data,
+                        Y = bias,
+                        out = add_out,
+                        N = new_shape[0],
+                        H = new_shape[1],
+                        W = new_shape[2],
+                        C = new_shape[3]
+                    )
+                    .as_str());
+
+                    add_out
+                },
+                RelayOperator::RelayAdd => {
+                    let a = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let b = codegen_recursive_helper(
+                        expr,
+                        ids[2],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    
+                    // TODO: support broadcasting
+                    let new_shape = match &expr[ids[1]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!()
+                    };
+
+                    let add_out: String = {
+                        // TODO(@gussmith23) Find a different way to name intermediates
+                        // Currently generating random strings. Not great IMO.
+                        let out = format!(
+                            "relay_op_add_out_{}",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        );
+                        declarations.push_str(
+                            c_allocation_string(
+                                uninitialized_allocations_prefix,
+                                out.as_str(),
+                                new_shape.as_slice(),
+                                DType::Fp32,
+                            )
+                            .as_str(),
+                        );
+                        out
+                    };
+
+                    code.push_str(format!("
+add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
+",                      X = a,
+                        Y = b,
+                        out = add_out,
+                        N = new_shape[0],
+                        H = new_shape[1],
+                        W = new_shape[2],
+                        C = new_shape[3]
+                    )
+                    .as_str());
+
+                    add_out
+                }
+            };
+
+            "t".to_string()
+        },
         Language::RelayActivationLayout(_) => panic!(),
         Language::RelayKernelLayout(_) => panic!(),
         Language::RelayOperator(_) => todo!(),
@@ -2446,5 +2911,90 @@ int main() {{
             std::str::from_utf8(result.stderr.as_slice())
                 .expect("Could not convert stderr to UTF8")
         );
+    }
+
+    #[test]
+    #[ignore = "add translated into element-wise add"]
+    fn relay_op_add() {
+        let relay = r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(64), float32], %y: Tensor[(64), float32]) {
+  add(%x, %y)
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay);
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, false, &vec![]);
+
+        let mut env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+        }
+
+        // TODO(@gussmith23) Include some simple simplifying rewrites
+        // If we add some very basic rewrites here, then $glenside_str
+        // won't need to exactly match what's actually produced by
+        // from_relay.py. It can be simpler (e.g. collapsing accesses).
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        println!("{}", expr);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_add",
+            "",
+            &vec!["t0", "t1"],
+        );
+
+        println!("{}", code);
+    }
+
+    #[test]
+    fn relay_op_batchnorm() {
+        let relay = r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> (Tensor[(1, 32, 32, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) {
+    nn.batch_norm(%data, %bn_gamma, %bn_beta, %bn_mean, %bn_var, axis=3) /* ty=(Tensor[(1, 32, 32, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) */
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay);
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayBatchNormInference]);
+
+        let mut env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+        }
+
+        // TODO(@gussmith23) Include some simple simplifying rewrites
+        // If we add some very basic rewrites here, then $glenside_str
+        // won't need to exactly match what's actually produced by
+        // from_relay.py. It can be simpler (e.g. collapsing accesses).
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        println!("{}", expr);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_add",
+            "",
+            &vec!["t0", "t1"],
+        );
+
+        println!("{}", code);
     }
 }
