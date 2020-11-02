@@ -283,7 +283,6 @@ void add_with_broadcasting(float *out, float *a, float *b, int *out_shape,
       // always first dividing by the current dimension value.
       assert(out_step % dim_val_out == 0);
       out_step /= dim_val_out;
-      assert(out_remaining >= out_step);
       int this_dimension_index_val = out_remaining / out_step;
       out_remaining %= out_step;
 
