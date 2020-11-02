@@ -705,8 +705,9 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::BatchNormAttrs>()
                         .unwrap();
-
-                    assert_eq!(attrs.axis, 1);
+                    
+                    // PRE-ISCA assume NHWC
+                    assert_eq!(attrs.axis, 3);
 
                     let axis_id =
                         glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));
