@@ -8,7 +8,6 @@ use egg::Id;
 use itertools::Itertools;
 use ndarray::array;
 use ndarray::Array;
-use ndarray::ArrayD;
 use ndarray::Dimension;
 use ndarray::IxDyn;
 use rand::Rng;
@@ -900,10 +899,33 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
 
                     // TODO: support broadcasting
                     // TODO: cannot assume adding 4d tensors...
-                    let new_shape = match &expr[ids[1]].data {
+                    let a_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
+                    let b_shape = match &expr[ids[2]].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!(),
+                    };
+
+                    // calculate broadcasted shape
+                    let a_ndim = a_shape.len();
+                    let b_ndim = b_shape.len();
+
+                    let out_shape = std::iter::repeat(&1usize)
+                        .take(if b_ndim > a_ndim { b_ndim - a_ndim } else { 0 })
+                        .chain(a_shape.iter())
+                        .zip(
+                            std::iter::repeat(&1usize)
+                                .take(if a_ndim > b_ndim { a_ndim - b_ndim } else { 0 })
+                                .chain(b_shape.iter()),
+                        )
+                        .map(|(a, b): (&usize, &usize)| {
+                            assert!(a == b || (*a == 1 || *b == 1), "Shapes can't be broadcast");
+                            std::cmp::max(a, b)
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
 
                     let add_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
@@ -919,7 +941,7 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
                             c_allocation_string(
                                 uninitialized_allocations_prefix,
                                 out.as_str(),
-                                new_shape.as_slice(),
+                                out_shape.as_slice(),
                                 DType::Fp32,
                             )
                             .as_str(),
@@ -927,18 +949,48 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
                         out
                     };
 
+                    let out_shape_str = format!(
+                        "out_shape_add_{}",
+                        rand::thread_rng()
+                            .sample_iter(&rand::distributions::Alphanumeric)
+                            .take(30)
+                            .collect::<String>()
+                    );
+                    let a_shape_str = format!(
+                        "a_shape_add_{}",
+                        rand::thread_rng()
+                            .sample_iter(&rand::distributions::Alphanumeric)
+                            .take(30)
+                            .collect::<String>()
+                    );
+                    let b_shape_str = format!(
+                        "b_shape_add_{}",
+                        rand::thread_rng()
+                            .sample_iter(&rand::distributions::Alphanumeric)
+                            .take(30)
+                            .collect::<String>()
+                    );
+
                     code.push_str(
                         format!(
                             "
-add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
+{}
+{}
+{}                            
+add_with_broadcasting({out}, {X}, {Y}, {out_shape}, {out_dims}, {a_shape}, {a_dims}, {b_shape}, {b_dims});
 ",
+                            c_assignment_string("", &out_shape_str, DType::Int32, &Array::from(out_shape.clone()).into_dyn().view()),
+                            c_assignment_string("", &a_shape_str, DType::Int32, &Array::from(a_shape.clone()).into_dyn().view()),
+                            c_assignment_string("", &b_shape_str, DType::Int32, &Array::from(b_shape.clone()).into_dyn().view()),
+                            out = add_out,
                             X = a,
                             Y = b,
-                            out = add_out,
-                            N = new_shape[0],
-                            H = new_shape[1],
-                            W = new_shape[2],
-                            C = new_shape[3]
+                            out_shape = out_shape_str,
+                            out_dims = out_shape.len(),
+                            a_shape = a_shape_str,
+                            a_dims = a_shape.len(),
+                            b_shape = b_shape_str,
+                            b_dims = b_shape.len(),
                         )
                         .as_str(),
                     );
@@ -2961,7 +3013,7 @@ int main() {{
         // TODO: do broadcasting
         let relay = r#"
 #[version = "0.0.5"]
-def @main(%x: Tensor[(1, 3, 3, 4), float32], %y: Tensor[(1, 3, 3, 4), float32]) {
+def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
   add(%x, %y)
 }
 "#;
