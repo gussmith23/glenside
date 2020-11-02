@@ -5,9 +5,9 @@ use crate::language::{Language, PadType, RelayOperator};
 use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
+use ndarray::array;
 use ndarray::Dimension;
 use ndarray::IxDyn;
-use ndarray::array;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
@@ -297,10 +297,8 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
-            },
-            Language::RelayOperator(_) => {
-
-            },
+            }
+            Language::RelayOperator(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
             Language::Symbol(s) => {
@@ -354,9 +352,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                     find_vars_recursive_helper(set, expr, *id);
                 }
             }
-            &Language::NotNanFloat64(_) => {
-
-            }
+            &Language::NotNanFloat64(_) => {}
             &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
             | &Language::AccessLiteral(_)
@@ -515,7 +511,7 @@ fn codegen_recursive_helper(
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
-                _ => panic!()
+                _ => panic!(),
             };
 
             match relay_op {
@@ -547,7 +543,7 @@ fn codegen_recursive_helper(
                         code,
                         hw_map,
                     );
-                    
+
                     let moving_mean = codegen_recursive_helper(
                         expr,
                         ids[4],
@@ -576,13 +572,13 @@ fn codegen_recursive_helper(
                         MyAnalysisData::Literal(l) => {
                             println!("shape of batchnorm inference epsilon: {:?}", &l.shape());
                             l
-                        },
-                        _ => panic!()
+                        }
+                        _ => panic!(),
                     };
 
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     let batchnorm_out: String = {
@@ -624,7 +620,7 @@ batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean},
                     .as_str());
 
                     batchnorm_out
-                },
+                }
                 RelayOperator::RelaySoftmax => {
                     let data = codegen_recursive_helper(
                         expr,
@@ -637,14 +633,14 @@ batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean},
                     );
 
                     let axis = MyAnalysis::get_usize(ids[2], expr);
-                    
+
                     // Pre-ISCA: resnet only does softmax over (1,1000)
                     println!("{}", axis);
                     assert!(axis == 1, "expected NHWC format");
 
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     let softmax_out: String = {
@@ -669,16 +665,20 @@ batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean},
                         out
                     };
 
-                    code.push_str(format!("
+                    code.push_str(
+                        format!(
+                            "
 softmax1D({X}, {Y}, {N});
-",                      X = data,
-                        Y = softmax_out,
-                        N = new_shape.iter().product::<usize>()
-                    )
-                    .as_str());
+",
+                            X = data,
+                            Y = softmax_out,
+                            N = new_shape.iter().product::<usize>()
+                        )
+                        .as_str(),
+                    );
 
                     softmax_out
-                },
+                }
                 RelayOperator::RelayReLU => {
                     let data = codegen_recursive_helper(
                         expr,
@@ -692,7 +692,7 @@ softmax1D({X}, {Y}, {N});
 
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     // TODO: axis currently not used...
@@ -718,19 +718,23 @@ softmax1D({X}, {Y}, {N});
                         out
                     };
 
-                    code.push_str(format!("
+                    code.push_str(
+                        format!(
+                            "
 relu({X}, {Y}, {N}, {H}, {W}, {C});
-",                      X = data,
-                        Y = relu_out,
-                        N = new_shape[0],
-                        H = new_shape[1],
-                        W = new_shape[2],
-                        C = new_shape[3]
-                    )
-                    .as_str());
+",
+                            X = data,
+                            Y = relu_out,
+                            N = new_shape[0],
+                            H = new_shape[1],
+                            W = new_shape[2],
+                            C = new_shape[3]
+                        )
+                        .as_str(),
+                    );
 
                     relu_out
-                },
+                }
                 RelayOperator::RelayMaxPool2D => {
                     let data = codegen_recursive_helper(
                         expr,
@@ -749,7 +753,7 @@ relu({X}, {Y}, {N}, {H}, {W}, {C});
                     // TODO: currently hardcoded shape for max pool2d for resnet
                     let old_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     let new_shape = vec![old_shape[0], 56, 56, old_shape[3]];
@@ -775,15 +779,19 @@ relu({X}, {Y}, {N}, {H}, {W}, {C});
                         out
                     };
 
-                    code.push_str(format!("
+                    code.push_str(
+                        format!(
+                            "
 maxpool2D3x3_resnet18_op6({X}, {Y});
-",                      X = data,
-                        Y = maxpool2d_out
-                    )
-                    .as_str());
+",
+                            X = data,
+                            Y = maxpool2d_out
+                        )
+                        .as_str(),
+                    );
 
                     maxpool2d_out
-                },
+                }
                 RelayOperator::RelayGlobalAvgPool2D => {
                     let data = codegen_recursive_helper(
                         expr,
@@ -798,7 +806,7 @@ maxpool2D3x3_resnet18_op6({X}, {Y});
                     // TODO: support broadcasting
                     let old_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     let new_shape = vec![old_shape[0], old_shape[3]];
@@ -824,19 +832,23 @@ maxpool2D3x3_resnet18_op6({X}, {Y});
                         out
                     };
 
-                    code.push_str(format!("
+                    code.push_str(
+                        format!(
+                            "
 globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
-",                      X = data,
-                        Y = globalavgpool2d_out,
-                        N = old_shape[0],
-                        H = old_shape[1],
-                        W = old_shape[2],
-                        C = old_shape[3]
-                    )
-                    .as_str());
+",
+                            X = data,
+                            Y = globalavgpool2d_out,
+                            N = old_shape[0],
+                            H = old_shape[1],
+                            W = old_shape[2],
+                            C = old_shape[3]
+                        )
+                        .as_str(),
+                    );
 
                     globalavgpool2d_out
-                },
+                }
                 RelayOperator::RelayBatchFlatten => {
                     let data = codegen_recursive_helper(
                         expr,
@@ -850,7 +862,7 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
 
                     // just a reshape, which is a no-op!
                     data
-                },
+                }
                 RelayOperator::RelayBiasAdd => {
                     let data = codegen_recursive_helper(
                         expr,
@@ -874,7 +886,7 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
                     // TODO: support broadcasting
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
                     let add_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
@@ -898,20 +910,24 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
                         out
                     };
 
-                    code.push_str(format!("
+                    code.push_str(
+                        format!(
+                            "
 add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
-",                      X = data,
-                        Y = bias,
-                        out = add_out,
-                        N = new_shape[0],
-                        H = new_shape[1],
-                        W = new_shape[2],
-                        C = new_shape[3]
-                    )
-                    .as_str());
+",
+                            X = data,
+                            Y = bias,
+                            out = add_out,
+                            N = new_shape[0],
+                            H = new_shape[1],
+                            W = new_shape[2],
+                            C = new_shape[3]
+                        )
+                        .as_str(),
+                    );
 
                     add_out
-                },
+                }
                 RelayOperator::RelayAdd => {
                     let a = codegen_recursive_helper(
                         expr,
@@ -931,12 +947,12 @@ add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
                         code,
                         hw_map,
                     );
-                    
+
                     // TODO: support broadcasting
                     // TODO: cannot assume adding 4d tensors...
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
-                        _ => panic!()
+                        _ => panic!(),
                     };
 
                     let add_out: String = {
@@ -961,22 +977,26 @@ add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
                         out
                     };
 
-                    code.push_str(format!("
+                    code.push_str(
+                        format!(
+                            "
 add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
-",                      X = a,
-                        Y = b,
-                        out = add_out,
-                        N = new_shape[0],
-                        H = new_shape[1],
-                        W = new_shape[2],
-                        C = new_shape[3]
-                    )
-                    .as_str());
+",
+                            X = a,
+                            Y = b,
+                            out = add_out,
+                            N = new_shape[0],
+                            H = new_shape[1],
+                            W = new_shape[2],
+                            C = new_shape[3]
+                        )
+                        .as_str(),
+                    );
 
                     add_out
                 }
             }
-        },
+        }
         Language::RelayActivationLayout(_) => panic!(),
         Language::RelayKernelLayout(_) => panic!(),
         Language::RelayOperator(_) => todo!(),
@@ -2933,7 +2953,11 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32], %y: Tensor[(1, 3, 3, 4), float32]) 
 
         let module = tvm::ir::module::IRModule::parse("", relay);
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayAdd]);
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelayAdd],
+        );
 
         let mut env = HashMap::default();
         for (k, v) in &shapes_vec {
@@ -3071,7 +3095,11 @@ def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float
 
         let module = tvm::ir::module::IRModule::parse("", relay);
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayBatchNormInference]);
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelayBatchNormInference],
+        );
 
         let mut env = HashMap::default();
         for (k, v) in &shapes_vec {
@@ -3161,17 +3189,17 @@ int main() {{
             .unwrap()
             .to_string_lossy(),
             c_assignment_string("", "data", DType::Fp32, &data_input.into_dyn().view()),
-            c_assignment_string("", "bn_gamma", DType::Fp32, &bn_gamma_input.into_dyn().view()),
+            c_assignment_string(
+                "",
+                "bn_gamma",
+                DType::Fp32,
+                &bn_gamma_input.into_dyn().view()
+            ),
             c_assignment_string("", "bn_beta", DType::Fp32, &bn_beta_input.into_dyn().view()),
             c_assignment_string("", "bn_mean", DType::Fp32, &bn_mean_input.into_dyn().view()),
             c_assignment_string("", "bn_var", DType::Fp32, &bn_var_input.into_dyn().view()),
             c_assignment_string("", "result", DType::Fp32, &result_output.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &result_output.view()
-            ),
+            c_assignment_string("", "out", DType::Fp32, &result_output.view()),
             code,
             result_output.shape().iter().product::<usize>()
         );
@@ -3234,7 +3262,11 @@ def @main(%data: Tensor[(1,10), float32]) -> Tensor[(1,10), float32] {
 
         let module = tvm::ir::module::IRModule::parse("", relay);
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelaySoftmax]);
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelaySoftmax],
+        );
 
         let mut env = HashMap::default();
         for (k, v) in &shapes_vec {
@@ -3301,12 +3333,7 @@ int main() {{
             .to_string_lossy(),
             c_assignment_string("", "data", DType::Fp32, &data_input.into_dyn().view()),
             c_assignment_string("", "result", DType::Fp32, &result_output.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &result_output.view()
-            ),
+            c_assignment_string("", "out", DType::Fp32, &result_output.view()),
             code,
             result_output.shape().iter().product::<usize>()
         );
@@ -3369,7 +3396,11 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay);
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayReLU]);
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelayReLU],
+        );
 
         let mut env = HashMap::default();
         for (k, v) in &shapes_vec {
@@ -3500,7 +3531,11 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
 
         let module = tvm::ir::module::IRModule::parse("", relay);
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayMaxPool2D]);
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelayMaxPool2D],
+        );
 
         let mut env = HashMap::default();
         for (k, v) in &shapes_vec {
@@ -3619,5 +3654,4 @@ int main() {{
                 .expect("Could not convert stderr to UTF8")
         );
     }
-
 }

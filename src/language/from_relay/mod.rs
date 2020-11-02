@@ -705,7 +705,7 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::BatchNormAttrs>()
                         .unwrap();
-                    
+
                     // PRE-ISCA assume NHWC
                     assert_eq!(attrs.axis, 3);
 
