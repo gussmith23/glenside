@@ -1,0 +1,206 @@
+#include <math.h>  // needed for expf (for softmax)
+
+/* 
+   Each batchnorm has 4 parameters decided during training, for each minibatch:
+   var, gamma, mu, beta
+   mu and var are the mean and variance of the minibatch (calculated on the feature
+   dimension for FC layers, and on the channel dimension for conv layers)
+   gamma and beta are hyperparameters decided during traning (same shape as X)
+
+   The full batchnorm equation is
+   y = (x - mu) * 1/sqrt(var+epsilon) * gamma + beta
+
+   (epsilon is a small constant to avoid dividing by zero.)
+   The coefficient tensor (1/sqrt(var+epsilon) * gamma) can be pre-computed,
+   here called "coeff".
+
+   input tensors X is assumed to be NHWC
+   output tensor Y should be the same shape, also NHWC
+   coeff is same shape as X
+   mu is length C
+   beta is same shape as X
+*/
+void batchNormInference(float* X, float* Y, int N, int H, int W, int C, float* gamma, float* beta, float* mu, float* var, float epsilon) {
+  // mu is calculated on the channel dimension
+  // coeff and beta have the same shape as X
+  
+  // Prepare dimensional constants
+  int dim2 = C;
+  int dim1 = W * dim2;
+  int dim0 = H * dim1;
+  
+  for (int n = 0; n < N; n++) {
+    for (int h = 0; h < H; h++) {
+      for (int w = 0; w < W; w++) {
+      	for (int c = 0; c < C; c++) {
+      	  Y[n*dim0 + h*dim1 + w*dim2 + c] = (X[n*dim0 + h*dim1 + w*dim2 + c] -
+      					     mu[c]) * (1 / sqrt(var[n*dim0 + h*dim1 + w*dim2 + c] + epsilon) * gamma[n*dim0 + h*dim1 + w*dim2 + c]) + beta[n*dim0 + h*dim1 + w*dim2 + c];
+      	}
+      }
+    }
+  }
+  
+  return;
+}
+
+/*
+Compute the 1D softmax of input tensor X and store it in output tensor Y.
+Both tensors are length N.
+Y = exp(X) / sum(exp(X))
+ */
+void softmax1D(float* X, float* Y, int N) {
+  float sum = 0;
+
+  for (int i = 0; i < N; i++) {
+    float val = expf(X[i]);
+    Y[i] = val;
+    sum += val;
+  }
+
+  for (int i = 0; i < N; i++) {
+    Y[i] = Y[i] / sum;
+  }
+
+  return;
+}
+
+void softmax(float* X, float* Y, int N, int H, int W, int C) {
+  return softmax1D(X, Y, N*H*W*C);
+} 
+
+/* 
+Compute a 1-dimensional ReLU on input tensor X, storing in output tensor Y.
+Both are length N.
+ */
+void relu1D(float* X, float* Y, int N) {
+  for (int i = 0; i < N; i++)
+    Y[i] = (X[i] > 0) ? X[i] : 0;
+}
+
+void relu(float* X, float* Y, int N, int H, int W, int C) {
+  return relu1D(X, Y, N*H*W*C);
+}
+
+/*
+Compute the average of each spatial filter (HW), collapsing it to a single value.
+
+Input tensor X is in format NHWC, while output tensor Y is NC.
+ */
+void globalAvgPool(float* X, float* Y, int N, int H, int W, int C) {
+
+  int total = H * W;
+  int Ylen = N * C;
+
+  // Prepare dimensional constants
+  int dim2 = C;
+  int dim1 = W * dim2;
+  int dim0 = H * dim1;  
+
+  // zero out Y
+  for (int i = 0; i < Ylen; i++)
+    Y[i] = 0;
+
+  // collapse HW
+  for (int n = 0; n < N; n++)
+    for (int h = 0; h < H; h++)
+      for (int w = 0; w < W; w++)
+	for (int c = 0; c < C; c++) {
+	  Y[n*C + c] += X[n*dim0 + h*dim1 + w*dim2 + c];
+	}
+
+  // average
+  for (int i = 0; i < Ylen; i++)
+    Y[i] = Y[i] / total;
+}
+
+// element-wise add, currently does not support broadcasting
+void add1D(float* X, float* Y, float* out, int N) {
+  for (int i = 0; i < N; i++)
+    out[i] = X[i] + Y[i];
+}
+void add(float* X, float* Y, float* out, int N, int H, int W, int C) {
+  add1D(X, Y, out, N * H * W * C);
+}
+
+// Need a function to get max val of window size (3x3)
+#define max2(x, y) ((x>y)?x:y)
+#define max9(x1, x2, x3, x4, x5, x6, x7, x8, x9)      \
+  max2(x1, max2(x2, max2(x3, max2(x4, max2(x5, max2(x6, max2(x7, max2(x8, x9))))))))
+/*
+   2d maxpool with a 3x3 filter, specialized for Resnet18
+   input tensor X NHWC: (1, 112, 112, 64)
+   output tensor Y NHWC: (1, 56, 56, 64)
+   stride of 2, padding (1, 1)
+*/
+void maxpool2D3x3_resnet18_op6(float* X, float* Y) {
+  // compute dimensional constants
+  int Xdim1 = 64;  // C
+  int Xdim2 = 112 * Xdim1;  // W*C
+  int Ydim1 = 64;  // C
+  int Ydim2 = 56 * Ydim1;  // W*C
+  for (int c = 0; c < 64; c++) {
+    // populate Y except for last column and last row
+    int inh = 0;
+    for (int outh = 0; outh < 55; outh++) {
+      int inw = 0;
+      for (int outw = 0; outw < 55; outw++) {
+  Y[outh*Ydim2 + outw*Ydim1 + c] = max9(
+                X[inh*Xdim2 + inw*Xdim1 + c],
+                X[inh*Xdim2 + (inw+1)*Xdim1 + c],
+                X[inh*Xdim2 + (inw+2)*Xdim1 + c],
+                X[(inh+1)*Xdim2 + inw*Xdim1 + c],
+                X[(inh+1)*Xdim2 + (inw+1)*Xdim1 + c],
+                X[(inh+1)*Xdim2 + (inw+2)*Xdim1 + c],
+                X[(inh+2)*Xdim2 + inw*Xdim1 + c],
+                X[(inh+2)*Xdim2 + (inw+1)*Xdim1 + c],
+                X[(inh+2)*Xdim2 + (inw+2)*Xdim1 + c]
+                );
+  inw = inw + 2;
+      }
+      // handle last column
+      // everywhere we would have inw+2 is now a pad 0, so the term is 0
+      Y[outh*Ydim2 + 55*Ydim1 + c] = max9(
+            X[inh*Xdim2 + inw*Xdim1 + c],
+            X[inh*Xdim2 + (inw+1)*Xdim1 + c],
+            0,
+            X[(inh+1)*Xdim2 + inw*Xdim1 + c],
+            X[(inh+1)*Xdim2 + (inw+1)*Xdim1 + c],
+            0,
+            X[(inh+2)*Xdim2 + inw*Xdim1 + c],
+            X[(inh+2)*Xdim2 + (inw+1)*Xdim1 + c],
+            0
+            );
+      inh = inh + 2;
+    }
+    // handle last row
+    // everywhere we would have inh+2 is now a pad 0, so the term is 0
+    int inw = 0;
+    for (int outw = 0; outw < 55; outw++) {
+      Y[55*Ydim2 + outw*Ydim1 + c] = max9(
+            X[inh*Xdim2 + inw*Xdim1 + c],
+            X[inh*Xdim2 + (inw+1)*Xdim1 + c],
+            X[inh*Xdim2 + (inw+2)*Xdim1 + c],
+            X[(inh+1)*Xdim2 + inw*Xdim1 + c],
+            X[(inh+1)*Xdim2 + (inw+1)*Xdim1 + c],
+            X[(inh+1)*Xdim2 + (inw+2)*Xdim1 + c],
+            0,
+            0,
+            0
+            );
+      inw = inw + 2;
+    }
+    // handle lower-right corner
+    // all inh+2 and inw+2 are 0
+    Y[55*Ydim2 + 55*Ydim1 + c] = max9(
+          X[inh*Xdim2 + inw*Xdim1 + c],
+          X[inh*Xdim2 + (inw+1)*Xdim1 + c],
+          0,
+          X[(inh+1)*Xdim2 + inw*Xdim1 + c],
+          X[(inh+1)*Xdim2 + (inw+1)*Xdim1 + c],
+          0,
+          0,
+          0,
+          0
+          );
+  }
+}
