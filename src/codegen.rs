@@ -10,6 +10,7 @@ use ndarray::array;
 use ndarray::Array;
 use ndarray::Dimension;
 use ndarray::IxDyn;
+use ndarray::array;
 use rand::Rng;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
@@ -300,8 +301,10 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
-            }
-            Language::RelayOperator(_) => {}
+            },
+            Language::RelayOperator(_) => {
+
+            },
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
             Language::Symbol(s) => {
@@ -355,7 +358,9 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                     find_vars_recursive_helper(set, expr, *id);
                 }
             }
-            &Language::NotNanFloat64(_) => {}
+            &Language::NotNanFloat64(_) => {
+
+            }
             &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
             | &Language::AccessLiteral(_)
@@ -569,12 +574,12 @@ fn codegen_recursive_helper(
 
                     let axis = MyAnalysis::get_usize(ids[6], expr);
 
-                    // expect NHWC format data
-                    assert!(axis == 3);
+                    // Pre-ISCA: expect NHWC format data
+                    assert!(axis == 3, "expected NHWC format");
                     let epsilon = match &expr[ids[7]].data {
                         MyAnalysisData::Literal(l) => {
-                            print!("shape of batchnorm inference epsilon: {:?}", &l.shape());
-                            l[0]
+                            println!("shape of batchnorm inference epsilon: {:?}", &l.shape());
+                            l
                         },
                         _ => panic!()
                     };
@@ -636,13 +641,16 @@ batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean},
                     );
 
                     let axis = MyAnalysis::get_usize(ids[2], expr);
+                    
+                    // Pre-ISCA: resnet only does softmax over (1,1000)
+                    println!("{}", axis);
+                    assert!(axis == 1, "expected NHWC format");
 
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!()
                     };
 
-                    // TODO: axis currently not used...
                     let softmax_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
                         // Currently generating random strings. Not great IMO.
@@ -666,13 +674,10 @@ batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean},
                     };
 
                     code.push_str(format!("
-softmax({X}, {Y}, {N}, {H}, {W}, {C});
+softmax1D({X}, {Y}, {N});
 ",                      X = data,
                         Y = softmax_out,
-                        N = new_shape[0],
-                        H = new_shape[1],
-                        W = new_shape[2],
-                        C = new_shape[3]
+                        N = new_shape.iter().product::<usize>()
                     )
                     .as_str());
 
@@ -718,7 +723,7 @@ softmax({X}, {Y}, {N}, {H}, {W}, {C});
                     };
 
                     code.push_str(format!("
-softmax({X}, {Y}, {N}, {H}, {W}, {C});
+relu({X}, {Y}, {N}, {H}, {W}, {C});
 ",                      X = data,
                         Y = relu_out,
                         N = new_shape[0],
@@ -943,6 +948,7 @@ add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
                     );
                     
                     // TODO: support broadcasting
+                    // TODO: cannot assume adding 4d tensors...
                     let new_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!()
@@ -984,9 +990,7 @@ add({X}, {Y}, {out}, {N}, {H}, {W}, {C});
 
                     add_out
                 }
-            };
-
-            "t".to_string()
+            }
         },
         Language::RelayActivationLayout(_) => panic!(),
         Language::RelayKernelLayout(_) => panic!(),
@@ -2933,18 +2937,18 @@ int main() {{
     }
 
     #[test]
-    #[ignore = "add translated into element-wise add"]
     fn relay_op_add() {
+        // TODO: do broadcasting
         let relay = r#"
 #[version = "0.0.5"]
-def @main(%x: Tensor[(64), float32], %y: Tensor[(64), float32]) {
+def @main(%x: Tensor[(1, 3, 3, 4), float32], %y: Tensor[(1, 3, 3, 4), float32]) {
   add(%x, %y)
 }
 "#;
 
         let module = tvm::ir::module::IRModule::parse("", relay);
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, false, &vec![]);
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayAdd]);
 
         let mut env = HashMap::default();
         for (k, v) in &shapes_vec {
@@ -2961,7 +2965,17 @@ def @main(%x: Tensor[(64), float32], %y: Tensor[(64), float32]) {
 
         let id = egraph.add_expr(&expr);
 
-        println!("{}", expr);
+        let x_input = ndarray::ArrayD::from_shape_vec(
+            env.get("x").unwrap().clone(),
+            (0..env.get("x").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let y_input = ndarray::ArrayD::from_shape_vec(
+            env.get("y").unwrap().clone(),
+            (0..env.get("y").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let result = (&x_input + &y_input).into_dyn();
 
         let code = codegen(
             &egraph,
@@ -2969,10 +2983,96 @@ def @main(%x: Tensor[(64), float32], %y: Tensor[(64), float32]) {
             &HashMap::default(),
             "relay_add",
             "",
-            &vec!["t0", "t1"],
+            &vec!["x", "y"],
         );
 
         println!("{}", code);
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_add(out, x, y);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "opaque_relay_op.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &x_input.into_dyn().view()),
+            c_assignment_string("", "y", DType::Fp32, &y_input.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &result.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+            ),
+            code,
+            result.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-add-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-add-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            // .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
     }
 
     #[test]
@@ -3003,17 +3103,536 @@ def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float
 
         let id = egraph.add_expr(&expr);
 
+        let data_input = ndarray::ArrayD::from_shape_vec(
+            env.get("data").unwrap().clone(),
+            (0..env.get("data").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let bn_gamma_input = ndarray::ArrayD::from_shape_vec(
+            env.get("bn_gamma").unwrap().clone(),
+            (0..env.get("bn_gamma").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let bn_beta_input = ndarray::ArrayD::from_shape_vec(
+            env.get("bn_beta").unwrap().clone(),
+            (0..env.get("bn_beta").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let bn_mean_input = ndarray::ArrayD::from_shape_vec(
+            env.get("bn_mean").unwrap().clone(),
+            (0..env.get("bn_mean").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let bn_var_input = ndarray::ArrayD::from_shape_vec(
+            env.get("bn_var").unwrap().clone(),
+            (0..env.get("bn_var").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let result_output = ndarray::ArrayD::<f32>::zeros(env.get("data").unwrap().clone());
+
         println!("{}", expr);
 
         let code = codegen(
             &egraph,
             id,
             &HashMap::default(),
-            "relay_add",
+            "relay_batchnorm",
             "",
-            &vec!["t0", "t1"],
+            &vec!["data", "bn_gamma", "bn_beta", "bn_mean", "bn_var"],
+        );
+        // TODO: check out array with result array
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+  relay_batchnorm(out, data, bn_gamma, bn_beta, bn_mean, bn_var);
+
+  for (int i = 0; i < {}; i++) {{
+    // assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "opaque_relay_op.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "data", DType::Fp32, &data_input.into_dyn().view()),
+            c_assignment_string("", "bn_gamma", DType::Fp32, &bn_gamma_input.into_dyn().view()),
+            c_assignment_string("", "bn_beta", DType::Fp32, &bn_beta_input.into_dyn().view()),
+            c_assignment_string("", "bn_mean", DType::Fp32, &bn_mean_input.into_dyn().view()),
+            c_assignment_string("", "bn_var", DType::Fp32, &bn_var_input.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &result_output.view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        println!("{}", main_code);
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-batchnorm-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-batchnorm-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        // TODO: find a better way to convert from C multidimensional array to pointer
+        // rather than removing -Werror
+        let result = Command::new("gcc")
+            // .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn relay_op_softmax() {
+        let relay = r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1,10), float32]) -> Tensor[(1,10), float32] {
+    nn.softmax(%data) /* ty=Tensor[(1,10), float32] */
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay);
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelaySoftmax]);
+
+        let mut env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+        }
+
+        // TODO(@gussmith23) Include some simple simplifying rewrites
+        // If we add some very basic rewrites here, then $glenside_str
+        // won't need to exactly match what's actually produced by
+        // from_relay.py. It can be simpler (e.g. collapsing accesses).
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let data_input = ndarray::ArrayD::from_shape_vec(
+            env.get("data").unwrap().clone(),
+            (0..env.get("data").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let result_output = ndarray::ArrayD::<f32>::zeros(env.get("data").unwrap().clone());
+
+        println!("{}", expr);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_softmax",
+            "",
+            &vec!["data"],
+        );
+        // TODO: check out array with result array
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+  relay_softmax(out, data);
+
+  for (int i = 0; i < {}; i++) {{
+    // assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "opaque_relay_op.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "data", DType::Fp32, &data_input.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &result_output.view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        println!("{}", main_code);
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-softmax-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-softmax-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        // TODO: find a better way to convert from C multidimensional array to pointer
+        // rather than removing -Werror
+        let result = Command::new("gcc")
+            // .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn relay_op_relu() {
+        let relay = r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
+  nn.relu(%x)
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay);
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayReLU]);
+
+        let mut env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+        }
+
+        // TODO(@gussmith23) Include some simple simplifying rewrites
+        // If we add some very basic rewrites here, then $glenside_str
+        // won't need to exactly match what's actually produced by
+        // from_relay.py. It can be simpler (e.g. collapsing accesses).
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let x_input = ndarray::ArrayD::from_shape_vec(
+            env.get("x").unwrap().clone(),
+            (0..env.get("x").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let result = x_input.clone().into_dyn();
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_relu",
+            "",
+            &vec!["x"],
         );
 
         println!("{}", code);
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_relu(out, x);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "opaque_relay_op.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &x_input.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &result.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+            ),
+            code,
+            result.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-relu-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-relu-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            // .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
     }
+
+    #[test]
+    fn relay_op_maxpool2d_resnet_3x3() {
+        let relay = r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), float32] {
+  nn.max_pool2d(%x, pool_size=[3, 3], strides=[2, 2], padding=[1, 1, 1, 1], layout="NHWC") /* ty=Tensor[(1, 56, 56, 64), float32] */
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay);
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayMaxPool2D]);
+
+        let mut env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+        }
+
+        // TODO(@gussmith23) Include some simple simplifying rewrites
+        // If we add some very basic rewrites here, then $glenside_str
+        // won't need to exactly match what's actually produced by
+        // from_relay.py. It can be simpler (e.g. collapsing accesses).
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let x_input = ndarray::ArrayD::from_shape_vec(
+            env.get("x").unwrap().clone(),
+            (0..env.get("x").unwrap().iter().product::<usize>()).collect(),
+        )
+        .unwrap();
+        let result = ndarray::ArrayD::<f32>::zeros(vec![1, 56, 56, 64]);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_maxpool",
+            "",
+            &vec!["x"],
+        );
+
+        println!("{}", code);
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_maxpool(out, x);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(((float*)result)[i] == ((float*)out)[i]);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "opaque_relay_op.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &x_input.into_dyn().view()),
+            c_assignment_string("", "result", DType::Fp32, &result.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+            ),
+            code,
+            result.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-maxpool-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-maxpool-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            // .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
 }
