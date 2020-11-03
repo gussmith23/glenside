@@ -35,10 +35,11 @@ git = "https://github.com/gussmith23/rplex"
 
 
 [dependencies.tvm]
-# TODO(@gussmith23) Change this to tvm mainline once BatchNormAttrs merged in
+# TODO(@gussmith23) Change this to tvm mainline once we figure out include path
+# issue.
 # NOTE Keep glenside-evaluation in sync with this
 # If the versions get out of whack, we'll probably have some weird errors.
-rev = "81085832e936414bbf90617e5b2bf51d5efadfde"
+rev = "ff5450f9cbe07d57e73594c5fbd68f3bd665c2dc"
 git = "https://github.com/gussmith23/tvm"
 optional = true
 
