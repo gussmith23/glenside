@@ -241,6 +241,8 @@ define_language! {
         NotNanFloat64(NotNan<f64>),
 
         RelayOperator(RelayOperator),
+        RelayActivationLayout(RelayActivationLayout),
+        RelayKernelLayout(RelayKernelLayout),
 
         // pad-type: zero-padding
         // (No other options right now)
@@ -317,6 +319,64 @@ impl Display for RelayOperator {
                 RelayOperator::RelayBatchFlatten => "relay-batch-flatten",
                 RelayOperator::RelayBiasAdd => "relay-bias-add",
                 RelayOperator::RelayAdd => "relay-add",
+            }
+        )
+    }
+}
+
+/// Only for use in [`RelayOperatorCall`]s.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RelayActivationLayout {
+    NCHW,
+    NHWC,
+}
+impl FromStr for RelayActivationLayout {
+    type Err = ();
+    fn from_str(input: &str) -> Result<RelayActivationLayout, Self::Err> {
+        match input {
+            "relay-activation-layout-nhwc" => Ok(RelayActivationLayout::NHWC),
+            "relay-activation-layout-nchw" => Ok(RelayActivationLayout::NCHW),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for RelayActivationLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RelayActivationLayout::NHWC => "relay-activation-layout-nhwc",
+                RelayActivationLayout::NCHW => "relay-activation-layout-nchw",
+            }
+        )
+    }
+}
+
+/// Only for use in [`RelayOperatorCall`]s.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RelayKernelLayout {
+    OIHW,
+    HWIO,
+}
+impl FromStr for RelayKernelLayout {
+    type Err = ();
+    fn from_str(input: &str) -> Result<RelayKernelLayout, Self::Err> {
+        match input {
+            "relay-kernel-layout-hwio" => Ok(RelayKernelLayout::HWIO),
+            "relay-kernel-layout-oihw" => Ok(RelayKernelLayout::OIHW),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for RelayKernelLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RelayKernelLayout::HWIO => "relay-kernel-layout-hwio",
+                RelayKernelLayout::OIHW => "relay-kernel-layout-oihw",
             }
         )
     }
@@ -434,6 +494,8 @@ pub enum MyAnalysisData {
     PadType(PadType),
     List(Vec<usize>),
     RelayOperator(RelayOperator),
+    RelayActivationLayout(RelayActivationLayout),
+    RelayKernelLayout(RelayKernelLayout),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1030,6 +1092,8 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            RelayActivationLayout(l) => MyAnalysisData::RelayActivationLayout(l.clone()),
+            RelayKernelLayout(l) => MyAnalysisData::RelayKernelLayout(l.clone()),
             RelayOperator(op) => MyAnalysisData::RelayOperator(op.clone()),
             RelayOperatorCall(params) => {
                 assert!(params.len() > 0);

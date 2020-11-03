@@ -77,6 +77,8 @@ where
     match &expr.as_ref()[index] {
         &Language::RelayOperatorCall(_) => todo!(),
         &Language::RelayOperator(_) => todo!(),
+        &Language::RelayActivationLayout(_) => todo!(),
+        &Language::RelayKernelLayout(_) => todo!(),
         &Language::AccessShape([shape_id, item_shape_id]) => {
             let shape = match interpret(expr, shape_id.into(), env) {
                 Value::Shape(s) => s,

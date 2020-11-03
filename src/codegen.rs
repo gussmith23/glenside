@@ -294,6 +294,8 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
         } {
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayOperator(_) => todo!(),
+            Language::RelayKernelLayout(_) => {}
+            Language::RelayActivationLayout(_) => {}
             Language::Symbol(s) => {
                 set.insert(s.to_string());
             }
@@ -502,6 +504,8 @@ fn codegen_recursive_helper(
         &expr[id].nodes[0]
     } {
         Language::RelayOperatorCall(_) => todo!(),
+        Language::RelayActivationLayout(_) => panic!(),
+        Language::RelayKernelLayout(_) => panic!(),
         Language::RelayOperator(_) => todo!(),
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
