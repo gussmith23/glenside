@@ -1968,7 +1968,7 @@ def @main(%data: Tensor[(16, 32), float32], %weights: Tensor[(64, 32), float32])
   nn.dense(%data, %weights, units=64) /* ty=Tensor[(16, 64), float32] */
 }
 "#,
-    r#"
+        r#"
 (compute dot-product
  (access-cartesian-product
   (access (access-tensor data) 1)
