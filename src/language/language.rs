@@ -1204,12 +1204,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayGlobalAvgPool2D => {
-                        let mut access = match params[1..]
+                        let (mut access, layout) = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a)] => a.clone(),
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::RelayActivationLayout(l)] => {
+                                (a.clone(), l.clone())
+                            }
                             _ => panic!("Parameters do not type check"),
                         };
 
@@ -1223,9 +1225,16 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         assert_eq!(access.shape.ndim() + access.item_shape.ndim(), 4);
 
-                        // TODO(@gussmith23) Assuming NCHW layout
-                        access[2] = 1;
-                        access[3] = 1;
+                        match layout {
+                            crate::language::RelayActivationLayout::NCHW => {
+                                access[2] = 1;
+                                access[3] = 1;
+                            }
+                            crate::language::RelayActivationLayout::NHWC => {
+                                access[1] = 1;
+                                access[2] = 1;
+                            }
+                        }
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -4512,12 +4521,13 @@ mod tests {
     }
 
     #[test]
-    fn relay_operator_call_global_avg_pool2d() {
+    fn relay_operator_call_global_avg_pool2d_nchw() {
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![1, 3, 32, 64]);
         let program = "
          (relay-operator-call relay-global-avg-pool2d
           (access-tensor a)
+          relay-activation-layout-nchw
          )
          "
         .parse()
@@ -4528,6 +4538,30 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[1, 3, 1, 1]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_global_avg_pool2d_nhwc() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 3, 32, 64]);
+        let program = "
+         (relay-operator-call relay-global-avg-pool2d
+          (access-tensor a)
+          relay-activation-layout-nhwc
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1, 1, 64]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),

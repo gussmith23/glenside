@@ -1043,10 +1043,6 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::GlobalPool2DAttrs>()
                         .unwrap();
                     assert_eq!(call.args.len(), 1);
-                    assert_eq!(
-                        attrs.layout, "NCHW",
-                        "NCHW is the only layout currently supported"
-                    );
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
@@ -1057,8 +1053,18 @@ fn compile_expression(
                             glenside_expr.add(Language::RelayOperator(
                                 crate::language::RelayOperator::RelayGlobalAvgPool2D,
                             ));
+                        let layout_id = match attrs.layout.as_str().unwrap() {
+                            "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
+                                crate::language::RelayActivationLayout::NCHW,
+                            )),
+                            "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
+                                crate::language::RelayActivationLayout::NHWC,
+                            )),
+                            l @ _ => panic!("Unsupported layout: {}", l),
+                        };
                         return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![global_avg_pool2d_operator_id, data_id].into_boxed_slice(),
+                            vec![global_avg_pool2d_operator_id, data_id, layout_id]
+                                .into_boxed_slice(),
                         ));
                     }
 
