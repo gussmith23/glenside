@@ -23,7 +23,7 @@ fn parse_mobilenet_simplified_for_inference() {
         env!("CARGO_MANIFEST_DIR")
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
-    let module = tvm::ir::module::IRModule::parse("", relay);
+    let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
 
@@ -59,7 +59,7 @@ fn parse_mobilenet() {
         env!("CARGO_MANIFEST_DIR")
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
-    let module = tvm::ir::module::IRModule::parse("", relay);
+    let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(
         &module,
