@@ -1,6 +1,7 @@
 use crate::hw_design_language::*;
 use crate::language::MyAnalysis;
 use crate::language::MyAnalysisData;
+use crate::language::RelayActivationLayout;
 use crate::language::{Language, PadType, RelayOperator};
 use egg::EGraph;
 use egg::Id;
@@ -783,6 +784,17 @@ maxpool2D3x3_resnet18_op6({X}, {Y});
                     maxpool2d_out
                 },
                 RelayOperator::RelayGlobalAvgPool2D => {
+                    match &expr[ids[2]].data {
+                        MyAnalysisData::RelayActivationLayout(l) => assert_eq!(
+                            *l,
+                            RelayActivationLayout::NHWC,
+                            "Only supporting codegen for NHWC at the moment"
+                        ),
+                        _ => panic!(
+                            "Expected third argument of RelayGlobalAvgPool2D call to be a layout"
+                        ),
+                    };
+
                     let data = codegen_recursive_helper(
                         expr,
                         ids[1],
