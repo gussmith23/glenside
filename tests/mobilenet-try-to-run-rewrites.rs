@@ -36,7 +36,7 @@ fn mobilenet_try_to_run_rewrites() {
         env!("CARGO_MANIFEST_DIR")
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
-    let module = tvm::ir::module::IRModule::parse("", relay);
+    let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
 

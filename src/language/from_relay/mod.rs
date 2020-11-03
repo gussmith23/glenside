@@ -1524,7 +1524,7 @@ mod tests {
                 const SEED: u64 = 23;
                 let mut tensor_rng = SmallRng::seed_from_u64(SEED);
 
-                let module = tvm::ir::module::IRModule::parse("", $relay_str);
+                let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
                 let (expr, shapes_vec) = super::from_relay(&module, false, &vec![]);
 
