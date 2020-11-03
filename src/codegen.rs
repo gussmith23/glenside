@@ -2946,7 +2946,7 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32], %y: Tensor[(1, 3, 3, 4), float32]) 
 }
 "#;
 
-        let module = tvm::ir::module::IRModule::parse("", relay);
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayAdd]);
 
@@ -3084,7 +3084,7 @@ def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float
 }
 "#;
 
-        let module = tvm::ir::module::IRModule::parse("", relay);
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayBatchNormInference]);
 
@@ -3247,7 +3247,7 @@ def @main(%data: Tensor[(1,10), float32]) -> Tensor[(1,10), float32] {
 }
 "#;
 
-        let module = tvm::ir::module::IRModule::parse("", relay);
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelaySoftmax]);
 
@@ -3382,7 +3382,7 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
 }
 "#;
 
-        let module = tvm::ir::module::IRModule::parse("", relay);
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayReLU]);
 
@@ -3513,7 +3513,7 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
 }
 "#;
 
-        let module = tvm::ir::module::IRModule::parse("", relay);
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(&module, true, &vec![crate::language::RelayOperator::RelayMaxPool2D]);
 
