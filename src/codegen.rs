@@ -8,6 +8,7 @@ use egg::Id;
 use itertools::Itertools;
 use ndarray::array;
 use ndarray::Array;
+use ndarray::ArrayD;
 use ndarray::Dimension;
 use ndarray::IxDyn;
 use rand::Rng;
@@ -3632,6 +3633,10 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
   nn.relu(%x)
 }
 "#;
+
+        // Random number generator for generating random tensors.
+        const SEED: u64 = 23;
+        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
