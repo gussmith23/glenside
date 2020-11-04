@@ -851,7 +851,15 @@ fn compile_expression(
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayMaxPool2D)
                     {
-                        assert_eq!(attrs.layout.as_str().unwrap(), "NCHW");
+                        let layout_id = match attrs.layout.as_str().unwrap() {
+                            "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
+                                crate::language::RelayActivationLayout::NCHW,
+                            )),
+                            "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
+                                crate::language::RelayActivationLayout::NHWC,
+                            )),
+                            l @ _ => panic!("Unsupported layout: {}", l),
+                        };
                         let pool_size_id = shape(
                             glenside_expr,
                             vec![
@@ -929,8 +937,15 @@ fn compile_expression(
                         ));
 
                         return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![max_pool_id, data_id, pool_size_id, strides_id, padding_id]
-                                .into_boxed_slice(),
+                            vec![
+                                max_pool_id,
+                                data_id,
+                                pool_size_id,
+                                strides_id,
+                                padding_id,
+                                layout_id,
+                            ]
+                            .into_boxed_slice(),
                         ));
                     }
 
