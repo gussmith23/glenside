@@ -273,7 +273,8 @@ pub enum RelayOperator {
     RelayReLU,
 
     /// (relay-operator relay-max-pool2d <data: access>
-    ///  <pool size: shape> <strides: shape> <padding: shape>)
+    ///  <pool size: shape> <strides: shape> <padding: shape>
+    ///  <layout: RelayActivationLayout>)
     RelayMaxPool2D,
 
     /// (relay-operator relay-global-avg-pool2d <data: access>
@@ -1240,13 +1241,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayMaxPool2D => {
-                        let (mut access, pool_size, strides, padding) = match params[1..]
+                        let (mut access, pool_size, strides, padding, layout) = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(pool_size), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding)] => {
-                                (a.clone(), pool_size, strides, padding)
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(pool_size), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::RelayActivationLayout(l)] => {
+                                (a.clone(), pool_size, strides, padding, l)
                             }
                             _ => panic!("Parameters do not type check"),
                         };
@@ -1264,25 +1265,50 @@ impl egg::Analysis<Language> for MyAnalysis {
                         assert_eq!(strides.shape.ndim(), 2);
                         assert_eq!(padding.shape.ndim(), 4);
 
-                        // TODO(@gussmith23) Assuming NCHW layout
-                        access[2] =
-                            // The dimension plus padding
-                            (((padding.shape[0] + access[2] + padding.shape[2])
-                                // Get the number of spots where we could pool
-                                - (pool_size.shape[0] - 1))
-                                // Then calculate the spots we actually pool at
-                                // using the stride
-                                + strides.shape[0]
-                                - 1)
-                                / strides.shape[0];
-                        access[3] = (((padding.shape[1] + access[3] + padding.shape[3])
-                              // Get the number of spots where we could pool
-                              - (pool_size.shape[1] - 1))
-                             // Then calculate the spots we actually pool at
-                             // using the stride
-                             + strides.shape[1]
-                            - 1)
-                            / strides.shape[1];
+                        match layout {
+                            crate::language::RelayActivationLayout::NCHW => {
+                                // Sorry for the horrific indentation...
+                                access[2] =
+                                // The dimension plus padding
+                                    (((padding.shape[0] + access[2] + padding.shape[2])
+                                      // Get the number of spots where we could pool
+                                      - (pool_size.shape[0] - 1))
+                                     // Then calculate the spots we actually pool at
+                                     // using the stride
+                                     + strides.shape[0]
+                                     - 1)
+                                    / strides.shape[0];
+                                access[3] = (((padding.shape[1] + access[3] + padding.shape[3])
+                                              // Get the number of spots where we could pool
+                                              - (pool_size.shape[1] - 1))
+                                             // Then calculate the spots we actually pool at
+                                             // using the stride
+                                             + strides.shape[1]
+                                    - 1)
+                                    / strides.shape[1];
+                            }
+                            crate::language::RelayActivationLayout::NHWC => {
+                                // Sorry for the horrific indentation...
+                                access[1] =
+                                // The dimension plus padding
+                                    (((padding.shape[0] + access[1] + padding.shape[2])
+                                      // Get the number of spots where we could pool
+                                      - (pool_size.shape[0] - 1))
+                                     // Then calculate the spots we actually pool at
+                                     // using the stride
+                                     + strides.shape[0]
+                                     - 1)
+                                    / strides.shape[0];
+                                access[2] = (((padding.shape[1] + access[2] + padding.shape[3])
+                                              // Get the number of spots where we could pool
+                                              - (pool_size.shape[1] - 1))
+                                             // Then calculate the spots we actually pool at
+                                             // using the stride
+                                             + strides.shape[1]
+                                    - 1)
+                                    / strides.shape[1];
+                            }
+                        }
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -4469,7 +4495,7 @@ mod tests {
     }
 
     #[test]
-    fn relay_operator_call_max_pool2d() {
+    fn relay_operator_call_max_pool2d_nchw() {
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![1, 3, 32, 64]);
         let program = "
@@ -4478,6 +4504,7 @@ mod tests {
           (shape 1 2)
           (shape 3 4)
           (shape 5 6 7 8)
+          relay-activation-layout-nchw
          )
          "
         .parse()
@@ -4495,6 +4522,33 @@ mod tests {
     }
 
     #[test]
+    fn relay_operator_call_max_pool2d_nhwc() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 3, 32, 64]);
+        let program = "
+         (relay-operator-call relay-max-pool2d
+          (access-tensor a)
+          (shape 1 2)
+          (shape 3 4)
+          (shape 5 6 7 8)
+          relay-activation-layout-nhwc
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 5, 12, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
     #[should_panic(expected = "Parameters do not type check")]
     fn relay_operator_call_max_pool2d_panic() {
         let mut map = HashMap::default();
@@ -4505,6 +4559,7 @@ mod tests {
           (access-tensor a)
           (shape 3 4)
           (shape 5 6 7 8)
+          relay-activation-layout-nhwc
          )
          "
         .parse()
