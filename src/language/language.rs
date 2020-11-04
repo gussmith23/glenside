@@ -276,7 +276,8 @@ pub enum RelayOperator {
     ///  <pool size: shape> <strides: shape> <padding: shape>)
     RelayMaxPool2D,
 
-    /// (relay-operator relay-global-avg-pool2d <data: access>)
+    /// (relay-operator relay-global-avg-pool2d <data: access>
+    ///  <layout: RelayActivationLayout>)
     RelayGlobalAvgPool2D,
 
     /// (relay-operator relay-batch-flatten <data: access>)
