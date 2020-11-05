@@ -399,8 +399,14 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
                 helper(worklist, expr, id);
             }
+            // [Id; 1]
+            &Language::ShapeOf(ids) => {
+                for id in ids.iter() {
+                    helper(worklist, expr, *id);
+                }
+            }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) => {
+            Language::RelayOperatorCall(ids) | Language::Shape(ids) | Language::List(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
@@ -408,7 +414,10 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             // [Id; 2]
             &Language::Access(ids)
             | &Language::AccessTranspose(ids)
+            | &Language::AccessShape(ids)
             | &Language::AccessReshape(ids)
+            | &Language::ShapeInsertAxis(ids)
+            | &Language::ShapeRemoveAxis(ids)
             | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
@@ -435,21 +444,13 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
                 }
             }
 
-            // For many constructs we want to return early so they don't end up
-            // on the worklist.
             Language::RelayOperator(_)
             | Language::RelayKernelLayout(_)
-            | &Language::ShapeInsertAxis(_)
-            | &Language::ShapeRemoveAxis(_)
-            | &Language::AccessShape(_)
             | Language::RelayActivationLayout(_)
             | Language::Symbol(_)
             | &Language::NotNanFloat64(_)
             | &Language::Usize(_)
-            | Language::List(_)
-            | Language::Shape(_)
-            | Language::ShapeOf(_)
-            | &Language::PadType(_) => return,
+            | &Language::PadType(_) => (),
 
             &Language::Literal(_)
             | &Language::AccessLiteral(_)
@@ -504,7 +505,7 @@ pub fn codegen(
     let mut id_to_variable: HashMap<Id, String> = HashMap::default();
 
     for id in worklist {
-        let var_name = codegen_helper(
+        if let Some(var_name) = codegen_helper(
             expr,
             *id,
             uninitialized_allocations_prefix,
@@ -517,8 +518,9 @@ pub fn codegen(
                     .expect("Id not found -- is your worklist ordered correctly?")
                     .clone()
             },
-        );
-        id_to_variable.insert(*id, var_name);
+        ) {
+            id_to_variable.insert(*id, var_name);
+        }
     }
 
     let out_symbol = id_to_variable.get(&id).unwrap();
@@ -614,6 +616,11 @@ for (int i = 0; i < {}; i++) {{
 ///
 /// get_c_variable_for_id: When the codegen needs the variable name of a
 /// subexpression it depends on, it can use this function to get it.
+///
+/// Optionally returns a [`String`] containing the C variable name for the
+/// variable which holds this expression's result. May return [`None`] if no
+/// such variable exists, or if no code was actually generated for this
+/// expression.
 fn codegen_helper(
     expr: &Expr,
     id: Id,
@@ -622,7 +629,7 @@ fn codegen_helper(
     code: &mut String,
     hw_map: &HashMap<Id, usize>,
     get_c_variable_for_id: impl Fn(&Expr, Id) -> String,
-) -> String {
+) -> Option<String> {
     match {
         assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
@@ -695,7 +702,7 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                     )
                     .as_str());
 
-                    batchnorm_out
+                    Some(batchnorm_out)
                 }
                 RelayOperator::RelaySoftmax => {
                     let data = get_c_variable_for_id(expr, ids[1]);
@@ -751,7 +758,7 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
                         .as_str(),
                     );
 
-                    softmax_out
+                    Some(softmax_out)
                 }
                 RelayOperator::RelayReLU => {
                     let data = get_c_variable_for_id(expr, ids[1]);
@@ -798,7 +805,7 @@ relu((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         .as_str(),
                     );
 
-                    relu_out
+                    Some(relu_out)
                 }
                 RelayOperator::RelayMaxPool2D => {
                     let data = get_c_variable_for_id(expr, ids[1]);
@@ -852,7 +859,7 @@ maxpool2D3x3_resnet18_op6((float*) {X}, (float*) {Y});
                         .as_str(),
                     );
 
-                    maxpool2d_out
+                    Some(maxpool2d_out)
                 }
                 RelayOperator::RelayGlobalAvgPool2D => {
                     match &expr[ids[2]].data {
@@ -914,13 +921,13 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         .as_str(),
                     );
 
-                    globalavgpool2d_out
+                    Some(globalavgpool2d_out)
                 }
                 RelayOperator::RelayBatchFlatten => {
                     let data = get_c_variable_for_id(expr, ids[1]);
 
                     // just a reshape, which is a no-op!
-                    data
+                    Some(data)
                 }
                 RelayOperator::RelayBiasAdd | RelayOperator::RelayAdd => {
                     let a = get_c_variable_for_id(expr, ids[1]);
@@ -1008,13 +1015,10 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                         .as_str(),
                     );
 
-                    add_out
+                    Some(add_out)
                 }
             }
         }
-        Language::RelayActivationLayout(_) => panic!(),
-        Language::RelayKernelLayout(_) => panic!(),
-        Language::RelayOperator(_) => todo!(),
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1131,7 +1135,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 code.push_str("}");
             }
 
-            access_windows_out_var_name
+            Some(access_windows_out_var_name)
         }
         &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
             let original_shape = match &expr[access_id].data {
@@ -1211,18 +1215,17 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 code.push_str("}");
             }
 
-            slice_out_var_name
+            Some(slice_out_var_name)
         }
-        Language::Symbol(_) => panic!(),
         &Language::AccessTensor(symbol_id) => {
             assert_eq!(expr[symbol_id].nodes.len(), 1);
             match &expr[symbol_id].nodes[0] {
-                Language::Symbol(s) => s.clone(),
+                Language::Symbol(s) => Some(s.clone()),
                 _ => panic!("expected a symbol!"),
             }
         }
         &Language::Access([access_tensor_id, _axis_id]) => {
-            get_c_variable_for_id(expr, access_tensor_id)
+            Some(get_c_variable_for_id(expr, access_tensor_id))
         }
         &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id])
         | &Language::SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {
@@ -1337,9 +1340,9 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 .as_str(),
             );
 
-            out_var_name
+            Some(out_var_name)
         }
-        &Language::Usize(u) => format!("{}", u),
+        &Language::Usize(u) => Some(format!("{}", u)),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1466,7 +1469,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 code.push_str("}");
             }
 
-            pad_out_var_name
+            Some(pad_out_var_name)
         }
         &Language::AccessTranspose([access_id, list_id]) => {
             let access = match &expr[access_id].data {
@@ -1554,7 +1557,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 code.push_str("}");
             }
 
-            transpose_out_var_name
+            Some(transpose_out_var_name)
         }
         &Language::AccessFlatten(access_id) => {
             // Flatten doesn't do anything. Just copy the array verbatim.
@@ -1600,7 +1603,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 .as_str(),
             );
 
-            out_var_name
+            Some(out_var_name)
         }
         &Language::AccessReshape([access_id, _access_shape_id]) => {
             // Reshape doesn't do anything. Just copy the array verbatim.
@@ -1646,7 +1649,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 .as_str(),
             );
 
-            out_var_name
+            Some(out_var_name)
         }
         &Language::AccessSqueeze([access_id, _axis_id]) => {
             // Squeeze doesn't do anything. Just copy the array verbatim.
@@ -1692,7 +1695,7 @@ for (int i = 0; i < {limit}; ++i) {{
                 .as_str(),
             );
 
-            out_var_name
+            Some(out_var_name)
         }
         &Language::AccessConcatenate([a0_id, a1_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
@@ -1792,23 +1795,31 @@ if (i{i} < {dim_len}) {{
                 code.push_str("}");
             }
 
-            out_var_name
+            Some(out_var_name)
         }
-        &Language::Literal(_)
-        | &Language::NotNanFloat64(_)
-        | Language::List(_)
-        | &Language::AccessBroadcast(_)
-        | &Language::AccessInsertAxis(_)
-        | &Language::AccessPair(_)
+
+        // Constructs for which we shouldn't need to generate code.
+        Language::RelayActivationLayout(_)
+        | Language::RelayKernelLayout(_)
+        | Language::Symbol(_)
         | Language::PadType(_)
-        | Language::ComputeType(_)
-        | &Language::Compute(_)
-        | &Language::AccessCartesianProduct(_)
         | Language::Shape(_)
-        | &Language::SliceShape(_)
+        | Language::List(_)
         | &Language::ShapeInsertAxis(_)
         | &Language::ShapeRemoveAxis(_)
         | &Language::ShapeOf(_)
+        | &Language::AccessShape(_)
+        | Language::RelayOperator(_) => None,
+
+        &Language::Literal(_)
+        | &Language::NotNanFloat64(_)
+        | &Language::AccessBroadcast(_)
+        | &Language::AccessInsertAxis(_)
+        | &Language::AccessPair(_)
+        | Language::ComputeType(_)
+        | &Language::Compute(_)
+        | &Language::AccessCartesianProduct(_)
+        | &Language::SliceShape(_)
         | &Language::MoveAxis(_)
         | &Language::CartesianProduct(_)
         | &Language::MapDotProduct(_)
@@ -1816,7 +1827,6 @@ if (i{i} < {dim_len}) {{
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)
         | &Language::BsgSystolicArray(_)
-        | &Language::AccessShape(_)
         | &Language::AccessLiteral(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
     }
