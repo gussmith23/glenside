@@ -223,12 +223,21 @@ pub fn create_generic_egraph_lp_model<'a>(
     }
 }
 
-/// Returns the [`RecExpr`] and a map of the [`Id`]s in the old egraph to their
-/// [`Id`]s in the new expression.
-pub fn into_recexpr(
+/// Returns an [`EGraph`] with just one enode per eclass, according to the
+/// results of the ILP problem. I could use a [`RecExpr`] here, but all of the
+/// post-processing we do (i.e. codegen) prefers to have an [`EGraph`] with our
+/// analysis attached. Also returns a map, mapping the [`Id`]s in the old egraph
+/// to their [`Id`]s in the new expression.
+///
+/// Actually adds everything to `egraph`, which can be passed in as a new, empty
+/// egraph initialized with the correct analysis.
+///
+/// TODO(@gussmith23) Terrible naming. Not related to extraction.
+pub fn extract_single_expression(
     egraph_lp_problem: &EGraphLpProblem,
     results: &Vec<VariableValue>,
-) -> (RecExpr<Language>, HashMap<Id, Id>) {
+    egraph: EGraph,
+) -> (EGraph, HashMap<Id, Id>) {
     // Use the values assigned to the topological sorting variables to generate
     // the topological sort.
     let mut eclasses_in_topological_order = egraph_lp_problem
@@ -256,7 +265,7 @@ pub fn into_recexpr(
     );
 
     let mut old_id_to_new_id_map = HashMap::new();
-    let mut expr = RecExpr::default();
+    let mut expr = egraph;
 
     for (&id, _column_index) in eclasses_in_topological_order.iter() {
         // This id should be selected.
@@ -332,7 +341,9 @@ mod tests {
         let expr = RecExpr::from_str(format!("(access (access-tensor t) 0)",).as_str()).unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), shape.clone());
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map.clone(),
+        });
         let id = egraph.add_expr(&expr);
 
         let env = Env::new().unwrap();
@@ -340,10 +351,21 @@ mod tests {
             create_generic_egraph_lp_model(&env, &egraph, |_, _, _| true, &[id], "trivial");
         let result = model.problem.solve().unwrap();
 
-        let (out_expr, _old_id_to_new_id_map) = into_recexpr(&model, &result.variables);
+        let (out_expr, _old_id_to_new_id_map) = extract_single_expression(
+            &model,
+            &result.variables,
+            EGraph::new(MyAnalysis { name_to_shape: map }),
+        );
+
+        for eclass in out_expr.classes() {
+            assert_eq!(out_expr[eclass.id].nodes.len(), 1);
+        }
 
         // This is an odd way to check expression equality, but normal equality
         // will fail if the underlying ids are different!
-        assert_eq!(expr.pretty(80), out_expr.pretty(80));
+        //assert_eq!(expr.pretty(80), out_expr.pretty(80));
+        // TODO(@gussmith23) Test incomplete
+        // Can't check for equality easily this way anymore. Need a better way
+        // to check.
     }
 }
