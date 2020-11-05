@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::map::Map;
 use serde_json::{json, Value};
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum DType {
     Int8 = 0,
@@ -33,16 +33,19 @@ impl DType {
     }
 }
 
+#[derive(Debug)]
 pub struct SystolicArrayWeightStationaryParams {
     pub dtype: DType,
     pub rows: usize,
     pub cols: usize,
 }
 
+#[derive(Debug)]
 pub enum AtomConfig {
     SystolicArrayWeightStationary(SystolicArrayWeightStationaryParams),
 }
 
+#[derive(Debug)]
 pub struct Atom {
     pub name: String,
     pub id: usize,
