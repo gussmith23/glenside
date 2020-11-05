@@ -64,6 +64,7 @@ fn codegen_mlp() {
         "",
         &vec!["input", "weight0", "weight1", "weight2"],
         &glenside::codegen::generate_worklist_for_codegen(&egraph, id),
+        true,
     );
     println!("{}", code);
 

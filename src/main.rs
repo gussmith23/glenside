@@ -274,6 +274,7 @@ fn main() {
             },
             &found_vars.iter().map(AsRef::as_ref).collect(),
             &glenside::codegen::generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let json = glenside::hw_design_language::design_to_json(
