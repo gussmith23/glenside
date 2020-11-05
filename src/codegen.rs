@@ -521,7 +521,7 @@ pub fn codegen(
             |_, id| {
                 id_to_variable
                     .get(&id)
-                    .expect("Id not found -- is your worklist ordered correctly?")
+                    .unwrap_or_else(|| panic!("Id {} not found in map of already compiled expressions -- is your worklist ordered correctly?", id))
                     .clone()
             },
             assert_only_one_enode_per_eclass,
