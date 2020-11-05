@@ -6,6 +6,7 @@ use crate::language::{Language, PadType, RelayOperator};
 use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
+use log::warn;
 use ndarray::Array;
 use ndarray::Dimension;
 use ndarray::IxDyn;
@@ -489,6 +490,10 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
 ///
 /// worklist: the eclasses to generate code for, in order. Generally, you should
 /// use [`generate_worklist`].
+///
+/// assert_only_one_enode_per_eclass: If this is true, then panics if there is
+/// more than one enode in any eclass. If false, it just emits a warning. Useful
+/// in ILP extraction, when ILP might not have found an optimal assignment.
 // TODO(@gussmith23) Does not reason about ordering on hardware.
 // TODO(@gussmith23) Hardcoded to float32
 pub fn codegen(
@@ -499,6 +504,7 @@ pub fn codegen(
     uninitialized_allocations_prefix: &str,
     args: &Vec<&str>,
     worklist: &Vec<Id>,
+    assert_only_one_enode_per_eclass: bool,
 ) -> String {
     let mut declarations = String::default();
     let mut code = String::default();
@@ -518,6 +524,7 @@ pub fn codegen(
                     .expect("Id not found -- is your worklist ordered correctly?")
                     .clone()
             },
+            assert_only_one_enode_per_eclass,
         ) {
             id_to_variable.insert(*id, var_name);
         }
@@ -629,9 +636,20 @@ fn codegen_helper(
     code: &mut String,
     hw_map: &HashMap<Id, usize>,
     get_c_variable_for_id: impl Fn(&Expr, Id) -> String,
+    assert_only_one_enode_per_eclass: bool,
 ) -> Option<String> {
     match {
-        assert_eq!(expr[id].nodes.len(), 1);
+        if expr[id].nodes.len() > 1 {
+            if assert_only_one_enode_per_eclass {
+                panic!("eclass {} has {} variants", id, expr[id].nodes.len());
+            } else {
+                warn!(
+                    "eclass {} has {} variants, defaulting to variant 0",
+                    id,
+                    expr[id].nodes.len()
+                );
+            }
+        }
         &expr[id].nodes[0]
     } {
         Language::RelayOperatorCall(ids) => {
@@ -1951,6 +1969,7 @@ mod tests {
             "",
             &vec!["t"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2068,6 +2087,7 @@ int main() {{
             "",
             &vec!["t0", "t1"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2192,6 +2212,7 @@ int main() {{
             "",
             &vec!["t0", "t1"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2336,6 +2357,7 @@ int main() {{
             "",
             &vec!["t"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2465,6 +2487,7 @@ int main() {{
             "",
             &vec!["t"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2596,6 +2619,7 @@ int main() {{
             "",
             &vec!["t"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2715,6 +2739,7 @@ int main() {{
             "",
             &vec!["t"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -2872,6 +2897,7 @@ int main() {{
             "",
             &vec!["t0", "t1"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -3009,6 +3035,7 @@ def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
             "",
             &vec!["x", "y"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -3146,6 +3173,7 @@ def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
             "",
             &vec!["x", "y"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -3299,6 +3327,7 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
             "",
             &vec!["data", "bn_gamma", "bn_beta", "bn_mean", "bn_var"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
         let main_code = format!(
             "
@@ -3466,6 +3495,7 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
             "",
             &vec!["data"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
         let main_code = format!(
             "
@@ -3609,6 +3639,7 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
             "",
             &vec!["x"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -3745,6 +3776,7 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
             "",
             &vec!["x"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -3882,6 +3914,7 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
             "",
             &vec!["x"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
@@ -4019,6 +4052,7 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
             "",
             &vec!["x"],
             &generate_worklist_for_codegen(&egraph, id),
+            true,
         );
 
         let main_code = format!(
