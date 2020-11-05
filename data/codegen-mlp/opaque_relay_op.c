@@ -14,14 +14,10 @@
    y = (x - mu) * 1/sqrt(var+epsilon) * gamma + beta
 
    (epsilon is a small constant to avoid dividing by zero.)
-   The coefficient tensor (1/sqrt(var+epsilon) * gamma) can be pre-computed,
-   here called "coeff".
 
    input tensors X is assumed to be NHWC
    output tensor Y should be the same shape, also NHWC
-   coeff is same shape as X
-   mu is length C
-   beta is same shape as X
+   gamma, beta, mu, var is length C
 */
 void batchNormInference(float *X, float *Y, int N, int H, int W, int C,
                         float *gamma, float *beta, float *mu, float *var,
@@ -40,9 +36,9 @@ void batchNormInference(float *X, float *Y, int N, int H, int W, int C,
         for (int c = 0; c < C; c++) {
           Y[n * dim0 + h * dim1 + w * dim2 + c] =
               (X[n * dim0 + h * dim1 + w * dim2 + c] - mu[c]) *
-                  (1 / sqrt(var[n * dim0 + h * dim1 + w * dim2 + c] + epsilon) *
-                   gamma[n * dim0 + h * dim1 + w * dim2 + c]) +
-              beta[n * dim0 + h * dim1 + w * dim2 + c];
+                  (1 / sqrt(var[c] + epsilon) *
+                   gamma[c]) +
+              beta[c];
         }
       }
     }

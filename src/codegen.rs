@@ -1924,7 +1924,11 @@ mod tests {
     use std::process::Command;
     use std::str::FromStr;
 
-    fn run_relay(env: &HashMap<String, ArrayD<f32>>, relay_str: &str) -> ArrayD<f32> {
+    fn run_relay(
+        env: &HashMap<String, ArrayD<f32>>,
+        shapes_vec: &Vec<(String, Vec<usize>)>,
+        relay_str: &str,
+    ) -> ArrayD<f32> {
         let script_filepath = format!(
             "{}/src/language/from_relay/run_relay.py",
             env!("CARGO_MANIFEST_DIR")
@@ -1950,7 +1954,8 @@ mod tests {
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        for (name, value) in env.iter() {
+        for (name, _) in shapes_vec.iter() {
+            let value = env.get(name).unwrap();
             // TODO(@gussmith23) output type assumption
             let filepath = std::env::temp_dir().with_file_name(format!(
                 "arg-{}.npy",
@@ -3296,13 +3301,26 @@ int main() {{
     }
 
     #[test]
-    #[ignore = "batchnorm not supported in relay"]
     fn relay_op_batchnorm() {
         let relay = r#"
 #[version = "0.0.5"]
-def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> (Tensor[(1, 32, 32, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) {
-    nn.batch_norm(%data, %bn_gamma, %bn_beta, %bn_mean, %bn_var, axis=3) /* ty=(Tensor[(1, 32, 32, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) */
+def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> (Tensor[(1, 2, 2, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) {
+  nn.batch_norm(%data, %bn_gamma, %bn_beta, %bn_mean, %bn_var, axis=3) /* ty=(Tensor[(1, 2, 2, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) */
 }
+"#;
+        let relay_to_run = r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> Tensor[(1, 2, 2, 16), float32] {
+  %0 = add(%bn_var, 1e-05f /* ty=float32 */) /* ty=Tensor[(16), float32] */;
+  %1 = sqrt(%0) /* ty=Tensor[(16), float32] */;
+  %2 = divide(1f /* ty=float32 */, %1) /* ty=Tensor[(16), float32] */;
+  %3 = multiply(%2, %bn_gamma) /* ty=Tensor[(16), float32] */;
+  %4 = multiply(%data, %3) /* ty=Tensor[(1, 2, 2, 16), float32] */;
+  %5 = negative(%bn_mean) /* ty=Tensor[(16), float32] */;
+  %6 = multiply(%5, %3) /* ty=Tensor[(16), float32] */;
+  %7 = add(%6, %bn_beta) /* ty=Tensor[(16), float32] */;
+  add(%4, %7) /* ty=Tensor[(1, 2, 2, 16), float32] */
+}      
 "#;
         // Random number generator for generating random tensors.
         const SEED: u64 = 23;
@@ -3324,7 +3342,7 @@ def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float
                 k.clone(),
                 ndarray::ArrayD::<f32>::random_using(
                     v.clone(),
-                    Uniform::new(-1f32, 1f32),
+                    Uniform::new(1f32, 2f32), // prevent NaN results
                     &mut tensor_rng,
                 ),
             );
@@ -3340,7 +3358,7 @@ def @main(%data: Tensor[(1, 32, 32, 16), float32], %bn_gamma: Tensor[(16), float
 
         let id = egraph.add_expr(&expr);
 
-        let result = run_relay(&value_env, relay);
+        let result = run_relay(&value_env, &shapes_vec, relay_to_run);
 
         println!("{}", expr);
 
@@ -3517,7 +3535,7 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
 
         let id = egraph.add_expr(&expr);
 
-        let result_output = run_relay(&value_env, relay);
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
 
         println!("{}", expr);
 
@@ -3670,7 +3688,7 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
 
         let id = egraph.add_expr(&expr);
 
-        let result = run_relay(&value_env, relay);
+        let result = run_relay(&value_env, &shapes_vec, relay);
 
         let code = codegen(
             &egraph,
@@ -3811,7 +3829,7 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
 
         let id = egraph.add_expr(&expr);
 
-        let result = run_relay(&value_env, relay);
+        let result = run_relay(&value_env, &shapes_vec, relay);
 
         let code = codegen(
             &egraph,
@@ -3953,7 +3971,7 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
 
         let id = egraph.add_expr(&expr);
 
-        let result = run_relay(&value_env, relay);
+        let result = run_relay(&value_env, &shapes_vec, relay);
 
         let code = codegen(
             &egraph,
@@ -4095,7 +4113,7 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
 
         let id = egraph.add_expr(&expr);
 
-        let result = run_relay(&value_env, relay);
+        let result = run_relay(&value_env, &shapes_vec, relay);
 
         let code = codegen(
             &egraph,
