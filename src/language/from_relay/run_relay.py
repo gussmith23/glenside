@@ -32,7 +32,8 @@ else:
     expr = tvm.parser.fromtext(relay_in)
 
 inputs = [np.load(arg_file) for arg_file in parsed.npy_arg_filepath]
-
+for i in inputs:
+    print(i.shape)
 output = relay.create_executor(mod=expr).evaluate()(*inputs).asnumpy()
 
 np.save(parsed.npy_out_filepath, output)
