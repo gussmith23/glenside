@@ -273,6 +273,7 @@ fn main() {
                 r#"__attribute__ ((section (".uninitialized"))) __attribute__ ((aligned (256)))"#
             },
             &found_vars.iter().map(AsRef::as_ref).collect(),
+            &glenside::codegen::generate_worklist_for_codegen(&egraph, id),
         );
 
         let json = glenside::hw_design_language::design_to_json(
