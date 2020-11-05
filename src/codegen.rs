@@ -6,13 +6,10 @@ use crate::language::{Language, PadType, RelayOperator};
 use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
-use ndarray::array;
 use ndarray::Array;
-use ndarray::ArrayD;
 use ndarray::Dimension;
 use ndarray::IxDyn;
 use rand::Rng;
-use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
@@ -608,7 +605,7 @@ fn codegen_recursive_helper(
                     };
 
                     code.push_str(format!("
-batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean}, {moving_var}, {epsilon});
+batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gamma}, (float*) {beta}, (float*) {moving_mean}, (float*) {moving_var}, {epsilon});
 ",                      X = data,
                         Y = batchnorm_out,
                         N = new_shape[0],
@@ -672,7 +669,7 @@ batchNormInference({X}, {Y}, {N}, {H}, {W}, {C}, {gamma}, {beta}, {moving_mean},
                     code.push_str(
                         format!(
                             "
-softmax1D({X}, {Y}, {N});
+softmax1D((float*) {X}, (float*) {Y}, {N});
 ",
                             X = data,
                             Y = softmax_out,
@@ -725,7 +722,7 @@ softmax1D({X}, {Y}, {N});
                     code.push_str(
                         format!(
                             "
-relu({X}, {Y}, {N}, {H}, {W}, {C});
+relu((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
 ",
                             X = data,
                             Y = relu_out,
@@ -750,9 +747,9 @@ relu({X}, {Y}, {N}, {H}, {W}, {C});
                         hw_map,
                     );
 
-                    let pool_size = MyAnalysis::get_shape_of_value(ids[2], expr);
-                    let strides = MyAnalysis::get_shape_of_value(ids[3], expr);
-                    let padding = MyAnalysis::get_shape_of_value(ids[4], expr);
+                    let _pool_size = MyAnalysis::get_shape_of_value(ids[2], expr);
+                    let _strides = MyAnalysis::get_shape_of_value(ids[3], expr);
+                    let _padding = MyAnalysis::get_shape_of_value(ids[4], expr);
 
                     // TODO: currently hardcoded shape for max pool2d for resnet
                     let old_shape = match &expr[ids[1]].data {
@@ -786,7 +783,7 @@ relu({X}, {Y}, {N}, {H}, {W}, {C});
                     code.push_str(
                         format!(
                             "
-maxpool2D3x3_resnet18_op6({X}, {Y});
+maxpool2D3x3_resnet18_op6((float*) {X}, (float*) {Y});
 ",
                             X = data,
                             Y = maxpool2d_out
@@ -850,7 +847,7 @@ maxpool2D3x3_resnet18_op6({X}, {Y});
                     code.push_str(
                         format!(
                             "
-globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
+globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
 ",
                             X = data,
                             Y = globalavgpool2d_out,
@@ -978,7 +975,7 @@ globalAvgPool({X}, {Y}, {N}, {H}, {W}, {C});
 {}
 {}
 {}                            
-add_with_broadcasting({out}, {X}, {Y}, {out_shape}, {out_dims}, {a_shape}, {a_dims}, {b_shape}, {b_dims});
+add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_shape}, {out_dims}, (int*) {a_shape}, {a_dims}, (int*) {b_shape}, {b_dims});
 ",
                             c_assignment_string("", &out_shape_str, DType::Int32, &Array::from(out_shape.clone()).into_dyn().view()),
                             c_assignment_string("", &a_shape_str, DType::Int32, &Array::from(a_shape.clone()).into_dyn().view()),
@@ -1913,6 +1910,7 @@ if (i{i} < {dim_len}) {{
 mod tests {
     use super::*;
     use egg::RecExpr;
+    use ndarray::ArrayD;
     use ndarray::{SliceInfo, SliceOrIndex};
     use ndarray_npy::{read_npy, write_npy};
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
@@ -3132,7 +3130,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3275,7 +3273,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3469,7 +3467,7 @@ int main() {{
         // TODO: find a better way to convert from C multidimensional array to pointer
         // rather than removing -Werror
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3618,7 +3616,7 @@ int main() {{
         // TODO: find a better way to convert from C multidimensional array to pointer
         // rather than removing -Werror
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3761,7 +3759,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3903,7 +3901,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -4045,7 +4043,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -4187,7 +4185,7 @@ int main() {{
             .unwrap();
 
         let result = Command::new("gcc")
-            // .arg("-Werror")
+            .arg("-Werror")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
