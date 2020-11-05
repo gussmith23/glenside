@@ -223,10 +223,12 @@ pub fn create_generic_egraph_lp_model<'a>(
     }
 }
 
+/// Returns the [`RecExpr`] and a map of the [`Id`]s in the old egraph to their
+/// [`Id`]s in the new expression.
 pub fn into_recexpr(
     egraph_lp_problem: &EGraphLpProblem,
     results: &Vec<VariableValue>,
-) -> RecExpr<Language> {
+) -> (RecExpr<Language>, HashMap<Id, Id>) {
     // Use the values assigned to the topological sorting variables to generate
     // the topological sort.
     let mut eclasses_in_topological_order = egraph_lp_problem
@@ -315,7 +317,7 @@ pub fn into_recexpr(
         );
     }
 
-    expr
+    (expr, old_id_to_new_id_map)
 }
 
 #[cfg(test)]
@@ -338,7 +340,7 @@ mod tests {
             create_generic_egraph_lp_model(&env, &egraph, |_, _, _| true, &[id], "trivial");
         let result = model.problem.solve().unwrap();
 
-        let out_expr = into_recexpr(&model, &result.variables);
+        let (out_expr, _old_id_to_new_id_map) = into_recexpr(&model, &result.variables);
 
         // This is an odd way to check expression equality, but normal equality
         // will fail if the underlying ids are different!
