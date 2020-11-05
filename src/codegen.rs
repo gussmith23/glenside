@@ -1797,6 +1797,8 @@ if (i{i} < {dim_len}) {{
 
             Some(out_var_name)
         }
+        // TODO(@gussmith23) Needs test
+        &Language::NotNanFloat64(not_nan) => Some(format!("{:.20}f", not_nan.into_inner())),
 
         // Constructs for which we shouldn't need to generate code.
         Language::RelayActivationLayout(_)
@@ -1812,7 +1814,6 @@ if (i{i} < {dim_len}) {{
         | Language::RelayOperator(_) => None,
 
         &Language::Literal(_)
-        | &Language::NotNanFloat64(_)
         | &Language::AccessBroadcast(_)
         | &Language::AccessInsertAxis(_)
         | &Language::AccessPair(_)
