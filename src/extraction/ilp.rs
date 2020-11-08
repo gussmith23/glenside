@@ -20,7 +20,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use egg::{Id, Language as LangugeTrait, RecExpr};
+use egg::{Id, Language as LangugeTrait};
 use rplex::Variable;
 use rplex::VariableType;
 use rplex::{var, Constraint, ConstraintType, Env, Problem, VariableValue, WeightedVariable};
@@ -333,6 +333,7 @@ pub fn extract_single_expression(
 mod tests {
     use super::*;
     use std::str::FromStr;
+    use egg::RecExpr;
 
     // TODO(@gussmith23) This test doesn't have to depend on running CPLEX.
     #[test]
