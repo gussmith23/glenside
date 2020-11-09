@@ -332,8 +332,8 @@ pub fn extract_single_expression(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
     use egg::RecExpr;
+    use std::str::FromStr;
 
     // TODO(@gussmith23) This test doesn't have to depend on running CPLEX.
     #[test]
