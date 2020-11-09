@@ -3131,6 +3131,7 @@ int main() {{
 
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3274,6 +3275,7 @@ int main() {{
 
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3468,6 +3470,7 @@ int main() {{
         // rather than removing -Werror
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3617,6 +3620,7 @@ int main() {{
         // rather than removing -Werror
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3760,6 +3764,7 @@ int main() {{
 
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -3902,6 +3907,7 @@ int main() {{
 
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -4044,6 +4050,7 @@ int main() {{
 
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
@@ -4186,6 +4193,7 @@ int main() {{
 
         let result = Command::new("gcc")
             .arg("-Werror")
+            .arg("-lm")
             .arg("-g")
             .arg("-o")
             .arg(&binary_filepath)
