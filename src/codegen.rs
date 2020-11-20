@@ -624,7 +624,7 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                         code,
                         hw_map,
                     );
-                        
+
                     // TODO: axis not used since
                     // softmax c function does softmax over all values
                     let _axis = MyAnalysis::get_usize(ids[2], expr);
