@@ -627,12 +627,20 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
 
                     // TODO: axis not used since
                     // softmax c function does softmax over all values
-                    let _axis = MyAnalysis::get_usize(ids[2], expr);
+                    let axis = MyAnalysis::get_usize(ids[2], expr);
 
                     let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
+
+                    assert_eq!(
+                        new_shape.len(),
+                        2,
+                        "softmax assumes 2 dimensions (batch_size, num_classes)"
+                    );
+                    assert_eq!(axis, 1, "softmax should be over axis = 1");
+                    assert_eq!(new_shape[0], 1, "softmax only supports batch size = 1");
 
                     let softmax_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
