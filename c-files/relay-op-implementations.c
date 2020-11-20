@@ -22,7 +22,8 @@
 void batchNormInference(float *X, float *Y, int N, int H, int W, int C,
                         float *gamma, float *beta, float *mu, float *var,
                         float epsilon) {
-  //TODO: (1/sqrt(var+epsilon) * gamma) can be pre-computed
+  // TODO: (1/sqrt(var+epsilon) * gamma) can be pre-computed
+  // and passed in as a parameter "coeff"
 
   // mu is calculated on the channel dimension
   // coeff and beta have the same shape as X
@@ -74,6 +75,8 @@ void softmax1D(float *X, float *Y, int N) {
 }
 
 void softmax(float *X, float *Y, int N, int H, int W, int C) {
+  // TODO: softmax c function currently does softmax
+  // over all values of input tensor
   return softmax1D(X, Y, N * H * W * C);
 }
 
