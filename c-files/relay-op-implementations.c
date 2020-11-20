@@ -22,6 +22,8 @@
 void batchNormInference(float *X, float *Y, int N, int H, int W, int C,
                         float *gamma, float *beta, float *mu, float *var,
                         float epsilon) {
+  //TODO: (1/sqrt(var+epsilon) * gamma) can be pre-computed
+
   // mu is calculated on the channel dimension
   // coeff and beta have the same shape as X
 

@@ -294,11 +294,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
-            Language::RelayOperatorCall(ids) => {
-                for id in ids.iter() {
-                    find_vars_recursive_helper(set, expr, *id);
-                }
-            }
             Language::RelayOperator(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
@@ -310,7 +305,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
-            Language::List(ids) | Language::Shape(ids) => {
+            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -577,7 +572,7 @@ fn codegen_recursive_helper(
                         _ => panic!(),
                     };
 
-                    let new_shape = match &expr[ids[1]].data {
+                    let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
@@ -636,10 +631,9 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                     let axis = MyAnalysis::get_usize(ids[2], expr);
 
                     // Pre-ISCA: resnet only does softmax over (1,1000)
-                    println!("{}", axis);
                     assert!(axis == 1, "expected NHWC format");
 
-                    let new_shape = match &expr[ids[1]].data {
+                    let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
@@ -691,12 +685,11 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
                         hw_map,
                     );
 
-                    let new_shape = match &expr[ids[1]].data {
+                    let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
 
-                    // TODO: axis currently not used...
                     let relu_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
                         // Currently generating random strings. Not great IMO.
@@ -756,8 +749,13 @@ relu((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
+                    assert!(old_shape[0] == 1 && old_shape[1] == 112 && old_shape[2] == 112 && old_shape[3] == 64,
+                            "RelayMaxPool2d currently only works for resnet on tensors of (1, 112, 112, 64)");
 
-                    let new_shape = vec![old_shape[0], 56, 56, old_shape[3]];
+                    let new_shape = match &expr[id].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!(),
+                    };
                     let maxpool2d_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
                         // Currently generating random strings. Not great IMO.
@@ -815,13 +813,15 @@ maxpool2D3x3_resnet18_op6((float*) {X}, (float*) {Y});
                         hw_map,
                     );
 
-                    // TODO: support broadcasting
                     let old_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
 
-                    let new_shape = vec![old_shape[0], old_shape[3]];
+                    let new_shape = match &expr[id].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!(),
+                    };
                     let globalavgpool2d_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
                         // Currently generating random strings. Not great IMO.
@@ -907,23 +907,10 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                     };
 
                     // calculate broadcasted shape
-                    let a_ndim = a_shape.len();
-                    let b_ndim = b_shape.len();
-
-                    let out_shape = std::iter::repeat(&1usize)
-                        .take(if b_ndim > a_ndim { b_ndim - a_ndim } else { 0 })
-                        .chain(a_shape.iter())
-                        .zip(
-                            std::iter::repeat(&1usize)
-                                .take(if a_ndim > b_ndim { a_ndim - b_ndim } else { 0 })
-                                .chain(b_shape.iter()),
-                        )
-                        .map(|(a, b): (&usize, &usize)| {
-                            assert!(a == b || (*a == 1 || *b == 1), "Shapes can't be broadcast");
-                            std::cmp::max(a, b)
-                        })
-                        .cloned()
-                        .collect::<Vec<_>>();
+                    let new_shape = match &expr[id].data {
+                        MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!(),
+                    };
 
                     let add_out: String = {
                         // TODO(@gussmith23) Find a different way to name intermediates
@@ -939,7 +926,7 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                             c_allocation_string(
                                 uninitialized_allocations_prefix,
                                 out.as_str(),
-                                out_shape.as_slice(),
+                                new_shape.as_slice(),
                                 DType::Fp32,
                             )
                             .as_str(),
@@ -977,14 +964,14 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
 {}                            
 add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_shape}, {out_dims}, (int*) {a_shape}, {a_dims}, (int*) {b_shape}, {b_dims});
 ",
-                            c_assignment_string("", &out_shape_str, DType::Int32, &Array::from(out_shape.clone()).into_dyn().view()),
+                            c_assignment_string("", &out_shape_str, DType::Int32, &Array::from(new_shape.clone()).into_dyn().view()),
                             c_assignment_string("", &a_shape_str, DType::Int32, &Array::from(a_shape.clone()).into_dyn().view()),
                             c_assignment_string("", &b_shape_str, DType::Int32, &Array::from(b_shape.clone()).into_dyn().view()),
                             out = add_out,
                             X = a,
                             Y = b,
                             out_shape = out_shape_str,
-                            out_dims = out_shape.len(),
+                            out_dims = new_shape.len(),
                             a_shape = a_shape_str,
                             a_dims = a_shape.len(),
                             b_shape = b_shape_str,
@@ -3035,10 +3022,6 @@ def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
             env.insert(k.clone(), v.clone());
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3066,8 +3049,6 @@ def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
             &vec!["x", "y"],
         );
 
-        println!("{}", code);
-
         let main_code = format!(
             "
 #include <assert.h>
@@ -3089,11 +3070,10 @@ int main() {{
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -3179,10 +3159,6 @@ def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
             env.insert(k.clone(), v.clone());
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3210,8 +3186,6 @@ def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
             &vec!["x", "y"],
         );
 
-        println!("{}", code);
-
         let main_code = format!(
             "
 #include <assert.h>
@@ -3233,11 +3207,10 @@ int main() {{
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -3348,10 +3321,6 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
             );
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3390,17 +3359,16 @@ int main() {{
   relay_batchnorm(out, data, bn_gamma, bn_beta, bn_mean, bn_var);
 
   for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.001);
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
   }}
 }}
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -3447,8 +3415,6 @@ int main() {{
             result.shape().iter().product::<usize>()
         );
 
-        println!("{}", main_code);
-
         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
             "relay-op-batchnorm-test-{}.c",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
@@ -3466,8 +3432,6 @@ int main() {{
             .write_all(main_code.as_bytes())
             .unwrap();
 
-        // TODO: find a better way to convert from C multidimensional array to pointer
-        // rather than removing -Werror
         let result = Command::new("gcc")
             .arg("-Werror")
             .arg("-g")
@@ -3526,10 +3490,6 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
             );
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3564,17 +3524,16 @@ int main() {{
   relay_softmax(out, data);
 
   for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.001);
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
   }}
 }}
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -3597,8 +3556,6 @@ int main() {{
             result_output.shape().iter().product::<usize>()
         );
 
-        println!("{}", main_code);
-
         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
             "relay-op-softmax-test-{}.c",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
@@ -3616,8 +3573,6 @@ int main() {{
             .write_all(main_code.as_bytes())
             .unwrap();
 
-        // TODO: find a better way to convert from C multidimensional array to pointer
-        // rather than removing -Werror
         let result = Command::new("gcc")
             .arg("-Werror")
             .arg("-g")
@@ -3680,10 +3635,6 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
             );
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3701,8 +3652,6 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
             &vec!["x"],
         );
 
-        println!("{}", code);
-
         let main_code = format!(
             "
 #include <assert.h>
@@ -3717,17 +3666,16 @@ int main() {{
     relay_relu(out, x);
 
   for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.001);
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
   }}
 }}
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -3822,10 +3770,6 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
             );
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3843,8 +3787,6 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
             &vec!["x"],
         );
 
-        println!("{}", code);
-
         let main_code = format!(
             "
 #include <assert.h>
@@ -3860,17 +3802,16 @@ int main() {{
     relay_maxpool(out, x);
 
   for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.001);
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
   }}
 }}
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -3965,10 +3906,6 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
             );
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -3986,8 +3923,6 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
             &vec!["x"],
         );
 
-        println!("{}", code);
-
         let main_code = format!(
             "
 #include <assert.h>
@@ -4003,17 +3938,16 @@ int main() {{
     relay_maxpool(out, x);
 
   for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.001);
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
   }}
 }}
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
@@ -4108,10 +4042,6 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
             );
         }
 
-        // TODO(@gussmith23) Include some simple simplifying rewrites
-        // If we add some very basic rewrites here, then $glenside_str
-        // won't need to exactly match what's actually produced by
-        // from_relay.py. It can be simpler (e.g. collapsing accesses).
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
         });
@@ -4129,8 +4059,6 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
             &vec!["x"],
         );
 
-        println!("{}", code);
-
         let main_code = format!(
             "
 #include <assert.h>
@@ -4146,17 +4074,16 @@ int main() {{
     relay_globalavgpool2d(out, x);
 
   for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.001);
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
   }}
 }}
 ",
             PathBuf::from_str(
                 format!(
-                    "{}/{}/{}/{}",
+                    "{}/{}/{}",
                     env!("CARGO_MANIFEST_DIR"),
-                    "data",
-                    "codegen-mlp",
-                    "opaque_relay_op.c"
+                    "c-files",
+                    "relay-op-implementations.c"
                 )
                 .as_str()
             )
