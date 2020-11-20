@@ -562,13 +562,10 @@ fn codegen_recursive_helper(
 
                     let axis = MyAnalysis::get_usize(ids[6], expr);
 
-                    // Pre-ISCA: expect NHWC format data
+                    // expect NHWC format data
                     assert!(axis == 3, "expected NHWC format");
                     let epsilon = match &expr[ids[7]].data {
-                        MyAnalysisData::Literal(l) => {
-                            println!("shape of batchnorm inference epsilon: {:?}", &l.shape());
-                            l
-                        }
+                        MyAnalysisData::Literal(l) => l,
                         _ => panic!(),
                     };
 
@@ -627,11 +624,10 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                         code,
                         hw_map,
                     );
-
-                    let axis = MyAnalysis::get_usize(ids[2], expr);
-
-                    // Pre-ISCA: resnet only does softmax over (1,1000)
-                    assert!(axis == 1, "expected NHWC format");
+                        
+                    // TODO: axis not used since
+                    // softmax c function does softmax over all values
+                    let _axis = MyAnalysis::get_usize(ids[2], expr);
 
                     let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
@@ -744,11 +740,11 @@ relu((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                     let _strides = MyAnalysis::get_shape_of_value(ids[3], expr);
                     let _padding = MyAnalysis::get_shape_of_value(ids[4], expr);
 
-                    // TODO: currently hardcoded shape for max pool2d for resnet
                     let old_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
                     };
+                    // TODO: currently only supports maxpool2d shape in resnet
                     assert!(old_shape[0] == 1 && old_shape[1] == 112 && old_shape[2] == 112 && old_shape[3] == 64,
                             "RelayMaxPool2d currently only works for resnet on tensors of (1, 112, 112, 64)");
 
@@ -895,8 +891,6 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         hw_map,
                     );
 
-                    // TODO: support broadcasting
-                    // TODO: cannot assume adding 4d tensors...
                     let a_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
@@ -906,7 +900,6 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         _ => panic!(),
                     };
 
-                    // calculate broadcasted shape
                     let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
                         _ => panic!(),
@@ -3001,7 +2994,6 @@ int main() {{
 
     #[test]
     fn relay_op_add() {
-        // TODO: do broadcasting
         let relay = r#"
 #[version = "0.0.5"]
 def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
@@ -3138,7 +3130,6 @@ int main() {{
 
     #[test]
     fn relay_op_biasadd() {
-        // TODO: do broadcasting
         let relay = r#"
 #[version = "0.0.5"]
 def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
@@ -3329,8 +3320,6 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
 
         let result = run_relay(&value_env, &shapes_vec, relay_to_run);
 
-        println!("{}", expr);
-
         let code = codegen(
             &egraph,
             id,
@@ -3339,7 +3328,6 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
             "",
             &vec!["data", "bn_gamma", "bn_beta", "bn_mean", "bn_var"],
         );
-        // TODO: check out array with result array
         let main_code = format!(
             "
 #include <assert.h>
@@ -3498,8 +3486,6 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
 
         let result_output = run_relay(&value_env, &shapes_vec, relay);
 
-        println!("{}", expr);
-
         let code = codegen(
             &egraph,
             id,
@@ -3508,7 +3494,6 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
             "",
             &vec!["data"],
         );
-        // TODO: check out array with result array
         let main_code = format!(
             "
 #include <assert.h>
