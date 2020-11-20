@@ -706,7 +706,7 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::BatchNormAttrs>()
                         .unwrap();
 
-                    // Should be NHWC or NCHW
+                    // Should be ___C or _C___ (e.g. NHWC, NCHW)
                     assert!(attrs.axis == 3 || attrs.axis == 1);
 
                     let axis_id =
