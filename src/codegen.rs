@@ -4155,7 +4155,10 @@ int main() {{
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(
             &module,
             true,
-            &vec![crate::language::RelayOperator::RelayGlobalAvgPool2D],
+            &vec![
+                crate::language::RelayOperator::RelayBatchNormInference,
+                crate::language::RelayOperator::RelayAdd,
+            ],
         );
 
         let mut env = HashMap::default();

@@ -464,10 +464,10 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
                 *t.upcast::<tvm::runtime::ObjectRef>()
             )
         });
-    assert_eq!(
-        tensor_type.dtype.clone(),
-        "float32".parse().unwrap(),
-        "only supporting float32x1 at the moment"
+    assert!(
+        tensor_type.dtype.clone() == "float32".parse().unwrap()
+            || tensor_type.dtype.clone() == "int32".parse().unwrap(),
+        "only supporting float32x1 and in32x1 at the moment"
     );
     let mut shape = Vec::<usize>::default();
     for j in 0..tensor_type.shape.len() {
