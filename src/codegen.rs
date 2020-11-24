@@ -1573,17 +1573,28 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
             code.push_str(
                 format!(
                     "
-{out_var_name}{out_indices} = {access_var_name}{access_indices};",
+{out_var_name}{out_indices} = ((float*){access_var_name}){access_indices};",
                     out_var_name = transpose_out_var_name,
                     out_indices = (0..original_shape.len())
                         .map(|i| format!("[i{}]", new_axis_order[i]))
                         .collect::<Vec<_>>()
                         .join(""),
                     access_var_name = access_var_name,
-                    access_indices = (0..original_shape.len())
-                        .map(|i| format!("[i{}]", i))
-                        .collect::<Vec<_>>()
-                        .join("")
+                    access_indices = format!(
+                        "[{}]",
+                        (0..original_shape.len())
+                            .map(|i| format!(
+                                "i{}{}",
+                                i,
+                                original_shape[i + 1..]
+                                    .iter()
+                                    .map(|i| format!("*{}", i))
+                                    .collect::<Vec<_>>()
+                                    .join("")
+                            ))
+                            .collect::<Vec<_>>()
+                            .join(" + ")
+                    )
                 )
                 .as_str(),
             );
