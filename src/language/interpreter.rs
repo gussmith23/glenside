@@ -76,6 +76,7 @@ where
 {
     match &expr.as_ref()[index] {
         &Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
+        &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
         &Language::RelayOperatorCall(_) => todo!(),
         &Language::RelayOperator(_) => todo!(),
         &Language::RelayActivationLayout(_) => todo!(),
