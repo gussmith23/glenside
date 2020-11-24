@@ -1,3 +1,5 @@
+#![cfg(ilp)]
+
 use std::process::Command;
 
 #[test]
