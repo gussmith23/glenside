@@ -81,7 +81,7 @@ fn main() {
             ),
     );
 
-    #[cfg(ilp)]
+    #[cfg(cplex)]
     {
         app = app.subcommand(
             SubCommand::with_name("demo")
@@ -161,7 +161,7 @@ fn main() {
 
     #[allow(unused_variables)]
     if let Some(matches) = matches.subcommand_matches("isca-demo") {
-        #[cfg(ilp)]
+        #[cfg(cplex)]
         {
             use egg::Id;
             use glenside::extraction::ilp::create_generic_egraph_lp_model;
