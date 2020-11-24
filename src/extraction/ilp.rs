@@ -29,11 +29,7 @@ use crate::language::{Language, MyAnalysis};
 
 type EGraph = egg::EGraph<Language, MyAnalysis>;
 
-pub fn filter_by_enode_type(
-    enode: &Language,
-    _eclass_id: Id,
-    _egraph: &EGraph,
-) -> bool {
+pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) -> bool {
     if match enode {
 
                 // Things we should never see.
@@ -171,11 +167,7 @@ pub fn filter_obviously_less_preferable_nodes(
 /// false if and only if this node is an access-flatten which is in an eclass by
 /// itself, and if the eclass it points to has an access-reshape node that
 /// points right back to this node's eclass.
-pub fn filter_useless_access_flattens(
-    enode: &Language,
-    eclass_id: Id,
-    egraph: &EGraph,
-) -> bool {
+pub fn filter_useless_access_flattens(enode: &Language, eclass_id: Id, egraph: &EGraph) -> bool {
     // Return early if this eclass contains nodes other than just this one.
     let this_node_is_alone = match egraph[eclass_id].nodes.as_slice() {
         [n] if n == enode => true,
@@ -213,11 +205,7 @@ pub fn filter_useless_access_flattens(
 }
 
 /// Filtering function which filters out useless pad/slice loops
-pub fn filter_useless_pad_slice_loops(
-    enode: &Language,
-    eclass_id: Id,
-    egraph: &EGraph,
-) -> bool {
+pub fn filter_useless_pad_slice_loops(enode: &Language, eclass_id: Id, egraph: &EGraph) -> bool {
     // Return early if this eclass contains nodes other than just this one.
     let this_node_is_alone = match egraph[eclass_id].nodes.as_slice() {
         [n] if n == enode => true,
