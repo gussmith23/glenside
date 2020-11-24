@@ -27,7 +27,7 @@ fn main() {
                 .arg(
                     Arg::with_name("OUT_DESIGN_FILEPATH")
                         .required(true)
-                        .index(5),
+                        .index(4),
                 )
                 .arg(
                     Arg::with_name("allocate-for-manycore")
