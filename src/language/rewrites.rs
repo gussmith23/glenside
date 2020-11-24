@@ -2075,6 +2075,41 @@ pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
     )
 }
 
+pub fn bubble_access_transpose_through_access_pad() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        list: Var,
+        pad_axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let list = match &egraph[subst[self.list]].data {
+                MyAnalysisData::List(l) => l.clone(),
+                _ => panic!(),
+            };
+            let pad_axis = MyAnalysis::get_usize(subst[self.pad_axis], egraph);
+
+            format!(
+                "(access-transpose (access-pad ?a ?pad-type {} ?pad-before ?pad-after) ?list)",
+                list[pad_axis]
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+
+    rewrite!("bubble-access-transpose-through-access-pad";
+    "(access-pad
+      (access-transpose ?a ?list)
+      ?pad-type ?pad-axis ?pad-before ?pad-after
+     )" => {
+         ApplierImpl {
+             list: "?list".parse().unwrap(),
+             pad_axis: "?pad-axis".parse().unwrap(),
+         }
+     })
+}
+
 pub fn systolic_array_conv2d_nchw_oihw_with_blocking(
     rows: usize,
     cols: usize,
@@ -4286,5 +4321,52 @@ mod tests {
         .unwrap()
         .search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
+    }
+
+    #[test]
+    fn bubble_access_transpose_through_access_pad() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64, 3, 2]);
+        let program = "
+         (access-pad
+          (access-transpose
+           (access (access-tensor a) 1)
+           (list 3 1 2 0)
+          )
+          zero-padding
+          0 2 3
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::bubble_access_transpose_through_access_pad()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+          (access-transpose
+           (access-pad
+            (access (access-tensor a) 1)
+            zero-padding
+            3 2 3
+           )
+           (list 3 1 2 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
