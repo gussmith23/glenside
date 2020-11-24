@@ -395,7 +395,11 @@ fn main() {
             id,
             &hw_id_map,
             matches.value_of("NAME").unwrap(),
-            "",
+            if !matches.is_present("allocate-for-manycore") {
+                ""
+            } else {
+                r#"__attribute__ ((section (".uninitialized"))) __attribute__ ((aligned (256)))"#
+            },
             &args,
             &classes,
             true,
