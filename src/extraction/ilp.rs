@@ -29,6 +29,225 @@ use crate::language::{Language, MyAnalysis};
 
 type EGraph = egg::EGraph<Language, MyAnalysis>;
 
+pub fn filter_by_enode_type(
+    enode: &Language,
+    _eclass_id: Id,
+    _egraph: &EGraph,
+) -> bool {
+    if match enode {
+
+                // Things we should never see.
+                Language::CartesianProduct(_)
+                    | Language::MapDotProduct(_)
+                    | Language::Slice(_)
+                    | Language::Concatenate(_)
+                    | Language::ElementwiseAdd(_)
+                    | Language::BsgSystolicArray(_)
+                    | Language::ShapeOf(_)
+                    | Language::SliceShape(_)
+                    | Language::ShapeInsertAxis(_)
+                    | Language::ShapeRemoveAxis(_)
+                    | Language::MoveAxis(_) => panic!(),
+
+                // Things that should always pass through.
+                Language::SystolicArray(_)
+                    | Language::SystolicArrayWithBlocking(_)
+                    | Language::Literal(_)
+                    | Language::RelayOperatorCall(_)
+            | Language::RelayActivationLayout(_)
+            | Language::RelayKernelLayout(_)
+                    | Language::Usize(_)
+                    | Language::NotNanFloat64(_)
+                    | Language::RelayOperator(_)
+                    | Language::Symbol(_) => true,
+
+                // Things I'm not sure about.
+                Language::Shape(_) | Language::List(_) | Language::AccessTensor(_) => true,
+
+                // Things that we allow to pass through for now, but shouldn't
+                // in the future (once we implement things like memory
+                // constructs).
+                Language::AccessWindows(_)
+                    | Language::Access(_)
+                    | Language::AccessTranspose(_)
+                    | Language::AccessReshape(_)
+                    | Language::AccessFlatten(_)
+                    | Language::AccessShape(_)
+                // Concatenate needed for grouped convs
+                    | Language::AccessConcatenate(_)
+                // Slice needed for slice-pad rewrite, grouped convs
+                    | Language::AccessSlice(_)
+                    | Language::AccessPad(_)
+                    | Language::PadType(_)
+                    | Language::AccessSqueeze(_)
+                    | Language::AccessInsertAxis(_)
+                    | Language::AccessBroadcast(_)
+                    | Language::AccessLiteral(_) => true,
+
+                // Things that should never pass through.
+                Language::Compute(_)
+                    | Language::ComputeType(_)
+                    | Language::AccessCartesianProduct(_)
+                    | Language::AccessPair(_)
+                    | Language::AccessShiftRight(_) => false,
+            }
+        == false
+    {
+        return false;
+    }
+
+    true
+}
+
+/// Filtering function that drops enodes if this eclass contains
+/// obviously-extractable constructs.
+pub fn filter_obviously_less_preferable_nodes(
+    enode: &Language,
+    eclass_id: Id,
+    egraph: &EGraph,
+) -> bool {
+    fn is_obviously_extractable(enode: &Language) -> bool {
+        match enode {
+            // Things we should never see.
+            Language::CartesianProduct(_)
+            | Language::MapDotProduct(_)
+            | Language::Slice(_)
+            | Language::Concatenate(_)
+            | Language::ElementwiseAdd(_)
+            | Language::BsgSystolicArray(_)
+            | Language::ShapeOf(_)
+            | Language::SliceShape(_)
+            | Language::ShapeInsertAxis(_)
+            | Language::ShapeRemoveAxis(_)
+            | Language::MoveAxis(_) => panic!(),
+
+            Language::SystolicArray(_)
+            | Language::RelayOperatorCall(_)
+            | Language::RelayActivationLayout(_)
+            | Language::RelayKernelLayout(_)
+            | Language::SystolicArrayWithBlocking(_) => true,
+
+            Language::Shape(_)
+            | Language::List(_)
+            | Language::AccessTensor(_)
+            | Language::AccessWindows(_)
+            | Language::Literal(_)
+            | Language::Usize(_)
+            | Language::NotNanFloat64(_)
+            | Language::RelayOperator(_)
+            | Language::Symbol(_)
+            | Language::Access(_)
+            | Language::AccessTranspose(_)
+            | Language::AccessReshape(_)
+            | Language::AccessFlatten(_)
+            | Language::AccessShape(_)
+            | Language::AccessConcatenate(_)
+            | Language::AccessSlice(_)
+            | Language::AccessPad(_)
+            | Language::PadType(_)
+            | Language::AccessSqueeze(_)
+            | Language::AccessInsertAxis(_)
+            | Language::AccessBroadcast(_)
+            | Language::AccessLiteral(_)
+            | Language::Compute(_)
+            | Language::ComputeType(_)
+            | Language::AccessCartesianProduct(_)
+            | Language::AccessPair(_)
+            | Language::AccessShiftRight(_) => false,
+        }
+    }
+
+    // If this enode's set of siblings contains something that's "obviously
+    // extractable" e.g. a systolic array, then remove this node if it's not one
+    // of the obviously extractable things.
+    if egraph[eclass_id].nodes.iter().any(is_obviously_extractable) {
+        return is_obviously_extractable(enode);
+    }
+
+    true
+}
+
+/// Filtering function which filters out nodes which form simple loops. Returns
+/// false if and only if this node is an access-flatten which is in an eclass by
+/// itself, and if the eclass it points to has an access-reshape node that
+/// points right back to this node's eclass.
+pub fn filter_useless_access_flattens(
+    enode: &Language,
+    eclass_id: Id,
+    egraph: &EGraph,
+) -> bool {
+    // Return early if this eclass contains nodes other than just this one.
+    let this_node_is_alone = match egraph[eclass_id].nodes.as_slice() {
+        [n] if n == enode => true,
+        _ => false,
+    };
+    if !this_node_is_alone {
+        return true;
+    }
+
+    match enode {
+        Language::AccessFlatten(access_flatten_id) => {
+            let some_node_points_back =
+                egraph[*access_flatten_id]
+                    .nodes
+                    .iter()
+                    .any(|node| match node {
+                        Language::AccessReshape([reshape_access_id, _shape_id])
+                            if *reshape_access_id == eclass_id =>
+                        {
+                            true
+                        }
+                        _ => false,
+                    });
+
+            // Filter this out (return false) if a reshape node in
+            // `access_flatten_id` points back to this eclass.
+            if some_node_points_back {
+                false
+            } else {
+                true
+            }
+        }
+        _ => true,
+    }
+}
+
+/// Filtering function which filters out useless pad/slice loops
+pub fn filter_useless_pad_slice_loops(
+    enode: &Language,
+    eclass_id: Id,
+    egraph: &EGraph,
+) -> bool {
+    // Return early if this eclass contains nodes other than just this one.
+    let this_node_is_alone = match egraph[eclass_id].nodes.as_slice() {
+        [n] if n == enode => true,
+        _ => false,
+    };
+    if !this_node_is_alone {
+        return true;
+    }
+
+    match enode {
+        Language::AccessPad([pad_arg_id, _, _, _, _]) => {
+            let some_node_points_back = egraph[*pad_arg_id].nodes.iter().any(|node| match node {
+                Language::AccessSlice([slice_arg_id, _, _, _]) if *slice_arg_id == eclass_id => {
+                    true
+                }
+                _ => false,
+            });
+
+            // Filter this out (return false) if a slice node in eclass
+            // `pad_arg_id` points back to this eclass.
+            if some_node_points_back {
+                false
+            } else {
+                true
+            }
+        }
+        _ => true,
+    }
+}
+
 /// Thin wrapper over [`lp_modeler::LpProblem`].
 pub struct EGraphLpProblem<'a> {
     pub egraph: &'a EGraph,
