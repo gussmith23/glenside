@@ -1218,7 +1218,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             code.push_str(
                 format!(
                     "
-{out_name}{out_index} = {in_name}{in_index};
+{out_name}{out_index} = ((float*){in_name})[{in_index}];
 ",
                     out_name = slice_out_var_name,
                     out_index = (0..new_shape.len())
@@ -1227,11 +1227,21 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                     in_name = access_var_name,
                     in_index = (0..original_shape.len())
                         .map(|i| if i != axis {
-                            format!("[i{}]", i)
+                            format!("(i{})", i)
                         } else {
-                            format!("[i{}+{}]", i, low,)
+                            format!("(i{}+{})", i, low,)
                         })
-                        .collect::<String>()
+                        .enumerate()
+                        .map(|(i, s)| format!(
+                            "{}{}",
+                            s,
+                            original_shape[i + 1..]
+                                .iter()
+                                .map(|i| format!("*{}", i))
+                                .collect::<Vec<_>>()
+                                .join("")
+                        ))
+                        .join(" + ")
                 )
                 .as_str(),
             );
