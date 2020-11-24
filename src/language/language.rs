@@ -1106,15 +1106,6 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
-            // (systolic-array-conv2d-nchw-oihw-with-blocking
-            //  <rows: Usize> <cols: Usize>
-            //  <weights: Access> <data: Access>
-            //  <kh: Usize> <kw: Usize>
-            //  <stride-h: Usize> <stride-w: Usize>)
-            // A systolic array operating in conv2d mode, with data in layout NCHW
-            // and weights in layout OIHW. We don't actually have an atom for this,
-            // but it's currently used as an intermediate to help discover
-            // systolic-array-conv2d-nhwc-hwio-with-blocking.
             &SystolicArrayConv2dNchwOihwWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
