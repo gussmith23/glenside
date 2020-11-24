@@ -2075,6 +2075,64 @@ pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
     )
 }
 
+pub fn systolic_array_conv2d_nchw_oihw_with_blocking(
+    rows: usize,
+    cols: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        rows: usize,
+        cols: usize,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            format!("(systolic-array-conv2d-nchw-oihw-with-blocking {rows} {cols} ?weights ?data ?kh ?kw ?stride-h ?stride-w)",
+                        rows = self.rows,
+                        cols = self.cols)
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite!(format!("systolic-array-conv2d-nchw-oihw-with-blocking-{}-{}", rows, cols);
+    "
+             (access-transpose
+              (compute dot-product
+               (access-cartesian-product
+                (access ?weights 1)
+                (access
+                 (access-squeeze
+                  (access-squeeze
+                   (access-windows
+                    (access ?data 4)
+                    (shape 1 ?c ?kh ?kw)
+                    (shape 1 1 ?stride-h ?stride-w)
+                   )
+                   4
+                  )
+                  1
+                 )
+                 3
+                )
+               )
+              )
+              (list 1 0 2 3)
+             )
+" => {
+                  ApplierImpl {rows, cols}
+              }
+             if constrain_access("?weights".parse().unwrap(),
+                                 move |a| a.shape.ndim() + a.item_shape.ndim() == 4
+                                 // Input channels divisible by rows, output
+                                 // channels divisible by columns.
+                                 && a[1] % rows == 0 && a[0] % cols == 0)
+             if constrain_access("?data".parse().unwrap(),
+                                 move |a| a.shape.ndim() + a.item_shape.ndim() == 4
+                                 // Input channels divisible by rows
+                                 && a[1] % rows == 0))
+}
+
+/// TODO(@gussmith23) This is a hack
+/// This is pretty hyper-specific to how we currently implement conv2d when reading from Relay. That is, to implement conv2d, we transpose to NCHW
 pub fn systolic_array_conv2d_im2col_fc_with_blocking(
     _rows: usize,
     _cols: usize,
@@ -4118,5 +4176,115 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn systolic_array_conv2d_nchw_oihw_with_blocking() {
+        let data_shape = vec![1, 64, 32, 32]; // NCHW
+        let kernel_shape = vec![128, 64, 3, 3]; // OIHW
+
+        let mut expr = RecExpr::default();
+
+        let data_id = expr.add(Language::Symbol("data".to_string()));
+        let data_id = expr.add(Language::AccessTensor(data_id));
+
+        let kernel_id = expr.add(Language::Symbol("kernel".to_string()));
+        let kernel_id = expr.add(Language::AccessTensor(kernel_id));
+
+        let _conv2d_id = crate::language::from_relay::conv2d(
+            &mut expr,
+            data_id,
+            &data_shape,
+            kernel_id,
+            &kernel_shape,
+            &[1, 1],
+            &[1, 1, 1, 1],
+            &[1, 1],
+            1,
+            "NCHW",
+            "OIHW",
+            "",
+        );
+
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), data_shape);
+        map.insert("kernel".to_string(), kernel_shape);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let rws = vec![
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(64, 32),
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(32, 32),
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(2, 2),
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(3, 2),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+          (systolic-array-conv2d-nchw-oihw-with-blocking
+           64 32
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-conv2d-nchw-oihw-with-blocking
+           32 32
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-conv2d-nchw-oihw-with-blocking
+          2 2
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-conv2d-nchw-oihw-with-blocking
+          3 2
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id);
+        assert!(matches.is_none());
     }
 }
