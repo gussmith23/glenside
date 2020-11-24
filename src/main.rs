@@ -9,90 +9,19 @@ use std::str::FromStr;
 
 fn main() {
     #[allow(unused_mut)]
-    let mut app = App::new("glenside").subcommand(
-        SubCommand::with_name("isca-demo")
-            .arg(Arg::with_name("NAME").required(true).index(1))
-            .arg(Arg::with_name("RELAY_FILEPATH").required(true).index(2))
-            .arg(Arg::with_name("OUT_CODE_FILEPATH").required(true).index(3))
-            .arg(
-                Arg::with_name("OUT_DESIGN_FILEPATH")
-                    .required(true)
-                    .index(4),
-            )
-            .arg(
-                Arg::with_name("allocate-for-manycore")
-                    .help("Declares all buffers using the attributes required by the Manycore")
-                    .long("allocate-for-manycore"),
-            )
-            .arg(
-                Arg::with_name("blocking")
-                    .help(
-                        "Determines how Glenside blocks up matrix \
-                             multiplies to fit on systolic arrays. A value of \
-                             'glenside' will have glenside insert systolic \
-                             arrays for every valid matrix multiplication size \
-                             it finds. A value of '(<rows>,<cols>)' \
-                             (no whitespace) will have Glenside insert \
-                             systolic arrays of size rows,cols which use BSG's \
-                             automatic blocking, where possible. This flag can \
-                             be passed multiple values. A \
-                             value of just 'glenside' indicates that all \
-                             blocking should be done explicitly within \
-                             Glenside's search process.",
-                    )
-                    .long("blocking")
-                    .min_values(1)
-                    .default_value("glenside"),
-            )
-            .arg(
-                Arg::with_name("prefer-bsg-blocking")
-                    .help(
-                        "When extracting a design, favors systolic arrays \
-                             that use BSG's automatic blocking.",
-                    )
-                    .long("prefer-bsg-blocking"),
-            )
-            .arg(
-                Arg::with_name("node-limit")
-                    .long("node-limit")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("time-limit")
-                    .help("Time limit in seconds")
-                    .long("time-limit")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("iter-limit")
-                    .long("iter-limit")
-                    .takes_value(true),
-            )
-            .arg(
-                Arg::with_name("find-monolithic-designs")
-                    .long("find-monolithic-designs")
-                    .help(
-                        "Takes an argument (rows,cols); Glenside will \
-                               find monolithic designs of this size. Do not \
-                               include any whitespace before, between, or \
-                               after the parentheses.",
-                    )
-                    .takes_value(true),
-            ),
-    );
+    let mut app = App::new("glenside");
 
     #[cfg(cplex)]
     {
         app = app.subcommand(
-            SubCommand::with_name("demo")
+            SubCommand::with_name("isca-demo")
                 .arg(Arg::with_name("NAME").required(true).index(1))
-                .arg(Arg::with_name("PROGRAM").required(true).index(2))
-                .arg(Arg::with_name("SHAPES").required(true).index(3))
-                .arg(Arg::with_name("OUT_CODE_FILEPATH").required(true).index(4))
+                .arg(Arg::with_name("RELAY_FILEPATH").required(true).index(2))
+                .arg(Arg::with_name("OUT_CODE_FILEPATH").required(true).index(3))
                 .arg(
                     Arg::with_name("OUT_DESIGN_FILEPATH")
                         .required(true)
-                        .index(5),
+                        .index(4),
                 )
                 .arg(
                     Arg::with_name("allocate-for-manycore")
@@ -156,6 +85,79 @@ fn main() {
                 ),
         );
     }
+
+    app = app.subcommand(
+        SubCommand::with_name("demo")
+            .arg(Arg::with_name("NAME").required(true).index(1))
+            .arg(Arg::with_name("PROGRAM").required(true).index(2))
+            .arg(Arg::with_name("SHAPES").required(true).index(3))
+            .arg(Arg::with_name("OUT_CODE_FILEPATH").required(true).index(4))
+            .arg(
+                Arg::with_name("OUT_DESIGN_FILEPATH")
+                    .required(true)
+                    .index(5),
+            )
+            .arg(
+                Arg::with_name("allocate-for-manycore")
+                    .help("Declares all buffers using the attributes required by the Manycore")
+                    .long("allocate-for-manycore"),
+            )
+            .arg(
+                Arg::with_name("blocking")
+                    .help(
+                        "Determines how Glenside blocks up matrix \
+                             multiplies to fit on systolic arrays. A value of \
+                             'glenside' will have glenside insert systolic \
+                             arrays for every valid matrix multiplication size \
+                             it finds. A value of '(<rows>,<cols>)' \
+                             (no whitespace) will have Glenside insert \
+                             systolic arrays of size rows,cols which use BSG's \
+                             automatic blocking, where possible. This flag can \
+                             be passed multiple values. A \
+                             value of just 'glenside' indicates that all \
+                             blocking should be done explicitly within \
+                             Glenside's search process.",
+                    )
+                    .long("blocking")
+                    .min_values(1)
+                    .default_value("glenside"),
+            )
+            .arg(
+                Arg::with_name("prefer-bsg-blocking")
+                    .help(
+                        "When extracting a design, favors systolic arrays \
+                             that use BSG's automatic blocking.",
+                    )
+                    .long("prefer-bsg-blocking"),
+            )
+            .arg(
+                Arg::with_name("node-limit")
+                    .long("node-limit")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name("time-limit")
+                    .help("Time limit in seconds")
+                    .long("time-limit")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name("iter-limit")
+                    .long("iter-limit")
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name("find-monolithic-designs")
+                    .long("find-monolithic-designs")
+                    .help(
+                        "Takes an argument (rows,cols); Glenside will \
+                               find monolithic designs of this size. Do not \
+                               include any whitespace before, between, or \
+                               after the parentheses.",
+                    )
+                    .takes_value(true),
+            ),
+    );
 
     let matches = app.get_matches();
 
