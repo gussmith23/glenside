@@ -352,6 +352,8 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             &Language::NotNanFloat64(_) => {}
             &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
+            | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
+            | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
             | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
             | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
             | &Language::AccessLiteral(_)
@@ -456,6 +458,8 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::PadType(_) => (),
 
             &Language::Literal(_)
+            | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
+            | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
             | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
             | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
             | &Language::AccessLiteral(_)
@@ -1705,6 +1709,8 @@ if (i{i} < {dim_len}) {{
         | Language::RelayOperator(_) => None,
 
         &Language::Literal(_)
+        | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
+        | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
         | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
         | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
         | &Language::AccessBroadcast(_)

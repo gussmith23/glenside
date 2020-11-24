@@ -125,6 +125,8 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Slice(_)
             | Language::Concatenate(_) => panic!(),
 
+            Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
+            Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
@@ -169,6 +171,8 @@ impl CostFunction<Language> for SimpleCostFunction {
             Language::RelayKernelLayout(_) => todo!(),
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
+            Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
+            Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
 
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,
