@@ -89,6 +89,8 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
 
         Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
         Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
+        Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
+        Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
             }
         == false
     {
@@ -156,6 +158,8 @@ pub fn filter_obviously_less_preferable_nodes(
 
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
+            Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
+            Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
         }
     }
 
