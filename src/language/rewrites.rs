@@ -2166,6 +2166,55 @@ pub fn systolic_array_conv2d_nchw_oihw_with_blocking(
                                  && a[1] % rows == 0))
 }
 
+pub fn systolic_array_conv2d_nhwc_hwio_with_blocking(
+    rows: usize,
+    cols: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        rows: usize,
+        cols: usize,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            format!("(systolic-array-conv2d-nhwc-hwio-with-blocking {rows} {cols} ?weights ?data ?kh ?kw ?stride-h ?stride-w)",
+                        rows = self.rows,
+                        cols = self.cols)
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite!(format!("systolic-array-conv2d-nhwc-hwio-with-blocking-{}-{}", rows, cols);
+    "       (access-transpose
+             (systolic-array-conv2d-nchw-oihw-with-blocking
+              ?rows ?cols
+              (access-transpose ?weights (list 3 2 0 1))
+              (access-transpose ?data (list 0 3 1 2))
+              ?kh ?kw ?stride-h ?stride-w
+             )
+             (list 0 2 3 1)
+            )" => {
+                  ApplierImpl {rows, cols}
+              }
+             if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?rows".parse().unwrap()]].data {
+                 MyAnalysisData::Legacy(l) => l.usize_value.unwrap() == rows,
+                 _ => panic!(),
+             }
+             if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?cols".parse().unwrap()]].data {
+                 MyAnalysisData::Legacy(l) => l.usize_value.unwrap() == cols,
+                 _ => panic!(),
+             }
+             if constrain_access("?weights".parse().unwrap(),
+                                 move |a| a.shape.ndim() + a.item_shape.ndim() == 4
+                                 // Input channels divisible by rows, output
+                                 // channels divisible by columns.
+                                 && a[2] % rows == 0 && a[3] % cols == 0)
+             if constrain_access("?data".parse().unwrap(),
+                                 move |a| a.shape.ndim() + a.item_shape.ndim() == 4
+                                 // Input channels divisible by rows
+                                 && a[3] % rows == 0))
+}
+
 /// TODO(@gussmith23) This is a hack
 /// This is pretty hyper-specific to how we currently implement conv2d when reading from Relay. That is, to implement conv2d, we transpose to NCHW
 pub fn systolic_array_conv2d_im2col_fc_with_blocking(
@@ -4310,6 +4359,125 @@ mod tests {
 
         let matches = "
           (systolic-array-conv2d-nchw-oihw-with-blocking
+          3 2
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id);
+        assert!(matches.is_none());
+    }
+
+    #[test]
+    fn systolic_array_conv2d_nhwc_hwio_with_blocking() {
+        let data_shape = vec![1, 32, 32, 64]; // NHWC
+        let kernel_shape = vec![3, 3, 64, 128]; // HWIO
+
+        let mut expr = RecExpr::default();
+
+        let data_id = expr.add(Language::Symbol("data".to_string()));
+        let data_id = expr.add(Language::AccessTensor(data_id));
+
+        let kernel_id = expr.add(Language::Symbol("kernel".to_string()));
+        let kernel_id = expr.add(Language::AccessTensor(kernel_id));
+
+        let _conv2d_id = crate::language::from_relay::conv2d(
+            &mut expr,
+            data_id,
+            &data_shape,
+            kernel_id,
+            &kernel_shape,
+            &[1, 1],
+            &[1, 1, 1, 1],
+            &[1, 1],
+            1,
+            "NHWC",
+            "HWIO",
+            "",
+        );
+
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), data_shape);
+        map.insert("kernel".to_string(), kernel_shape);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let rws = vec![
+            // This rewrite is needed to move the padding further "out" and the
+            // transposes further "in", so that we can match on the layout
+            // changes on the inputs.
+            super::bubble_access_transpose_through_access_pad(),
+            // These rewrites are needed to find the initial systolic array.
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(64, 32),
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(32, 32),
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(2, 2),
+            super::systolic_array_conv2d_nchw_oihw_with_blocking(3, 2),
+            super::systolic_array_conv2d_nhwc_hwio_with_blocking(64, 32),
+            super::systolic_array_conv2d_nhwc_hwio_with_blocking(32, 32),
+            super::systolic_array_conv2d_nhwc_hwio_with_blocking(2, 2),
+            super::systolic_array_conv2d_nhwc_hwio_with_blocking(3, 2),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+          (systolic-array-conv2d-nhwc-hwio-with-blocking
+           64 32
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-conv2d-nhwc-hwio-with-blocking
+           32 32
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-conv2d-nhwc-hwio-with-blocking
+          2 2
+           (access-tensor kernel)
+           (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
+           3 3
+           1 1
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+
+        let matches = "
+          (systolic-array-conv2d-nhwc-hwio-with-blocking
           3 2
            (access-tensor kernel)
            (access-pad (access-pad ?data zero-padding ?0 1 1) zero-padding ?1 1 1)
