@@ -48,6 +48,10 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
                 // Things that should always pass through.
                 Language::SystolicArray(_)
                     | Language::SystolicArrayWithBlocking(_)
+            | Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
+            | Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
+            | Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
+            | Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
                     | Language::Literal(_)
                     | Language::RelayOperatorCall(_)
             | Language::RelayActivationLayout(_)
@@ -87,10 +91,6 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
                     | Language::AccessPair(_)
                     | Language::AccessShiftRight(_) => false,
 
-        Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
-        Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
-        Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
-        Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
             }
         == false
     {
@@ -123,6 +123,10 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::MoveAxis(_) => panic!(),
 
             Language::SystolicArray(_)
+            | Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
+            | Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
+            | Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
+            | Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
             | Language::RelayOperatorCall(_)
             | Language::RelayActivationLayout(_)
             | Language::RelayKernelLayout(_)
@@ -155,11 +159,6 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::AccessCartesianProduct(_)
             | Language::AccessPair(_)
             | Language::AccessShiftRight(_) => false,
-
-            Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
-            Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
-            Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
-            Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
         }
     }
 
