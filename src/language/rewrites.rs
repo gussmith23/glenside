@@ -2075,6 +2075,13 @@ pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
     )
 }
 
+pub fn systolic_array_conv2d_im2col_fc_with_blocking(
+    _rows: usize,
+    _cols: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -4044,5 +4051,72 @@ mod tests {
         .unwrap()
         .search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
+    }
+
+    #[test]
+    #[should_panic]
+    fn conv2d_im2col_fc_systolic_array() {
+        let data_shape = vec![1, 32, 32, 3];
+        let kernel_shape = vec![3, 3, 3, 8];
+
+        let mut expr = RecExpr::default();
+
+        let data_id = expr.add(Language::Symbol("data".to_string()));
+        let data_id = expr.add(Language::AccessTensor(data_id));
+
+        let kernel_id = expr.add(Language::Symbol("kernel".to_string()));
+        let kernel_id = expr.add(Language::AccessTensor(kernel_id));
+
+        let _conv2d_id = crate::language::from_relay::conv2d(
+            &mut expr,
+            data_id,
+            &data_shape,
+            kernel_id,
+            &kernel_shape,
+            &[1, 1],
+            &[1, 1, 1, 1],
+            &[1, 1],
+            1,
+            "NHWC",
+            "HWIO",
+            "",
+        );
+
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), data_shape);
+        map.insert("kernel".to_string(), kernel_shape);
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&expr);
+
+        let rws = vec![
+            // This rewrite enables im2col to be found.
+            super::flatten_unflatten_any_access(),
+            // These rewrites move the reshape into the right place.
+            super::bubble_reshape_through_cartesian_product(),
+            super::bubble_reshape_through_compute_dot_product(),
+            // This rewrite tensorizes.
+            super::systolic_array_conv2d_im2col_fc_with_blocking(32, 32),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+          (systolic-array-conv2d-im2col-fc-with-blocking 32 32
+           (access (access-tensor data) 1)
+           (access (access-tensor kernel) 0)
+          )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
