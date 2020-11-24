@@ -75,6 +75,7 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
+        &Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
         &Language::RelayOperatorCall(_) => todo!(),
         &Language::RelayOperator(_) => todo!(),
         &Language::RelayActivationLayout(_) => todo!(),
