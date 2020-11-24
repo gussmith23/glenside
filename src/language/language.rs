@@ -92,6 +92,15 @@ define_language! {
         // systolic-array-conv2d-nhwc-hwio-with-blocking.
         "systolic-array-conv2d-nchw-oihw-with-blocking" = SystolicArrayConv2dNchwOihwWithBlocking([Id; 8]),
 
+        // (systolic-array-conv2d-nhwc-hwio-with-blocking
+        //  <rows: Usize> <cols: Usize>
+        //  <weights: Access> <data: Access>
+        //  <kh: Usize> <kw: Usize>
+        //  <stride-h: Usize> <stride-w: Usize>)
+        // A systolic array operating in conv2d mode, with data in layout NHWC
+        // and weights in layout HWIO. Scott should have an atom for this at
+        // some point.
+        "systolic-array-conv2d-nhwc-hwio-with-blocking" = SystolicArrayConv2dNhwcHwioWithBlocking([Id; 8]),
 
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
@@ -1106,6 +1115,64 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &SystolicArrayConv2dNhwcHwioWithBlocking(
+                [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
+            ) => {
+                let (rows, cols, weights, data, kh, kw, stride_h, stride_w) = match (
+                    &egraph[rows_id].data,
+                    &egraph[cols_id].data,
+                    &egraph[weights_id].data,
+                    &egraph[data_id].data,
+                    &egraph[kh_id].data,
+                    &egraph[kw_id].data,
+                    &egraph[stride_h_id].data,
+                    &egraph[stride_w_id].data,
+                ) {
+                    (
+                        MyAnalysisData::Legacy(rows),
+                        MyAnalysisData::Legacy(cols),
+                        MyAnalysisData::AccessPattern(weights),
+                        MyAnalysisData::AccessPattern(data),
+                        MyAnalysisData::Legacy(kh),
+                        MyAnalysisData::Legacy(kw),
+                        MyAnalysisData::Legacy(stride_h),
+                        MyAnalysisData::Legacy(stride_w),
+                    ) => (
+                        rows.usize_value.unwrap(),
+                        cols.usize_value.unwrap(),
+                        weights,
+                        data,
+                        kh.usize_value.unwrap(),
+                        kw.usize_value.unwrap(),
+                        stride_h.usize_value.unwrap(),
+                        stride_w.usize_value.unwrap(),
+                    ),
+                    _ => panic!("Does not type check"),
+                };
+                assert_eq!(weights.shape.ndim() + weights.item_shape.ndim(), 4);
+                assert_eq!(data.shape.ndim() + data.item_shape.ndim(), 4);
+
+                let (n, h, w, c) = (data[0], data[1], data[2], data[3]);
+                let (_kh, _kw, _c, o) = (weights[0], weights[1], weights[2], weights[3]);
+                assert_eq!(c, _c);
+                assert_eq!(kh, _kh);
+                assert_eq!(kw, _kw);
+
+                assert_eq!(o % cols, 0);
+                assert_eq!(c % rows, 0);
+
+                let new_h = (h - (kh - 1) + stride_h - 1) / stride_h;
+                let new_w = (w - (kw - 1) + stride_w - 1) / stride_w;
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&[n, new_h, new_w, o]),
+                    item_shape: IxDyn(&[]),
+                    zero_regions: {
+                        debug!("Zero regions unimplemented");
+                        HashMap::default()
+                    },
+                })
+            }
             &SystolicArrayConv2dNchwOihwWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
@@ -4916,6 +4983,34 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[1, 64, 15, 20]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn systolic_array_conv2d_nhwc_hwio_with_blocking() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![1, 44, 78, 32]);
+        map.insert("weights".to_string(), vec![1, 2, 32, 64]);
+        let program = "
+         (systolic-array-conv2d-nhwc-hwio-with-blocking
+          32 32
+          (access-tensor weights)
+          (access-tensor data)
+          1 2
+          3 4
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 15, 20, 64]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),

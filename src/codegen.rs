@@ -353,6 +353,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
             | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
+            | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
             | &Language::AccessLiteral(_)
             | &Language::AccessBroadcast(_)
             | &Language::AccessInsertAxis(_)
@@ -456,6 +457,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
 
             &Language::Literal(_)
             | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
+            | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
             | &Language::AccessLiteral(_)
             | &Language::AccessBroadcast(_)
             | &Language::AccessInsertAxis(_)
@@ -1704,6 +1706,7 @@ if (i{i} < {dim_len}) {{
 
         &Language::Literal(_)
         | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
+        | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
         | &Language::AccessBroadcast(_)
         | &Language::AccessInsertAxis(_)
         | &Language::AccessPair(_)
