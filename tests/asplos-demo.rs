@@ -1,4 +1,4 @@
-#![cfg(ilp)]
+#![cfg(cplex)]
 
 use std::process::Command;
 
