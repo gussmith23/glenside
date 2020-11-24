@@ -295,13 +295,13 @@ fn main() {
         let mut model = create_generic_egraph_lp_model(
             &cplex_env,
             &runner.egraph,
-            |_node, _id, _egraph| {
-                true
-                // TODO do we need these filters?
-                // common::filter_by_enode_type(node, id, egraph)
-                //     && common::filter_obviously_less_preferable_nodes(node, id, egraph)
-                //     && common::filter_useless_access_flattens(node, id, egraph)
-                //     && common::filter_useless_pad_slice_loops(node, id, egraph)
+            |node, id, egraph| {
+                glenside::extraction::ilp::filter_by_enode_type(node, id, egraph)
+                    && glenside::extraction::ilp::filter_obviously_less_preferable_nodes(
+                        node, id, egraph,
+                    )
+                    && glenside::extraction::ilp::filter_useless_access_flattens(node, id, egraph)
+                    && glenside::extraction::ilp::filter_useless_pad_slice_loops(node, id, egraph)
             },
             &[id],
             // Wow, this line was causing one hell of a lifetimes bug somehow.
