@@ -52,6 +52,15 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
         C: FnMut(Id) -> Self::Cost,
     {
         let base_cost = match enode {
+
+            Language::InvokeComputeAtom(_)
+            | Language::ComputeAtom(_)
+            | Language::ComputeAtomType(_)
+            | Language::InvokeMemoryAtom(_)
+            | Language::MemoryAtom(_)
+            | Language::MemoryAtomType(_)
+            | Language::SymbolToMemory(_) => todo!(),
+
             &Language::SystolicArray([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
             | &Language::SystolicArrayWithBlocking([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
                 if (
@@ -165,6 +174,14 @@ impl CostFunction<Language> for SimpleCostFunction {
     {
         use crate::language::Language::*;
         let base_cost = match enode {
+            Language::InvokeComputeAtom(_)
+            | Language::ComputeAtom(_)
+            | Language::ComputeAtomType(_)
+            | Language::InvokeMemoryAtom(_)
+            | Language::MemoryAtom(_)
+            | Language::MemoryAtomType(_)
+            | Language::SymbolToMemory(_) => todo!(),
+
             Language::RelayOperator(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),

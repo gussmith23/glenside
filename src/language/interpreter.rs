@@ -75,6 +75,14 @@ where
     usize: num_traits::cast::AsPrimitive<DataType>,
 {
     match &expr.as_ref()[index] {
+        Language::InvokeComputeAtom(_)
+        | Language::ComputeAtom(_)
+        | Language::ComputeAtomType(_)
+        | Language::InvokeMemoryAtom(_)
+        | Language::MemoryAtom(_)
+        | Language::MemoryAtomType(_)
+        | Language::SymbolToMemory(_) => todo!(),
+
         &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
         &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
         &Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),

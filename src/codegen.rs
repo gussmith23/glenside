@@ -295,6 +295,14 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
+            Language::InvokeComputeAtom(_)
+            | Language::ComputeAtom(_)
+            | Language::ComputeAtomType(_)
+            | Language::InvokeMemoryAtom(_)
+            | Language::MemoryAtom(_)
+            | Language::MemoryAtomType(_)
+            | Language::SymbolToMemory(_) => todo!(),
+
             Language::RelayOperator(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
@@ -400,6 +408,14 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
+            Language::InvokeComputeAtom(_)
+            | Language::ComputeAtom(_)
+            | Language::ComputeAtomType(_)
+            | Language::InvokeMemoryAtom(_)
+            | Language::MemoryAtom(_)
+            | Language::MemoryAtomType(_)
+            | Language::SymbolToMemory(_) => todo!(),
+
             // Id
             &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
                 helper(worklist, expr, id);
@@ -660,6 +676,14 @@ fn codegen_helper(
         }
         &expr[id].nodes[0]
     } {
+        Language::InvokeComputeAtom(_)
+        | Language::ComputeAtom(_)
+        | Language::ComputeAtomType(_)
+        | Language::InvokeMemoryAtom(_)
+        | Language::MemoryAtom(_)
+        | Language::MemoryAtomType(_)
+        | Language::SymbolToMemory(_) => todo!(),
+
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,

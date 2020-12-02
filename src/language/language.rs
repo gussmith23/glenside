@@ -56,6 +56,39 @@ define_language! {
         // from the size of the input, but it's also useful for searching.
         "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
 
+        // (invoke-compute-atom <compute-atom: ComputeAtom>
+        //                      <input: InvokeMemoryAtom>...)
+        //
+        // Invoke a compute atom described by `compute-atom` on the `input`s
+        // stored in memory.
+        "invoke-compute-atom" = InvokeComputeAtom(Box<[Id]>),
+
+        // (compute-atom <compute-atom-type> <param>...)
+        //
+        // Describes a compute atom of a specified type, parametrized by
+        // `param`s.
+        "compute-atom" = ComputeAtom(Box<[Id]>),
+
+        // (invoke-memory-atom <memory-atom: MemoryAtom>
+        //                     <value: InvokeComputeAtom>)
+        //
+        // "Invoke" a memory atom (described by by `memory-atom`), meaning, use
+        // the memory atom to hold `value`, where `value` is the result of a
+        // computation.
+        "invoke-memory-atom" = InvokeMemoryAtom([Id; 2]),
+
+        // (memory-atom <memory-atom-type> <param>...)
+        //
+        // Describes a memory atom of a specified type, parametrized by
+        // `param`s.
+        "memory-atom" = MemoryAtom(Box<[Id]>),
+
+        // (symbol-to-memory <memory-atom> <symbol: Symbol>)
+        //
+        // Used for testing. Creates a memory invocatiion which stores the data
+        // represented by `symbol`.
+        "symbol-to-memory" = SymbolToMemory([Id; 2]),
+
         // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
         // Represents a systolic array of size rows X cols, fed with two
         // accesses.
@@ -283,7 +316,69 @@ define_language! {
 
         ComputeType(ComputeType),
 
+        ComputeAtomType(ComputeAtomType),
+        MemoryAtomType(MemoryAtomType),
+
         Symbol(String),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ComputeAtomType {
+    SystolicArray,
+}
+impl FromStr for ComputeAtomType {
+    type Err = ();
+    fn from_str(input: &str) -> Result<ComputeAtomType, Self::Err> {
+        match input {
+            "compute-atom-type-systolic-array" => Ok(ComputeAtomType::SystolicArray),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for ComputeAtomType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ComputeAtomType::SystolicArray => "compute-atom-type-systolic-array",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MemoryAtomType {
+    Dram,
+    GlobalActivationBuffer,
+    Accumulator,
+}
+impl FromStr for MemoryAtomType {
+    type Err = ();
+    fn from_str(input: &str) -> Result<MemoryAtomType, Self::Err> {
+        match input {
+            "memory-atom-type-dram" => Ok(MemoryAtomType::Dram),
+            "memory-atom-type-global-activation-buffer" => {
+                Ok(MemoryAtomType::GlobalActivationBuffer)
+            }
+            "memory-atom-type-accumulator" => Ok(MemoryAtomType::Accumulator),
+            _ => Err(()),
+        }
+    }
+}
+impl Display for MemoryAtomType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MemoryAtomType::Accumulator => "memory-atom-type-accumulator",
+                MemoryAtomType::Dram => "memory-atom-type-dram",
+                MemoryAtomType::GlobalActivationBuffer =>
+                    "memory-atom-type-global-activation-buffer",
+            }
+        )
     }
 }
 
@@ -531,6 +626,12 @@ pub enum MyAnalysisData {
     RelayOperator(RelayOperator),
     RelayActivationLayout(RelayActivationLayout),
     RelayKernelLayout(RelayKernelLayout),
+    ComputeAtomType(ComputeAtomType),
+    MemoryAtomType(MemoryAtomType),
+    MemoryAtomInvocationData(IxDyn),
+    ComputeAtomInvocationData(IxDyn),
+    /// Used by ComputeAtom and MemoryAtom nodes.
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1127,6 +1228,88 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            Language::ComputeAtom(_) => MyAnalysisData::None,
+            Language::MemoryAtom(_) => MyAnalysisData::None,
+            Language::InvokeComputeAtom(ids) => {
+                assert!(ids.len() >= 2);
+                let memory_shapes = ids[1..]
+                    .iter()
+                    .map(|id| match &egraph[*id].data {
+                        MyAnalysisData::MemoryAtomInvocationData(shape) => shape,
+                        _ => panic!("Expected arguments to be memory invocations"),
+                    })
+                    .collect::<Vec<_>>();
+
+                let compute_atom_node_ids = match {
+                    let compute_atom_id = ids[0];
+                    assert_eq!(
+                        egraph[compute_atom_id].nodes.len(),
+                        1,
+                        "For now, we expect compute-atom eclasses to be singletons
+                            (i.e. they shouldn't have any variants)"
+                    );
+                    &egraph[compute_atom_id].nodes[0]
+                } {
+                    Language::ComputeAtom(ids) => ids,
+                    _ => panic!("Expected compute-atom node"),
+                };
+
+                assert!(compute_atom_node_ids.len() >= 1);
+
+                let compute_atom_type = match &egraph[compute_atom_node_ids[0]].data {
+                    MyAnalysisData::ComputeAtomType(t) => t,
+                    _ => panic!(),
+                };
+
+                match compute_atom_type {
+                    crate::language::ComputeAtomType::SystolicArray => {
+                        // Get height and width.
+                        let (rows, cols) = match compute_atom_node_ids[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()
+                            .as_slice()
+                        {
+                            [MyAnalysisData::Legacy(rows), MyAnalysisData::Legacy(cols)] => {
+                                (rows.usize_value.unwrap(), cols.usize_value.unwrap())
+                            }
+                            _ => panic!(),
+                        };
+
+                        // Make sure inputs are the expected shapes.
+                        assert_eq!(memory_shapes.len(), 2);
+
+                        assert_eq!(memory_shapes[0].ndim(), 2);
+                        assert_eq!(memory_shapes[1].ndim(), 2);
+
+                        assert_eq!(memory_shapes[0][1], rows);
+                        assert_eq!(memory_shapes[1][0], rows);
+                        assert_eq!(memory_shapes[1][1], cols);
+
+                        MyAnalysisData::ComputeAtomInvocationData(IxDyn(&[
+                            memory_shapes[0][0],
+                            memory_shapes[1][1],
+                        ]))
+                    }
+                }
+            }
+            Language::InvokeMemoryAtom([_memory_atom_id, invoke_compute_id]) => {
+                let compute_shape = match &egraph[*invoke_compute_id].data {
+                    MyAnalysisData::ComputeAtomInvocationData(shape) => shape,
+                    _ => panic!(),
+                };
+                MyAnalysisData::MemoryAtomInvocationData(compute_shape.clone())
+            }
+            Language::SymbolToMemory([_memory_atom_id, symbol_id]) => {
+                let compute_shape = match &egraph[*symbol_id].data {
+                    MyAnalysisData::Legacy(l) => l.shape.as_ref().unwrap(),
+                    _ => panic!(),
+                };
+                MyAnalysisData::MemoryAtomInvocationData(compute_shape.clone())
+            }
+            Language::ComputeAtomType(t) => MyAnalysisData::ComputeAtomType(t.clone()),
+            Language::MemoryAtomType(t) => MyAnalysisData::MemoryAtomType(t.clone()),
+
             &SystolicArrayConv2dIm2colNhwcHwioWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
@@ -5202,6 +5385,34 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[1, 65, 15, 20]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn invoke_compute_and_memory_atoms_systolic_array() {
+        let mut map = HashMap::default();
+        // Note that we don't need any multiples of rows/cols here.
+        // Systolic array should handle tail padding.
+        map.insert("data".to_string(), vec![64, 32]);
+        map.insert("weights".to_string(), vec![32, 32]);
+        let program = "
+         (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
+          (invoke-compute-atom (compute-atom compute-atom-type-systolic-array 32 32)
+           (symbol-to-memory (memory-atom memory-atom-type-global-activation-buffer) data)
+           (symbol-to-memory (memory-atom memory-atom-type-dram) weights)
+          )
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::MemoryAtomInvocationData(shape) => {
+                assert_eq!(shape, &IxDyn(&[64, 32]));
             }
             _ => panic!(),
         }
