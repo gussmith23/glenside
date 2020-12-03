@@ -2315,6 +2315,62 @@ pub fn systolic_array_conv2d_im2col_fc_with_blocking(
     todo!()
 }
 
+pub fn systolic_array_compute_and_memory_atoms() -> Rewrite<Language, MyAnalysis> {
+    struct ApplierImpl {
+        a: Var,
+        b: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let (a, b) = match (&egraph[subst[self.a]].data, &egraph[subst[self.b]].data) {
+                (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => (a, b),
+                _ => panic!(),
+            };
+            assert_eq!(a.shape.ndim(), 1);
+            assert_eq!(a.item_shape.ndim(), 1);
+            assert_eq!(b.shape.ndim(), 1);
+            assert_eq!(b.item_shape.ndim(), 1);
+            let rows: usize = b.item_shape.slice()[0];
+            let cols: usize = b.shape.slice()[0];
+
+            let pattern: Pattern<Language> = format!(
+                "
+                (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
+                 (invoke-compute-atom (compute-atom compute-atom-type-systolic-array {rows} {cols})
+                  (invoke-memory-atom (memory-atom memory-atom-type-global-activation-buffer)
+                   ?access-1
+                  )
+                  (invoke-memory-atom (memory-atom memory-atom-type-dram)
+                   ?access-2
+                  )
+                 )
+                )
+                ",
+                rows = rows,
+                cols = cols
+            )
+            .parse()
+            .unwrap();
+
+            pattern.apply_one(egraph, eclass, subst)
+        }
+    }
+
+    rewrite!("systolic-array-compute-and-memory-atoms";
+             "(compute dot-product
+               (access-cartesian-product
+                ?access-1
+                ?access-2
+               )
+              )
+             " =>
+             { ApplierImpl{a: "?access-1".parse().unwrap(), b: "?access-2".parse().unwrap(),}}
+             if constrain_access("?access-1".parse().unwrap(),
+                                 |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1)
+             if constrain_access("?access-2".parse().unwrap(),
+                                 |a| a.shape.ndim() == 1 && a.item_shape.ndim() == 1))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -4855,6 +4911,51 @@ mod tests {
            3 3
            1 1
           )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn systolic_array_compute_and_memory_atoms() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![64, 32]);
+        map.insert("kernel".to_string(), vec![32, 32]);
+
+        let program = "
+         (compute dot-product
+          (access-cartesian-product
+           (access (access-tensor data) 1)
+           (access (access-tensor kernel) 1)
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::systolic_array_compute_and_memory_atoms()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
+             (invoke-compute-atom (compute-atom systolic-array 32 32)
+              (invoke-memory-atom (memory-atom memory-atom-type-global-activation-buffer)
+               (access (access-tensor data) 1)
+              )
+              (invoke-memory-atom (memory-atom memory-atom-type-dram)
+               (access (access-tensor kernel) 1)
+              )
+             )
+            )
             "
         .parse::<Pattern<_>>()
         .unwrap()
