@@ -6,7 +6,6 @@ use crate::language::{Language, PadType, RelayOperator};
 use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
-use log::warn;
 use ndarray::Array;
 use ndarray::Dimension;
 use ndarray::IxDyn;
@@ -306,7 +305,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) | Language::ConstructTuple(ids) => {
+            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -324,8 +323,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
             | &Language::AccessShape(ids)
-            | &Language::AccessSqueeze(ids)
-            | &Language::TupleGetItem(ids) => {
+            | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -353,10 +351,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             &Language::NotNanFloat64(_) => {}
             &Language::Usize(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
-            | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
-            | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
-            | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
-            | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
             | &Language::AccessLiteral(_)
             | &Language::AccessBroadcast(_)
             | &Language::AccessInsertAxis(_)
@@ -382,128 +376,11 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
     Vec::from_iter(set.drain())
 }
 
-/// Generates a worklist for codegen recursively, given an egraph and an eclass
-/// id to start from.
-///
-/// This is the easiest way to generate a worklist for codegen, and should
-/// probably be used in most cases. When the egraph is very large (i.e. when
-/// handling real models) the worklist will be generated using other methods, as
-/// this recursive method will overflow the stack.
-// TODO(@gussmith23) Could add doctests
-pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
-    fn add_to_worklist(id: Id, worklist: &mut Vec<Id>) {
-        if !worklist.contains(&id) {
-            worklist.push(id);
-        }
-    }
-    fn helper(worklist: &mut Vec<Id>, expr: &Expr, id: Id) {
-        match {
-            assert_eq!(expr[id].nodes.len(), 1);
-            &expr[id].nodes[0]
-        } {
-            // Id
-            &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
-                helper(worklist, expr, id);
-            }
-            // [Id; 1]
-            &Language::ShapeOf(ids) => {
-                for id in ids.iter() {
-                    helper(worklist, expr, *id);
-                }
-            }
-            // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::Shape(ids) | Language::List(ids) | Language::ConstructTuple(ids) => {
-                for id in ids.iter() {
-                    helper(worklist, expr, *id);
-                }
-            }
-            // [Id; 2]
-            &Language::Access(ids)
-            | &Language::AccessTranspose(ids)
-            | &Language::AccessShape(ids)
-            | &Language::AccessReshape(ids)
-            | &Language::ShapeInsertAxis(ids)
-            | &Language::ShapeRemoveAxis(ids)
-            | &Language::AccessSqueeze(ids) 
-            | &Language::TupleGetItem(ids) => {
-                for id in ids.iter() {
-                    helper(worklist, expr, *id);
-                }
-            }
-            // [Id; 3]
-            &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
-                for id in ids.iter() {
-                    helper(worklist, expr, *id);
-                }
-            }
-            // [Id; 4]
-            &Language::SystolicArray(ids)
-            | &Language::SystolicArrayWithBlocking(ids)
-            | &Language::AccessSlice(ids) => {
-                for id in ids.iter() {
-                    helper(worklist, expr, *id);
-                }
-            }
-            // [Id; 5]
-            &Language::AccessPad(ids) => {
-                for id in ids.iter() {
-                    helper(worklist, expr, *id);
-                }
-            }
-
-            Language::RelayOperator(_)
-            | Language::RelayKernelLayout(_)
-            | Language::RelayActivationLayout(_)
-            | Language::Symbol(_)
-            | &Language::NotNanFloat64(_)
-            | &Language::Usize(_)
-            | &Language::PadType(_) => (),
-
-            &Language::Literal(_)
-            | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
-            | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
-            | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
-            | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
-            | &Language::AccessLiteral(_)
-            | &Language::AccessBroadcast(_)
-            | &Language::AccessInsertAxis(_)
-            | &Language::AccessPair(_)
-            | Language::ComputeType(_)
-            | &Language::Compute(_)
-            | &Language::AccessCartesianProduct(_)
-            | &Language::SliceShape(_)
-            | &Language::MoveAxis(_)
-            | &Language::CartesianProduct(_)
-            | &Language::MapDotProduct(_)
-            | &Language::Slice(_)
-            | &Language::Concatenate(_)
-            | &Language::ElementwiseAdd(_)
-            | &Language::BsgSystolicArray(_)
-            | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
-        }
-
-        add_to_worklist(id, worklist);
-    }
-
-    let mut worklist = Vec::default();
-    helper(&mut worklist, expr, id);
-
-    worklist
-}
-
 /// Returns c code.
-///
 /// args: The signature will be `void <function_name>(float * out, float * <arg0>...)`
 /// uninitialized_allocations_prefix: The prefix to use for buffer allocations
 /// that do not need to be initialized. In the future, once we have literals in
 /// the program, we will need to also include an initialized_allocations_prefix.
-///
-/// worklist: the eclasses to generate code for, in order. Generally, you should
-/// use [`generate_worklist`].
-///
-/// assert_only_one_enode_per_eclass: If this is true, then panics if there is
-/// more than one enode in any eclass. If false, it just emits a warning. Useful
-/// in ILP extraction, when ILP might not have found an optimal assignment.
 // TODO(@gussmith23) Does not reason about ordering on hardware.
 // TODO(@gussmith23) Hardcoded to float32
 pub fn codegen(
@@ -513,34 +390,18 @@ pub fn codegen(
     function_name: &str,
     uninitialized_allocations_prefix: &str,
     args: &Vec<&str>,
-    worklist: &Vec<Id>,
-    assert_only_one_enode_per_eclass: bool,
 ) -> String {
     let mut declarations = String::default();
     let mut code = String::default();
-    let mut id_to_variable: HashMap<Id, String> = HashMap::default();
-
-    for id in worklist {
-        if let Some(var_name) = codegen_helper(
-            expr,
-            *id,
-            uninitialized_allocations_prefix,
-            &mut declarations,
-            &mut code,
-            hw_map,
-            |_, id| {
-                id_to_variable
-                    .get(&id)
-                    .unwrap_or_else(|| panic!("Id {} not found in map of already compiled expressions -- is your worklist ordered correctly?", id))
-                    .clone()
-            },
-            assert_only_one_enode_per_eclass,
-        ) {
-            id_to_variable.insert(*id, var_name);
-        }
-    }
-
-    let out_symbol = id_to_variable.get(&id).unwrap();
+    let out_symbol = codegen_recursive_helper(
+        expr,
+        id,
+        id,
+        uninitialized_allocations_prefix,
+        &mut declarations,
+        &mut code,
+        hw_map,
+    );
 
     let found_vars = find_vars(expr, id);
     for found_var in found_vars.iter() {
@@ -630,36 +491,17 @@ for (int i = 0; i < {}; i++) {{
 /// uninitialized_allocations_prefix: The prefix to use for buffer allocations
 /// that do not need to be initialized. In the future, once we have literals in
 /// the program, we will need to also include an initialized_allocations_prefix.
-///
-/// get_c_variable_for_id: When the codegen needs the variable name of a
-/// subexpression it depends on, it can use this function to get it.
-///
-/// Optionally returns a [`String`] containing the C variable name for the
-/// variable which holds this expression's result. May return [`None`] if no
-/// such variable exists, or if no code was actually generated for this
-/// expression.
-fn codegen_helper(
+fn codegen_recursive_helper(
     expr: &Expr,
     id: Id,
+    top_level_id: Id,
     uninitialized_allocations_prefix: &str,
     declarations: &mut String,
     code: &mut String,
     hw_map: &HashMap<Id, usize>,
-    get_c_variable_for_id: impl Fn(&Expr, Id) -> String,
-    assert_only_one_enode_per_eclass: bool,
-) -> Option<String> {
+) -> String {
     match {
-        if expr[id].nodes.len() > 1 {
-            if assert_only_one_enode_per_eclass {
-                panic!("eclass {} has {} variants", id, expr[id].nodes.len());
-            } else {
-                warn!(
-                    "eclass {} has {} variants, defaulting to variant 0",
-                    id,
-                    expr[id].nodes.len()
-                );
-            }
-        }
+        assert_eq!(expr[id].nodes.len(), 1);
         &expr[id].nodes[0]
     } {
         Language::RelayOperatorCall(ids) => {
@@ -670,13 +512,53 @@ fn codegen_helper(
 
             match relay_op {
                 RelayOperator::RelayBatchNormInference => {
-                    let data = get_c_variable_for_id(expr, ids[1]);
-                    let gamma = get_c_variable_for_id(expr, ids[2]);
-                    let beta = get_c_variable_for_id(expr, ids[3]);
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let gamma = codegen_recursive_helper(
+                        expr,
+                        ids[2],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let beta = codegen_recursive_helper(
+                        expr,
+                        ids[3],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
-                    let moving_mean = get_c_variable_for_id(expr, ids[4]);
+                    let moving_mean = codegen_recursive_helper(
+                        expr,
+                        ids[4],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
-                    let moving_var = get_c_variable_for_id(expr, ids[5]);
+                    let moving_var = codegen_recursive_helper(
+                        expr,
+                        ids[5],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     let axis = MyAnalysis::get_usize(ids[6], expr);
 
@@ -730,10 +612,18 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                     )
                     .as_str());
 
-                    Some(batchnorm_out)
+                    batchnorm_out
                 }
                 RelayOperator::RelaySoftmax => {
-                    let data = get_c_variable_for_id(expr, ids[1]);
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     // TODO: axis not used since
                     // softmax c function does softmax over all values
@@ -786,10 +676,18 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
                         .as_str(),
                     );
 
-                    Some(softmax_out)
+                    softmax_out
                 }
                 RelayOperator::RelayReLU => {
-                    let data = get_c_variable_for_id(expr, ids[1]);
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
@@ -833,10 +731,18 @@ relu((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         .as_str(),
                     );
 
-                    Some(relu_out)
+                    relu_out
                 }
                 RelayOperator::RelayMaxPool2D => {
-                    let data = get_c_variable_for_id(expr, ids[1]);
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     let _pool_size = MyAnalysis::get_shape_of_value(ids[2], expr);
                     let _strides = MyAnalysis::get_shape_of_value(ids[3], expr);
@@ -887,7 +793,7 @@ maxpool2D3x3_resnet18_op6((float*) {X}, (float*) {Y});
                         .as_str(),
                     );
 
-                    Some(maxpool2d_out)
+                    maxpool2d_out
                 }
                 RelayOperator::RelayGlobalAvgPool2D => {
                     match &expr[ids[2]].data {
@@ -901,7 +807,15 @@ maxpool2D3x3_resnet18_op6((float*) {X}, (float*) {Y});
                         ),
                     };
 
-                    let data = get_c_variable_for_id(expr, ids[1]);
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     let old_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
@@ -949,17 +863,41 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         .as_str(),
                     );
 
-                    Some(globalavgpool2d_out)
+                    globalavgpool2d_out
                 }
                 RelayOperator::RelayBatchFlatten => {
-                    let data = get_c_variable_for_id(expr, ids[1]);
+                    let data = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     // just a reshape, which is a no-op!
-                    Some(data)
+                    data
                 }
                 RelayOperator::RelayBiasAdd | RelayOperator::RelayAdd => {
-                    let a = get_c_variable_for_id(expr, ids[1]);
-                    let b = get_c_variable_for_id(expr, ids[2]);
+                    let a = codegen_recursive_helper(
+                        expr,
+                        ids[1],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
+                    let b = codegen_recursive_helper(
+                        expr,
+                        ids[2],
+                        top_level_id,
+                        uninitialized_allocations_prefix,
+                        declarations,
+                        code,
+                        hw_map,
+                    );
 
                     let a_shape = match &expr[ids[1]].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
@@ -1043,10 +981,13 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                         .as_str(),
                     );
 
-                    Some(add_out)
+                    add_out
                 }
             }
         }
+        Language::RelayActivationLayout(_) => panic!(),
+        Language::RelayKernelLayout(_) => panic!(),
+        Language::RelayOperator(_) => todo!(),
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1098,7 +1039,15 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
             };
 
             // TODO(@gussmith23) It would make our lives easier if we
-            let access_var_name = get_c_variable_for_id(expr, access_id);
+            let access_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
 
             // Create a for loop for every dimension in the result shape.
             for (dim_index, dim_len) in access_windows_shape.iter().enumerate() {
@@ -1163,7 +1112,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 code.push_str("}");
             }
 
-            Some(access_windows_out_var_name)
+            access_windows_out_var_name
         }
         &Language::AccessSlice([access_id, axis_id, low_id, high_id]) => {
             let original_shape = match &expr[access_id].data {
@@ -1178,7 +1127,15 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 _ => panic!(),
             };
 
-            let access_var_name = get_c_variable_for_id(expr, access_id);
+            let access_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
 
             let slice_out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
@@ -1220,7 +1177,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             code.push_str(
                 format!(
                     "
-{out_name}{out_index} = ((float*){in_name})[{in_index}];
+{out_name}{out_index} = {in_name}{in_index};
 ",
                     out_name = slice_out_var_name,
                     out_index = (0..new_shape.len())
@@ -1229,21 +1186,11 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                     in_name = access_var_name,
                     in_index = (0..original_shape.len())
                         .map(|i| if i != axis {
-                            format!("(i{})", i)
+                            format!("[i{}]", i)
                         } else {
-                            format!("(i{}+{})", i, low,)
+                            format!("[i{}+{}]", i, low,)
                         })
-                        .enumerate()
-                        .map(|(i, s)| format!(
-                            "{}{}",
-                            s,
-                            original_shape[i + 1..]
-                                .iter()
-                                .map(|i| format!("*{}", i))
-                                .collect::<Vec<_>>()
-                                .join("")
-                        ))
-                        .join(" + ")
+                        .collect::<String>()
                 )
                 .as_str(),
             );
@@ -1253,18 +1200,30 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 code.push_str("}");
             }
 
-            Some(slice_out_var_name)
+            slice_out_var_name
         }
+        Language::Symbol(s) => s.clone(),
         &Language::AccessTensor(symbol_id) => {
-            assert_eq!(expr[symbol_id].nodes.len(), 1);
-            match &expr[symbol_id].nodes[0] {
-                Language::Symbol(s) => Some(s.clone()),
-                _ => panic!("expected a symbol!"),
-            }
+            let symbol = codegen_recursive_helper(
+                expr,
+                symbol_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+            symbol
         }
-        &Language::Access([access_tensor_id, _axis_id]) => {
-            Some(get_c_variable_for_id(expr, access_tensor_id))
-        }
+        &Language::Access([access_tensor_id, _axis_id]) => codegen_recursive_helper(
+            expr,
+            access_tensor_id,
+            top_level_id,
+            uninitialized_allocations_prefix,
+            declarations,
+            code,
+            hw_map,
+        ),
         &Language::SystolicArray([rows_id, cols_id, a0_id, a1_id])
         | &Language::SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {
             let rows = MyAnalysis::get_usize(rows_id, expr);
@@ -1310,8 +1269,24 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             assert!(this_access.shape.ndim() == 1 || this_access.shape.ndim() == 2);
             assert_eq!(this_access.item_shape.ndim(), 0);
 
-            let s0 = get_c_variable_for_id(expr, a0_id);
-            let s1 = get_c_variable_for_id(expr, a1_id);
+            let s0 = codegen_recursive_helper(
+                expr,
+                a0_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+            let s1 = codegen_recursive_helper(
+                expr,
+                a1_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
 
             let out_var_name = match {
                 assert_eq!(expr[id].nodes.len(), 1);
@@ -1378,9 +1353,9 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 .as_str(),
             );
 
-            Some(out_var_name)
+            out_var_name
         }
-        &Language::Usize(u) => Some(format!("{}", u)),
+        &Language::Usize(u) => format!("{}", u),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1414,7 +1389,15 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 _ => panic!(),
             };
 
-            let access_var_name = get_c_variable_for_id(expr, access_id);
+            let access_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
 
             let pad_out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
@@ -1507,7 +1490,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 code.push_str("}");
             }
 
-            Some(pad_out_var_name)
+            pad_out_var_name
         }
         &Language::AccessTranspose([access_id, list_id]) => {
             let access = match &expr[access_id].data {
@@ -1534,7 +1517,15 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
 
             assert_eq!(original_shape.len(), new_axis_order.len());
 
-            let access_var_name = get_c_variable_for_id(expr, access_id);
+            let access_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
             let transpose_out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
                 // Currently generating random strings. Not great IMO.
@@ -1575,28 +1566,17 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
             code.push_str(
                 format!(
                     "
-{out_var_name}{out_indices} = ((float*){access_var_name}){access_indices};",
+{out_var_name}{out_indices} = {access_var_name}{access_indices};",
                     out_var_name = transpose_out_var_name,
                     out_indices = (0..original_shape.len())
                         .map(|i| format!("[i{}]", new_axis_order[i]))
                         .collect::<Vec<_>>()
                         .join(""),
                     access_var_name = access_var_name,
-                    access_indices = format!(
-                        "[{}]",
-                        (0..original_shape.len())
-                            .map(|i| format!(
-                                "i{}{}",
-                                i,
-                                original_shape[i + 1..]
-                                    .iter()
-                                    .map(|i| format!("*{}", i))
-                                    .collect::<Vec<_>>()
-                                    .join("")
-                            ))
-                            .collect::<Vec<_>>()
-                            .join(" + ")
-                    )
+                    access_indices = (0..original_shape.len())
+                        .map(|i| format!("[i{}]", i))
+                        .collect::<Vec<_>>()
+                        .join("")
                 )
                 .as_str(),
             );
@@ -1606,14 +1586,169 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 code.push_str("}");
             }
 
-            Some(transpose_out_var_name)
+            transpose_out_var_name
         }
-        &Language::AccessFlatten(access_id) => Some(get_c_variable_for_id(expr, access_id)),
+        &Language::AccessFlatten(access_id) => {
+            // Flatten doesn't do anything. Just copy the array verbatim.
+
+            let out_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_flatten_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    c_allocation_string(
+                        uninitialized_allocations_prefix,
+                        out.as_str(),
+                        out_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let in_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+
+            code.push_str(
+                format!(
+                    "
+for (int i = 0; i < {limit}; ++i) {{
+  ((float*){out_var_name})[i] = ((float*){in_var_name})[i];
+}}",
+                    out_var_name = out_var_name,
+                    in_var_name = in_var_name,
+                    limit = out_shape.iter().product::<usize>(),
+                )
+                .as_str(),
+            );
+
+            out_var_name
+        }
         &Language::AccessReshape([access_id, _access_shape_id]) => {
-            Some(get_c_variable_for_id(expr, access_id))
+            // Reshape doesn't do anything. Just copy the array verbatim.
+
+            let out_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_reshape_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    c_allocation_string(
+                        uninitialized_allocations_prefix,
+                        out.as_str(),
+                        out_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let in_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+
+            code.push_str(
+                format!(
+                    "
+for (int i = 0; i < {limit}; ++i) {{
+  ((float*){out_var_name})[i] = ((float*){in_var_name})[i];
+}}",
+                    out_var_name = out_var_name,
+                    in_var_name = in_var_name,
+                    limit = out_shape.iter().product::<usize>(),
+                )
+                .as_str(),
+            );
+
+            out_var_name
         }
         &Language::AccessSqueeze([access_id, _axis_id]) => {
-            Some(get_c_variable_for_id(expr, access_id))
+            // Squeeze doesn't do anything. Just copy the array verbatim.
+
+            let out_shape = match &expr[id].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let out_var_name: String = {
+                // TODO(@gussmith23) Find a different way to name intermediates
+                // Currently generating random strings. Not great IMO.
+                let out = format!(
+                    "access_squeeze_out_{}",
+                    rand::thread_rng()
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                );
+                declarations.push_str(
+                    c_allocation_string(
+                        uninitialized_allocations_prefix,
+                        out.as_str(),
+                        out_shape.as_slice(),
+                        DType::Fp32,
+                    )
+                    .as_str(),
+                );
+                out
+            };
+
+            let in_var_name = codegen_recursive_helper(
+                expr,
+                access_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+
+            code.push_str(
+                format!(
+                    "
+for (int i = 0; i < {limit}; ++i) {{
+  ((float*){out_var_name})[i] = ((float*){in_var_name})[i];
+}}",
+                    out_var_name = out_var_name,
+                    in_var_name = in_var_name,
+                    limit = out_shape.iter().product::<usize>(),
+                )
+                .as_str(),
+            );
+
+            out_var_name
         }
         &Language::AccessConcatenate([a0_id, a1_id, axis_id]) => {
             let axis = MyAnalysis::get_usize(axis_id, expr);
@@ -1621,8 +1756,24 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 (MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)) => (a0, a1),
                 _ => panic!(),
             };
-            let arg_0_name = get_c_variable_for_id(expr, a0_id);
-            let arg_1_name = get_c_variable_for_id(expr, a1_id);
+            let arg_0_name = codegen_recursive_helper(
+                expr,
+                a0_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
+            let arg_1_name = codegen_recursive_helper(
+                expr,
+                a1_id,
+                top_level_id,
+                uninitialized_allocations_prefix,
+                declarations,
+                code,
+                hw_map,
+            );
 
             let concat_shape = match &expr[id].data {
                 MyAnalysisData::AccessPattern(a) => a
@@ -1713,38 +1864,23 @@ if (i{i} < {dim_len}) {{
                 code.push_str("}");
             }
 
-            Some(out_var_name)
+            out_var_name
         }
-        // TODO(@gussmith23) Needs test
-        &Language::NotNanFloat64(not_nan) => Some(format!("{:.20}f", not_nan.into_inner())),
-
-        // Constructs for which we shouldn't need to generate code.
-        Language::RelayActivationLayout(_)
-        | Language::RelayKernelLayout(_)
-        | Language::Symbol(_)
-        | Language::PadType(_)
-        | Language::Shape(_)
-        | Language::List(_)
-        | &Language::ShapeInsertAxis(_)
-        | &Language::ShapeRemoveAxis(_)
-        | &Language::ShapeOf(_)
-        | &Language::AccessShape(_)
-        | Language::RelayOperator(_) => None,
-
         &Language::Literal(_)
-        | &Language::ConstructTuple(_)
-        | &Language::TupleGetItem(_)
-        | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
-        | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
-        | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
-        | &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
+        | &Language::NotNanFloat64(_)
+        | Language::List(_)
         | &Language::AccessBroadcast(_)
         | &Language::AccessInsertAxis(_)
         | &Language::AccessPair(_)
+        | Language::PadType(_)
         | Language::ComputeType(_)
         | &Language::Compute(_)
         | &Language::AccessCartesianProduct(_)
+        | Language::Shape(_)
         | &Language::SliceShape(_)
+        | &Language::ShapeInsertAxis(_)
+        | &Language::ShapeRemoveAxis(_)
+        | &Language::ShapeOf(_)
         | &Language::MoveAxis(_)
         | &Language::CartesianProduct(_)
         | &Language::MapDotProduct(_)
@@ -1752,6 +1888,7 @@ if (i{i} < {dim_len}) {{
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)
         | &Language::BsgSystolicArray(_)
+        | &Language::AccessShape(_)
         | &Language::AccessLiteral(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
     }
@@ -1874,8 +2011,6 @@ mod tests {
             "transpose",
             "",
             &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -1992,8 +2127,6 @@ int main() {{
             "concatenate",
             "",
             &vec!["t0", "t1"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -2117,8 +2250,6 @@ int main() {{
             "systolic_array",
             "",
             &vec!["t0", "t1"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -2255,16 +2386,7 @@ int main() {{
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "pad",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
+        let code = codegen(&egraph, id, &HashMap::default(), "pad", "", &vec!["t"]);
 
         let main_code = format!(
             "
@@ -2385,16 +2507,7 @@ int main() {{
         let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&expr);
 
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "slice",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
+        let code = codegen(&egraph, id, &HashMap::default(), "slice", "", &vec!["t"]);
 
         let main_code = format!(
             "
@@ -2524,8 +2637,6 @@ int main() {{
             "access_windows",
             "",
             &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -2644,8 +2755,6 @@ int main() {{
             "access_flatten",
             "",
             &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -2802,8 +2911,6 @@ int main() {{
             "systolic_array_with_blocking",
             "",
             &vec!["t0", "t1"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -2940,8 +3047,6 @@ def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
             "relay_add",
             "",
             &vec!["x", "y"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -3078,8 +3183,6 @@ def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
             "relay_biasadd",
             "",
             &vec!["x", "y"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -3232,8 +3335,6 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
             "relay_batchnorm",
             "",
             &vec!["data", "bn_gamma", "bn_beta", "bn_mean", "bn_var"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
         let main_code = format!(
             "
@@ -3400,8 +3501,6 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
             "relay_softmax",
             "",
             &vec!["data"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
         let main_code = format!(
             "
@@ -3544,8 +3643,6 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
             "relay_relu",
             "",
             &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -3681,8 +3778,6 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
             "relay_maxpool",
             "",
             &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -3819,8 +3914,6 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
             "relay_maxpool",
             "",
             &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
         );
 
         let main_code = format!(
@@ -3957,8 +4050,146 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
             "relay_globalavgpool2d",
             "",
             &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
+        );
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_globalavgpool2d(out, x);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
+            c_assignment_string("", "result", DType::Fp32, &result.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+            ),
+            code,
+            result.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-globalavgpool2d-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-globalavgpool2d-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn relay_model_yolov3() {
+        // Generate yolov3 with directions from:
+        // https://tvm.apache.org/docs/tutorials/frontend/from_darknet.html
+        let filename = PathBuf::from(format!(
+            "{}/models/yolov3.relay",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+        let relay = std::fs::read_to_string(&filename).unwrap();
+        const SEED: u64 = 23;
+        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+
+        let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
             true,
+            &vec![
+                crate::language::RelayOperator::RelayBatchNormInference,
+                crate::language::RelayOperator::RelayAdd,
+            ],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::<f32>::random_using(
+                    v.clone(),
+                    Uniform::new(-2f32, 2f32),
+                    &mut tensor_rng,
+                ),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result = run_relay(&value_env, &shapes_vec, &relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_globalavgpool2d",
+            "",
+            &vec!["x"],
         );
 
         let main_code = format!(
