@@ -306,7 +306,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) => {
+            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) | Language::ConstructTuple(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -324,7 +324,8 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
             | &Language::AccessShape(ids)
-            | &Language::AccessSqueeze(ids) => {
+            | &Language::AccessSqueeze(ids)
+            | &Language::TupleGetItem(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -411,7 +412,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
                 }
             }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::Shape(ids) | Language::List(ids) => {
+            Language::RelayOperatorCall(ids) | Language::Shape(ids) | Language::List(ids) | Language::ConstructTuple(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
@@ -423,7 +424,8 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::AccessReshape(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
-            | &Language::AccessSqueeze(ids) => {
+            | &Language::AccessSqueeze(ids) 
+            | &Language::TupleGetItem(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
@@ -1730,6 +1732,8 @@ if (i{i} < {dim_len}) {{
         | Language::RelayOperator(_) => None,
 
         &Language::Literal(_)
+        | &Language::ConstructTuple(_)
+        | &Language::TupleGetItem(_)
         | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
         | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
         | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
