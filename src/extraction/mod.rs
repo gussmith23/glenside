@@ -69,6 +69,8 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::SystolicArray(_)
             | Language::SystolicArrayWithBlocking(_)
             | Language::Usize(_)
+            | Language::ConstructTuple(_)
+            | Language::TupleGetItem(_)
             | Language::AccessSlice(_)
             | Language::AccessConcatenate(_)
             | Language::AccessPad(_)
@@ -173,6 +175,8 @@ impl CostFunction<Language> for SimpleCostFunction {
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
+            Language::ConstructTuple(_) => todo!(),
+            Language::TupleGetItem(_) => todo!(),
 
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,

@@ -202,6 +202,14 @@ define_language! {
         // List literal
         "list" = List(Box<[Id]>),
 
+        // (construct-tuple <access> <access> ...)
+        // Tuple Construction
+        "construct-tuple" = ConstructTuple(Box<[Id]>),
+        
+        // (tuple-get-item <tuple> <i>)
+        // Get the item at the ith index of tuple
+        "tuple-get-item" = TupleGetItem([Id;2]),
+
         // (access-shape <shape: shape> <item-shape: shape>)
         // Access shape literal.
         "access-shape" = AccessShape([Id;2]),
@@ -523,6 +531,7 @@ pub enum MyAnalysisData {
     Legacy(MyAnalysisDataLegacyData),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
+    Tuple(Vec<Box<MyAnalysisData>>),
     // TODO(@gussmith23) Needed?
     //Tensor(TensorData),
     ComputeType(ComputeType),
@@ -1363,6 +1372,23 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             RelayActivationLayout(l) => MyAnalysisData::RelayActivationLayout(l.clone()),
             RelayKernelLayout(l) => MyAnalysisData::RelayKernelLayout(l.clone()),
+            ConstructTuple(ids) => {
+                let tuple_shape = ids
+                    .iter()
+                    .map(|id| {
+                        Box::new((&egraph[*id].data).clone())
+                    })
+                    .collect::<Vec<_>>();
+                MyAnalysisData::Tuple(tuple_shape)
+            },
+            TupleGetItem(ids) => {
+                let index = MyAnalysis::get_usize(ids[1], egraph);
+                let data = match &egraph[ids[0]].data {
+                    MyAnalysisData::Tuple(x) => x,
+                    _ => panic!()
+                };
+                *(data[index]).clone()
+            },
             RelayOperator(op) => MyAnalysisData::RelayOperator(op.clone()),
             RelayOperatorCall(params) => {
                 assert!(params.len() > 0);
@@ -5202,6 +5228,56 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[1, 65, 15, 20]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn construct_tuple() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![16, 32]);
+        let program = "
+         (construct-tuple (access-tensor a) (access-tensor b))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::Tuple(a) => {
+                assert_eq!(a.len(), 2);
+                match (*a[0].clone(), *a[1].clone()) {
+                    (MyAnalysisData::AccessPattern(t1), MyAnalysisData::AccessPattern(t2)) => {
+                        assert_eq!(t1.shape, IxDyn(&[32, 64]));
+                        assert_eq!(t2.shape, IxDyn(&[16, 32]));
+
+                    },
+                    _ => panic!()
+                }
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn tuple_get_item() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        map.insert("b".to_string(), vec![16, 32]);
+        let program = "
+         (tuple-get-item (construct-tuple (access-tensor a) (access-tensor b)) 1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(b) => {
+                assert_eq!(b.shape, IxDyn(&[16, 32]));
             }
             _ => panic!(),
         }
