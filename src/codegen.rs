@@ -4060,12 +4060,17 @@ int main() {{
         let mut tensor_rng = SmallRng::seed_from_u64(SEED);
 
         let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
-
         let (expr, shapes_vec) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![
                 crate::language::RelayOperator::RelayBatchNormInference,
+                crate::language::RelayOperator::RelaySoftmax,
+                crate::language::RelayOperator::RelayReLU,
+                crate::language::RelayOperator::RelayMaxPool2D,
+                crate::language::RelayOperator::RelayGlobalAvgPool2D,
+                crate::language::RelayOperator::RelayBatchFlatten,
+                crate::language::RelayOperator::RelayBiasAdd,
                 crate::language::RelayOperator::RelayAdd,
             ],
         );
