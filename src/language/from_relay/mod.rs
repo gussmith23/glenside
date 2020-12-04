@@ -569,6 +569,14 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
     {
         create_worklist(tuple_get_item.tuple.clone(), worklist);
         add_to_worklist(relay_expr.clone(), worklist);
+    } else if let Ok(tuple) = relay_expr
+        .clone()
+        .downcast::<tvm::ir::relay::Tuple>()
+    {
+        for i in 0..tuple.fields.len() {
+            create_worklist(tuple.fields.get(i.try_into().unwrap()).unwrap(), worklist);
+        }
+        add_to_worklist(relay_expr.clone(), worklist);
     } else {
         // NOTE: if you're hitting this TODO, it might be that you have not
         // actually implemented the TVM Rust bindings for the Relay construct
