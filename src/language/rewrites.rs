@@ -2335,13 +2335,15 @@ pub fn systolic_array_compute_and_memory_atoms() -> Rewrite<Language, MyAnalysis
 
             let pattern: Pattern<Language> = format!(
                 "
-                (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
-                 (invoke-compute-atom (compute-atom compute-atom-type-systolic-array {rows} {cols})
-                  (invoke-memory-atom (memory-atom memory-atom-type-global-activation-buffer)
-                   ?access-1
-                  )
-                  (invoke-memory-atom (memory-atom memory-atom-type-dram)
-                   ?access-2
+                (memory-to-access-pattern
+                 (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
+                  (invoke-compute-atom (compute-atom compute-atom-type-systolic-array {rows} {cols})
+                   (access-pattern-to-memory (memory-atom memory-atom-type-global-activation-buffer)
+                    ?access-1
+                   )
+                   (access-pattern-to-memory (memory-atom memory-atom-type-dram)
+                    ?access-2
+                   )
                   )
                  )
                 )
@@ -4946,13 +4948,15 @@ mod tests {
             .run(&rws);
 
         let matches = "
-            (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
-             (invoke-compute-atom (compute-atom systolic-array 32 32)
-              (invoke-memory-atom (memory-atom memory-atom-type-global-activation-buffer)
-               (access (access-tensor data) 1)
-              )
-              (invoke-memory-atom (memory-atom memory-atom-type-dram)
-               (access (access-tensor kernel) 1)
+            (memory-to-access-pattern
+             (invoke-memory-atom (memory-atom memory-atom-type-accumulator)
+              (invoke-compute-atom (compute-atom compute-atom-type-systolic-array 32 32)
+               (access-pattern-to-memory (memory-atom memory-atom-type-global-activation-buffer)
+                (access (access-tensor data) 1)
+               )
+               (access-pattern-to-memory (memory-atom memory-atom-type-dram)
+                (access (access-tensor kernel) 1)
+               )
               )
              )
             )
