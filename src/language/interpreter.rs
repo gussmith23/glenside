@@ -76,6 +76,8 @@ where
 {
     match &expr.as_ref()[index] {
         Language::InvokeComputeAtom(_)
+        | Language::MemoryToAccessPattern(_)
+        | Language::AccessPatternToMemory(_)
         | Language::ComputeAtom(_)
         | Language::ComputeAtomType(_)
         | Language::InvokeMemoryAtom(_)

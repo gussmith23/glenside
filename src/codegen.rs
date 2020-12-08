@@ -310,7 +310,9 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 set.insert(s.to_string());
             }
             // Id
-            &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
+            &Language::AccessTensor(id) 
+            | &Language::AccessFlatten(id)
+            | &Language::MemoryToAccessPattern(id) => {
                 find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
@@ -332,6 +334,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
             | &Language::AccessShape(ids)
+            | &Language::AccessPatternToMemory(ids)
             | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
@@ -417,7 +420,9 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | Language::SymbolToMemory(_) => todo!(),
 
             // Id
-            &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
+            &Language::AccessTensor(id)
+            | &Language::AccessFlatten(id)
+            | &Language::MemoryToAccessPattern(id) => {
                 helper(worklist, expr, id);
             }
             // [Id; 1]
@@ -439,6 +444,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::AccessReshape(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
+            | &Language::AccessPatternToMemory(ids)
             | &Language::AccessSqueeze(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
@@ -677,6 +683,8 @@ fn codegen_helper(
         &expr[id].nodes[0]
     } {
         Language::InvokeComputeAtom(_)
+        | Language::MemoryToAccessPattern(_)
+        | Language::AccessPatternToMemory(_)
         | Language::ComputeAtom(_)
         | Language::ComputeAtomType(_)
         | Language::InvokeMemoryAtom(_)

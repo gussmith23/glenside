@@ -89,6 +89,14 @@ define_language! {
         // represented by `symbol`.
         "symbol-to-memory" = SymbolToMemory([Id; 2]),
 
+        // (access-pattern-to-memory <memory-atom: MemoryAtom> <access>)
+        "access-pattern-to-memory" = AccessPatternToMemory([Id; 2]),
+
+        // (memory-to-access-pattern <memory: InvokeMemoryAtom>)
+        //
+        // Converts a memory to an access pattern, accessed at dimension 0.
+        "memory-to-access-pattern" = MemoryToAccessPattern(Id),
+
         // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
         // Represents a systolic array of size rows X cols, fed with two
         // accesses.
@@ -1228,6 +1236,38 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            Language::AccessPatternToMemory([_memory_atom_id, access_id]) => {
+                let access_pattern = match &egraph[*access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!("Does not type check"),
+                };
+
+                MyAnalysisData::MemoryAtomInvocationData(IxDyn(
+                    access_pattern
+                        .shape
+                        .slice()
+                        .iter()
+                        .chain(access_pattern.item_shape.slice().iter())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                ))
+            }
+            Language::MemoryToAccessPattern(id) => {
+                let memory_shape = match &egraph[*id].data {
+                    MyAnalysisData::MemoryAtomInvocationData(d) => d.clone(),
+                    _ => panic!("Does not type check"),
+                };
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    shape: IxDyn(&[]),
+                    item_shape: memory_shape,
+                    zero_regions: {
+                        debug!("Zero regions unimplemented");
+                        HashMap::default()
+                    },
+                })
+            }
             Language::ComputeAtom(_) => MyAnalysisData::None,
             Language::MemoryAtom(_) => MyAnalysisData::None,
             Language::InvokeComputeAtom(ids) => {
@@ -5403,6 +5443,54 @@ mod tests {
            (symbol-to-memory (memory-atom memory-atom-type-global-activation-buffer) data)
            (symbol-to-memory (memory-atom memory-atom-type-dram) weights)
           )
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::MemoryAtomInvocationData(shape) => {
+                assert_eq!(shape, &IxDyn(&[64, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn memory_to_access_pattern() {
+        let mut map = HashMap::default();
+        // Note that we don't need any multiples of rows/cols here.
+        // Systolic array should handle tail padding.
+        map.insert("a".to_string(), vec![64, 32]);
+        let program = "
+         (memory-to-access-pattern (symbol-to-memory (memory-atom memory-atom-type-dram) a))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[]));
+                assert_eq!(a.item_shape, IxDyn(&[64, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_pattern_to_memory() {
+        let mut map = HashMap::default();
+        // Note that we don't need any multiples of rows/cols here.
+        // Systolic array should handle tail padding.
+        map.insert("a".to_string(), vec![64, 32]);
+        let program = "
+         (access-pattern-to-memory 
+          (memory-atom memory-atom-type-dram)
+          (access (access-tensor a) 1)
          )
          "
         .parse()

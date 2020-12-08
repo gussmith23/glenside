@@ -54,6 +54,8 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
         let base_cost = match enode {
 
             Language::InvokeComputeAtom(_)
+            | Language::MemoryToAccessPattern(_)
+            | Language::AccessPatternToMemory(_)
             | Language::ComputeAtom(_)
             | Language::ComputeAtomType(_)
             | Language::InvokeMemoryAtom(_)
@@ -175,6 +177,8 @@ impl CostFunction<Language> for SimpleCostFunction {
         use crate::language::Language::*;
         let base_cost = match enode {
             Language::InvokeComputeAtom(_)
+            | Language::MemoryToAccessPattern(_)
+            | Language::AccessPatternToMemory(_)
             | Language::ComputeAtom(_)
             | Language::ComputeAtomType(_)
             | Language::InvokeMemoryAtom(_)
