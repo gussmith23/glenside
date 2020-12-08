@@ -4150,13 +4150,159 @@ int main() {{
         );
 
         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-globalavgpool2d-test-{}.c",
+            "relay-op-yolo-test-{}.c",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-globalavgpool2d-test-{}",
+            "relay-op-yolo-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    fn relay_model_efficientnet_lite4_11() {
+        // efficientnet onnx model source: https://github.com/onnx/models/blob/master/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11.onnx
+        // imported into relay
+        let filename = PathBuf::from(format!(
+            "{}/models/efficientnet-lite4-11.relay",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+        let relay = std::fs::read_to_string(&filename).unwrap();
+        const SEED: u64 = 23;
+        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+
+        let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![
+                crate::language::RelayOperator::RelayBatchNormInference,
+                crate::language::RelayOperator::RelaySoftmax,
+                crate::language::RelayOperator::RelayReLU,
+                crate::language::RelayOperator::RelayMaxPool2D,
+                crate::language::RelayOperator::RelayGlobalAvgPool2D,
+                crate::language::RelayOperator::RelayBatchFlatten,
+                crate::language::RelayOperator::RelayBiasAdd,
+                crate::language::RelayOperator::RelayAdd,
+            ],
+        );
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::<f32>::random_using(
+                    v.clone(),
+                    Uniform::new(-2f32, 2f32),
+                    &mut tensor_rng,
+                ),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result = run_relay(&value_env, &shapes_vec, &relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "efficientnet",
+            "",
+            &vec!["x"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true
+        );
+
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    efficientnet(out, x);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
+            c_assignment_string("", "result", DType::Fp32, &result.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+            ),
+            code,
+            result.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-efficientnet-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-efficientnet-test-{}",
             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
