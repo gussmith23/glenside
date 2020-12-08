@@ -94,7 +94,9 @@ define_language! {
 
         // (memory-to-access-pattern <memory: InvokeMemoryAtom>)
         //
-        // Converts a memory to an access pattern, accessed at dimension 0.
+        // Converts a memory to an access pattern, accessed at the last
+        // dimension. The dimension it is accessed at is chosen purely out of
+        // convenience.
         "memory-to-access-pattern" = MemoryToAccessPattern(Id),
 
         // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
@@ -1260,8 +1262,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: IxDyn(&[]),
-                    item_shape: memory_shape,
+                    shape: memory_shape,
+                    item_shape: IxDyn(&[]),
                     zero_regions: {
                         debug!("Zero regions unimplemented");
                         HashMap::default()
@@ -5474,8 +5476,8 @@ mod tests {
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
-                assert_eq!(a.shape, IxDyn(&[]));
-                assert_eq!(a.item_shape, IxDyn(&[64, 32]));
+                assert_eq!(a.shape, IxDyn(&[64, 32]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
         }
