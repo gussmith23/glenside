@@ -993,6 +993,11 @@ pub enum SliceConcatenateStrategy {
     SliceOnce {
         segment_size: usize,
     },
+
+    /// Identical to [`DivideInto`], but uses `access-concatenate-varargs`.
+    DivideIntoVarargs {
+        segment_size: usize,
+    },
 }
 
 pub fn slice_concatenate_accesses(
@@ -1135,6 +1140,55 @@ pub fn slice_concatenate_accesses(
         }
     }
 
+    // TODO(@gussmith23) This could be combined with the applier above.
+    // Their implementations are nearly identical.
+    struct DivideIntoVarargsApplier {
+        axis: usize,
+        segment_size: usize,
+    }
+    impl Applier<Language, MyAnalysis> for DivideIntoVarargsApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            id: egg::Id,
+            _subst: &egg::Subst,
+        ) -> std::vec::Vec<egg::Id> {
+            let shape = match &egraph[id].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            assert!(self.axis < shape.shape.ndim() + shape.item_shape.ndim());
+            let dim_value = shape[self.axis];
+            assert_eq!(dim_value % self.segment_size, 0);
+
+            let axis_id = egraph.add(Language::Usize(self.axis));
+
+            let concat_args_ids = 
+            // Create slice arguments first
+            (0..(dim_value / self.segment_size))
+                .map(|segment_index| {
+                    let low_bound = segment_index * self.segment_size;
+                    let high_bound = low_bound + self.segment_size;
+                    let low_bound_id = egraph.add(Language::Usize(low_bound));
+                    let high_bound_id = egraph.add(Language::Usize(high_bound));
+                    egraph.add(Language::AccessSlice([
+                        id,
+                        axis_id,
+                        low_bound_id,
+                        high_bound_id,
+                    ]))
+                })
+                // Add the axis argument
+                .chain(std::iter::once(axis_id))
+                .collect::<Vec<_>>();
+
+            let concat_varargs_id = egraph
+                .add(Language::AccessConcatenateVarargs(concat_args_ids.into_boxed_slice()));
+
+            vec![concat_varargs_id]
+        }
+    }
+
     struct SliceOnceApplier {
         axis: usize,
         segment_size: usize,
@@ -1202,6 +1256,13 @@ pub fn slice_concatenate_accesses(
                      if access_has_axis(axis)
                      // Only slice if there's  at least `segment_size` to slice off.
                      if constrain_access("?a".parse().unwrap(), move |access| access[axis] > segment_size))
+        }
+        SliceConcatenateStrategy::DivideIntoVarargs { segment_size } => {
+            rewrite!(format!("slice-concatenate-access-axis-{}-divide-into-varargs-{}", axis, segment_size);
+                     "?a" => { DivideIntoVarargsApplier {axis: axis, segment_size:segment_size} }
+                     if is_access()
+                     if access_has_axis(axis)
+                     if access_dimension_divisible_by(axis, segment_size))
         }
     }
 }
@@ -4861,5 +4922,63 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn slice_concatenate_accesses_divide_into_varargs() {
+        test_logger::ensure_env_logger_initialized();
+
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), vec![32, 32]);
+        let program = "(access (access-tensor a) 1)".parse().unwrap();
+
+        let rws = vec![
+            super::slice_concatenate_accesses(
+                0,
+                SliceConcatenateStrategy::DivideIntoVarargs {
+                    segment_size: 16
+                },
+            ),
+            super::slice_concatenate_accesses(
+                1,
+                SliceConcatenateStrategy::DivideIntoVarargs {
+                    segment_size: 8
+                },
+            ),
+        ];
+
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis{
+            name_to_shape: map
+        });
+        let id = egraph.add_expr(&program);
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        assert_eq!(
+            "(access-concatenate-varargs
+                (access-slice (access (access-tensor a) 1) 0 0 16)
+                (access-slice (access (access-tensor a) 1) 0 16 32)
+                0
+            )"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search_eclass(&runner.egraph, id).unwrap().substs.len(),
+            1
+        );
+
+        assert_eq!(
+            "(access-concatenate-varargs
+                (access-slice (access (access-tensor a) 1) 1 0 8)
+                (access-slice (access (access-tensor a) 1) 1 8 16)
+                (access-slice (access (access-tensor a) 1) 1 16 24)
+                (access-slice (access (access-tensor a) 1) 1 24 32)
+                1
+            )"
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .search_eclass(&runner.egraph, id).unwrap().substs.len(),
+            1
+        );
     }
 }
