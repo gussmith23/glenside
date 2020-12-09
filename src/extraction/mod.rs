@@ -125,6 +125,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Slice(_)
             | Language::Concatenate(_) => panic!(),
 
+            Language::AccessConcatenateVarargs(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
@@ -165,6 +166,7 @@ impl CostFunction<Language> for SimpleCostFunction {
     {
         use crate::language::Language::*;
         let base_cost = match enode {
+            Language::AccessConcatenateVarargs(_) => todo!(),
             Language::RelayOperator(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),

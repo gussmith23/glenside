@@ -222,6 +222,12 @@ define_language! {
         // access.item_shape.
         "access-concatenate" = AccessConcatenate([Id; 3]),
 
+        // (access-concatenate-varargs <a0> ... <an> <axis (usize)>)
+        // Concatenate accesses <a0> ... <an> along <axis>.
+        // Output access pattern is accessed at the same dimension as <a0>.
+        // All dimensions other than <axis> must match.
+        "access-concatenate-varargs" = AccessConcatenateVarargs(Box<[Id]>),
+
         // (access-pair <a0> <a1>)
         // Simply pair every item of a0 with every item of a1.
         "access-pair" = AccessPair([Id; 2]),
@@ -1127,6 +1133,63 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            AccessConcatenateVarargs(ids) => {
+                debug_assert!(ids.len() > 1);
+
+                let access_patterns = ids[0..ids.len() - 1]
+                    .iter()
+                    .map(|id| match &egraph[*id].data {
+                        MyAnalysisData::AccessPattern(a) => a,
+                        _ => panic!(),
+                    })
+                    .collect::<Vec<_>>();
+
+                let axis = MyAnalysis::get_usize(ids[ids.len() - 1], egraph);
+
+                // Check that all dims other than `axis` are equal.
+                debug_assert!(access_patterns
+                    .iter()
+                    .fold((None, None), |(last_result, last_pattern), this_pattern| {
+                        if let Some(false) = last_result {
+                            return (Some(false), Some(this_pattern));
+                        }
+                        if let None = last_result {
+                            return (Some(true), Some(this_pattern));
+                        }
+
+                        let last_pattern = last_pattern.unwrap();
+
+                        assert_eq!(
+                            last_pattern.shape.ndim() + last_pattern.item_shape.ndim(),
+                            this_pattern.shape.ndim() + this_pattern.item_shape.ndim()
+                        );
+
+                        for i in 0..(last_pattern.shape.ndim() + last_pattern.item_shape.ndim()) {
+                            if i != axis {
+                                assert_eq!(
+                                    last_pattern[i], this_pattern[i],
+                                    "Access patterns should have the same shape, besides `axis`"
+                                );
+                            }
+                        }
+
+                        (Some(true), Some(this_pattern))
+                    })
+                    .0
+                    .unwrap());
+
+                let mut out_access_pattern = access_patterns[0].clone();
+                for access_pattern in access_patterns[1..].iter() {
+                    out_access_pattern[axis] = out_access_pattern[axis] + access_pattern[axis];
+                }
+
+                if !out_access_pattern.zero_regions.is_empty() {
+                    debug!("Zero regions being thrown away");
+                }
+                out_access_pattern.zero_regions = HashMap::default();
+
+                MyAnalysisData::AccessPattern(out_access_pattern)
+            }
             &SystolicArrayConv2dIm2colNhwcHwioWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
@@ -5202,6 +5265,90 @@ mod tests {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape, IxDyn(&[1, 65, 15, 20]));
                 assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+    #[test]
+    fn access_concatenate_varargs_0() {
+        let mut map = HashMap::new();
+        map.insert("t0".to_string(), vec![1, 33, 44, 78]);
+        map.insert("t1".to_string(), vec![1, 33, 2, 78]);
+        map.insert("t2".to_string(), vec![1, 33, 52, 78]);
+        let program = "
+            (access-concatenate-varargs 
+             (access (access-tensor t0) 1)
+             (access (access-tensor t1) 1)
+             (access (access-tensor t2) 1)
+             2
+            )"
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1]));
+                assert_eq!(a.item_shape, IxDyn(&[33, 44 + 2 + 52, 78]));
+                assert!(a.zero_regions.is_empty());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Access patterns should have the same shape, besides `axis`")]
+    fn access_concatenate_varargs_1() {
+        let mut map = HashMap::new();
+        map.insert("t0".to_string(), vec![1, 33, 44, 78]);
+        map.insert("t1".to_string(), vec![1, 33, 2, 78]);
+        map.insert("t2".to_string(), vec![1, 32, 52, 78]);
+        let program = "
+            (access-concatenate-varargs 
+             (access (access-tensor t0) 1)
+             (access (access-tensor t1) 1)
+             (access (access-tensor t2) 1)
+             2
+            )"
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1]));
+                assert_eq!(a.item_shape, IxDyn(&[33, 44 + 2 + 52, 78]));
+                assert!(a.zero_regions.is_empty());
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn access_concatenate_varargs_2() {
+        let mut map = HashMap::new();
+        map.insert("t0".to_string(), vec![1, 33, 44, 78]);
+        map.insert("t1".to_string(), vec![1, 33, 2, 78]);
+        map.insert("t2".to_string(), vec![1, 33, 52, 78]);
+        let program = "
+            (access-concatenate-varargs 
+             (access (access-tensor t0) 2)
+             (access (access-tensor t1) 1)
+             (access (access-tensor t2) 1)
+             2
+            )"
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 33]));
+                assert_eq!(a.item_shape, IxDyn(&[44 + 2 + 52, 78]));
+                assert!(a.zero_regions.is_empty());
             }
             _ => panic!(),
         }
