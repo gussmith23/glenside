@@ -295,11 +295,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
-            Language::RelayOperatorCall(ids) | Language::AccessConcatenateVarargs(ids) => {
-                for id in ids.iter() {
-                    find_vars_recursive_helper(set, expr, *id);
-                }
-            }
             Language::RelayOperator(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
@@ -311,7 +306,10 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) => {
+            Language::RelayOperatorCall(ids)
+            | Language::AccessConcatenateVarargs(ids)
+            | Language::List(ids)
+            | Language::Shape(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
