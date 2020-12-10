@@ -312,6 +312,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-relu <data: access>)
     RelayReLU,
+    
+    /// (relay-operator relay-relu <data: access> <data: access>)
+    RelayLeakyReLU,
 
     /// (relay-operator relay-max-pool2d <data: access>
     ///  <pool size: shape> <strides: shape> <padding: shape>
@@ -357,6 +360,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
                 RelayOperator::RelaySoftmax => "relay-softmax",
                 RelayOperator::RelayReLU => "relay-relu",
+                RelayOperator::RelayLeakyReLU => "relay-leaky-relu",
                 RelayOperator::RelayMaxPool2D => "relay-max-pool2d",
                 RelayOperator::RelayGlobalAvgPool2D => "relay-global-avg-pool2d",
                 RelayOperator::RelayBatchFlatten => "relay-batch-flatten",
@@ -1612,6 +1616,26 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()[..]
                         {
                             [MyAnalysisData::AccessPattern(a)] => a.clone(),
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayLeakyReLU => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(_)] => a.clone(),
                             _ => panic!("Parameters do not type check"),
                         };
 
