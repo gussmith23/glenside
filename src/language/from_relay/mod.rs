@@ -508,7 +508,7 @@ pub fn from_relay(
     use_opaque_operators_for: &Vec<RelayOperator>,
 ) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>) {
     let main = module
-        .lookup(module.get_global_var("main".to_string().into()).unwrap())
+        .lookup(module.get_global_var("main").unwrap())
         .unwrap();
     let func = main.downcast::<tvm::ir::relay::Function>().unwrap();
     let mut names_and_shapes = Vec::default();
