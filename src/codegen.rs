@@ -7,13 +7,17 @@ use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
 use log::warn;
-use ndarray::Array;
+use ndarray::{Array, ArrayD};
 use ndarray::Dimension;
 use ndarray::IxDyn;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
-
+use std::process::Command;
+use ndarray_npy::{read_npy, write_npy};
+use std::fs::File;
+    use std::io::Write;
+    
 type Expr = EGraph<Language, MyAnalysis>;
 
 static SYSTOLIC_ARRAY_SIGNATURE: &str = "
@@ -1045,6 +1049,7 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
 
                     Some(add_out)
                 }
+                RelayOperator::RelayLeakyReLU => todo!()
             }
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
@@ -1757,6 +1762,73 @@ if (i{i} < {dim_len}) {{
     }
 }
 
+pub fn run_relay(
+    env: &HashMap<String, ArrayD<f32>>,
+    shapes_vec: &Vec<(String, Vec<usize>)>,
+    relay_str: &str,
+) -> ArrayD<f32> {
+    let script_filepath = format!(
+        "{}/src/language/from_relay/run_relay.py",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
+    // Output filename
+    // TODO(@gussmith23) Do we want this RNG to use SEED?
+    // I initially attempted to do this, but was running into issues
+    // (I think the same filename kept being generated b/c I wasn't
+    // using the RNG carefully...but maybe there's also something
+    // wrong w/ how I'm reading files!)
+    let output_filepath = std::env::temp_dir().with_file_name(format!(
+        "output-{}.npy",
+        rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(30)
+            .collect::<String>()
+    ));
+
+    let mut cmd = Command::new("python3");
+    cmd.arg(script_filepath);
+    cmd.arg(&output_filepath);
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    for (name, _) in shapes_vec.iter() {
+        let value = env.get(name).unwrap();
+        // TODO(@gussmith23) output type assumption
+        let filepath = std::env::temp_dir().with_file_name(format!(
+            "arg-{}.npy",
+            rand::thread_rng()
+                .sample_iter(&rand::distributions::Alphanumeric)
+                .take(30)
+                .collect::<String>()
+        ));
+        write_npy(&filepath, value).unwrap();
+        cmd.arg(filepath);
+    }
+
+    let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
+    proc.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(relay_str.as_bytes())
+        .unwrap();
+    let output = proc.wait_with_output().unwrap();
+    // Check that it ran.
+    assert!(
+        output.status.success(),
+        "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
+        std::str::from_utf8(output.stdout.as_slice())
+            .expect("Could not convert stderr to UTF8"),
+        std::str::from_utf8(output.stderr.as_slice())
+            .expect("Could not convert stderr to UTF8")
+    );
+
+    // TODO(@gussmith23) output type assumption
+    let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+    relay_output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1772,73 +1844,6 @@ mod tests {
     use std::path::PathBuf;
     use std::process::Command;
     use std::str::FromStr;
-
-    fn run_relay(
-        env: &HashMap<String, ArrayD<f32>>,
-        shapes_vec: &Vec<(String, Vec<usize>)>,
-        relay_str: &str,
-    ) -> ArrayD<f32> {
-        let script_filepath = format!(
-            "{}/src/language/from_relay/run_relay.py",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
-        // Output filename
-        // TODO(@gussmith23) Do we want this RNG to use SEED?
-        // I initially attempted to do this, but was running into issues
-        // (I think the same filename kept being generated b/c I wasn't
-        // using the RNG carefully...but maybe there's also something
-        // wrong w/ how I'm reading files!)
-        let output_filepath = std::env::temp_dir().with_file_name(format!(
-            "output-{}.npy",
-            rand::thread_rng()
-                .sample_iter(&rand::distributions::Alphanumeric)
-                .take(30)
-                .collect::<String>()
-        ));
-
-        let mut cmd = Command::new("python3");
-        cmd.arg(script_filepath);
-        cmd.arg(&output_filepath);
-        cmd.stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        for (name, _) in shapes_vec.iter() {
-            let value = env.get(name).unwrap();
-            // TODO(@gussmith23) output type assumption
-            let filepath = std::env::temp_dir().with_file_name(format!(
-                "arg-{}.npy",
-                rand::thread_rng()
-                    .sample_iter(&rand::distributions::Alphanumeric)
-                    .take(30)
-                    .collect::<String>()
-            ));
-            write_npy(&filepath, value).unwrap();
-            cmd.arg(filepath);
-        }
-
-        let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
-        proc.stdin
-            .as_mut()
-            .unwrap()
-            .write_all(relay_str.as_bytes())
-            .unwrap();
-        let output = proc.wait_with_output().unwrap();
-        // Check that it ran.
-        assert!(
-            output.status.success(),
-            "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
-            output.status.code(),
-            std::str::from_utf8(output.stdout.as_slice())
-                .expect("Could not convert stderr to UTF8"),
-            std::str::from_utf8(output.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        // TODO(@gussmith23) output type assumption
-        let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
-        relay_output
-    }
 
     #[test]
     fn transpose() {
@@ -4067,6 +4072,7 @@ int main() {{
                 crate::language::RelayOperator::RelayBatchNormInference,
                 crate::language::RelayOperator::RelaySoftmax,
                 crate::language::RelayOperator::RelayReLU,
+                crate::language::RelayOperator::RelayLeakyReLU,
                 crate::language::RelayOperator::RelayMaxPool2D,
                 crate::language::RelayOperator::RelayGlobalAvgPool2D,
                 crate::language::RelayOperator::RelayBatchFlatten,

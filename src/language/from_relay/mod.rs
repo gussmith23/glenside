@@ -4,7 +4,7 @@
 use crate::language::Language;
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use tvm::ir::module::*;
 use tvm::ir::relay::*;
@@ -519,7 +519,8 @@ pub fn from_relay(
     }
     let mut glenside_expr = RecExpr::default();
     let mut worklist = Vec::default();
-    create_worklist(func.body.clone(), &mut worklist);
+    let mut visited = HashSet::new();
+    create_worklist(func.body.clone(), &mut worklist, &mut visited);
     let mut map = HashMap::new();
     for expr in worklist {
         map.insert(
@@ -547,36 +548,34 @@ pub fn from_relay(
 /// so we first recursively generate a worklist which we can then iterate over.
 /// The main goal of the worklist is to make sure an expression comes *after*
 /// its children in the worklist; otherwise, we can't compile the expression!
-fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
-    fn add_to_worklist(expr: Expr, worklist: &mut Vec<Expr>) {
-        if !worklist.contains(&expr) {
-            worklist.push(expr.clone());
-        }
+fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>, visited: &mut HashSet<Expr>) {
+    if visited.contains(&relay_expr) {
+        return;
+    } else {
+        visited.insert(relay_expr.clone());
     }
+    
     if let Ok(_var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
-        add_to_worklist(relay_expr.clone(), worklist);
+
     } else if let Ok(_constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
-        add_to_worklist(relay_expr.clone(), worklist);
+
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         for i in 0..call.args.len() {
             // Recursively add children (and their dependencies) to the worklist
-            create_worklist(call.args.get(i.try_into().unwrap()).unwrap(), worklist);
+            create_worklist(call.args.get(i.try_into().unwrap()).unwrap(), worklist, visited);
         }
-        add_to_worklist(relay_expr.clone(), worklist);
     } else if let Ok(tuple_get_item) = relay_expr
         .clone()
         .downcast::<tvm::ir::relay::TupleGetItem>()
     {
-        create_worklist(tuple_get_item.tuple.clone(), worklist);
-        add_to_worklist(relay_expr.clone(), worklist);
+        create_worklist(tuple_get_item.tuple.clone(), worklist, visited);
     } else if let Ok(tuple) = relay_expr
         .clone()
         .downcast::<tvm::ir::relay::Tuple>()
     {
         for i in 0..tuple.fields.len() {
-            create_worklist(tuple.fields.get(i.try_into().unwrap()).unwrap(), worklist);
+            create_worklist(tuple.fields.get(i.try_into().unwrap()).unwrap(), worklist, visited);
         }
-        add_to_worklist(relay_expr.clone(), worklist);
     } else {
         // NOTE: if you're hitting this TODO, it might be that you have not
         // actually implemented the TVM Rust bindings for the Relay construct
@@ -585,6 +584,8 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>) {
         // work!
         todo!("Not implemented: {:?}", tvm::ir::as_text(relay_expr))
     }
+    // add current node to worklist
+    worklist.push(relay_expr.clone());
 }
 
 /// Compile a Relay expression to a Glenside [`RecExpr`]
@@ -815,6 +816,28 @@ fn compile_expression(
                         ))
                     } else {
                         compute(glenside_expr, ComputeType::ReLU, data_id)
+                    }
+                }
+                "nn.leaky_relu" => {
+                    assert_eq!(call.args.len(), 1);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::LeakyReluAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let alpha_id =
+                        glenside_expr.add(Language::NotNanFloat64(NotNan::new(attrs.alpha).unwrap()));
+                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelayLeakyReLU)
+                    {
+                        let leaky_relu_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayLeakyReLU,
+                        ));
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![leaky_relu_id, data_id, alpha_id].into_boxed_slice(),
+                        ))
+                    } else {
+                        todo!();
                     }
                 }
                 "sqrt" | "negative" => {
