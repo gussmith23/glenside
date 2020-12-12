@@ -1503,6 +1503,36 @@ fn compile_expression(
                         attrs.out_layout.as_str().unwrap(),
                     )
                 }
+                "nn.upsampling" => {
+                    todo!()
+                }
+                "concatenate" => {
+                    todo!()   
+                }
+                "reshape" => {
+                    todo!()   
+                }
+                "split" => {
+                    todo!()   
+                }
+                "sigmoid" => {
+                    todo!()   
+                }
+                "transpose" => {
+                    todo!()   
+                }
+                "maximum" => {
+                    todo!()   
+                }
+                "minimum" => {
+                    todo!()   
+                }
+                "nn.avg_pool2d" => {
+                    todo!()   
+                }
+                "squeeze" => {
+                    todo!()   
+                }
                 _ => todo!(),
             }
         } else {
