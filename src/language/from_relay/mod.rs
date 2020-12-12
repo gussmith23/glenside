@@ -1504,34 +1504,97 @@ fn compile_expression(
                     )
                 }
                 "nn.upsampling" => {
-                    todo!()
+                    assert_eq!(call.args.len(), 1);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::UpSamplingAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    todo!() 
                 }
                 "concatenate" => {
-                    todo!()   
+                    assert_eq!(call.args.len(), 1);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::ConcatenateAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    assert!(attrs.axis >= 0);
+                    let axis_id = glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));
+
+                    todo!()
                 }
                 "reshape" => {
+                    assert_eq!(call.args.len(), 1);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::ReshapeAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    let new_shape = &attrs.newshape;
                     todo!()   
                 }
                 "split" => {
+                    assert_eq!(call.args.len(), 1);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::SplitAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    let indices_or_sections = &attrs.indices_or_sections;
+                    let axis = attrs.axis;
+                    assert!(axis >= 0);
+                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
                     todo!()   
                 }
                 "sigmoid" => {
-                    todo!()   
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    
+                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelaySigmoid)
+                    {
+                        let sigmoid_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelaySigmoid,
+                        ));
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![sigmoid_id, data_id].into_boxed_slice(),
+                        ))
+                    } else {
+                        todo!()
+                    }
                 }
                 "transpose" => {
-                    todo!()   
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::TransposeAttrs>()
+                        .unwrap();
+                    let transpose_list = attrs.axes.clone().into_iter().map(|x| {
+                        x.downcast::<IntImm>().unwrap().value as usize
+                    }).collect::<Vec<usize>>();
+                    access_transpose(glenside_expr, data_id, &transpose_list)
                 }
                 "maximum" => {
-                    todo!()   
+                    todo!()
                 }
                 "minimum" => {
-                    todo!()   
+                    todo!()
                 }
                 "nn.avg_pool2d" => {
-                    todo!()   
+                    todo!()
                 }
                 "squeeze" => {
-                    todo!()   
+                    todo!()
                 }
                 _ => todo!(),
             }

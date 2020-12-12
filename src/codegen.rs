@@ -1049,7 +1049,8 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
 
                     Some(add_out)
                 }
-                RelayOperator::RelayLeakyReLU => todo!()
+                RelayOperator::RelayLeakyReLU => todo!(),
+                RelayOperator::RelaySigmoid => todo!()
             }
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
@@ -4078,6 +4079,7 @@ int main() {{
                 crate::language::RelayOperator::RelayBatchFlatten,
                 crate::language::RelayOperator::RelayBiasAdd,
                 crate::language::RelayOperator::RelayAdd,
+                crate::language::RelayOperator::RelaySigmoid,
             ],
         );
         let mut env = HashMap::default();

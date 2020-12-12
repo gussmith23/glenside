@@ -334,6 +334,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-add <a: access> <b: access>)
     RelayAdd,
+    
+    /// (relay-operator relay-sigmoid <data: access>)
+    RelaySigmoid,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -347,6 +350,7 @@ impl FromStr for RelayOperator {
             "relay-batch-flatten" => Ok(RelayOperator::RelayBatchFlatten),
             "relay-bias-add" => Ok(RelayOperator::RelayBiasAdd),
             "relay-add" => Ok(RelayOperator::RelayAdd),
+            "relay-sigmoid" => Ok(RelayOperator::RelaySigmoid),
             _ => Err(()),
         }
     }
@@ -366,6 +370,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayBatchFlatten => "relay-batch-flatten",
                 RelayOperator::RelayBiasAdd => "relay-bias-add",
                 RelayOperator::RelayAdd => "relay-add",
+                RelayOperator::RelaySigmoid => "relay-sigmoid",
             }
         )
     }
@@ -1636,6 +1641,26 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()[..]
                         {
                             [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(_)] => a.clone(),
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelaySigmoid => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a)] => a.clone(),
                             _ => panic!("Parameters do not type check"),
                         };
 
