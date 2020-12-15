@@ -1163,9 +1163,7 @@ pub fn slice_concatenate_accesses(
 
             let axis_id = egraph.add(Language::Usize(self.axis));
 
-            let concat_args_ids = 
-            // Create slice arguments first
-            (0..(dim_value / self.segment_size))
+            let concat_args_ids = (0..(dim_value / self.segment_size))
                 .map(|segment_index| {
                     let low_bound = segment_index * self.segment_size;
                     let high_bound = low_bound + self.segment_size;
@@ -1182,8 +1180,9 @@ pub fn slice_concatenate_accesses(
                 .chain(std::iter::once(axis_id))
                 .collect::<Vec<_>>();
 
-            let concat_varargs_id = egraph
-                .add(Language::AccessConcatenateVarargs(concat_args_ids.into_boxed_slice()));
+            let concat_varargs_id = egraph.add(Language::AccessConcatenateVarargs(
+                concat_args_ids.into_boxed_slice(),
+            ));
 
             vec![concat_varargs_id]
         }
@@ -5022,21 +5021,15 @@ mod tests {
         let rws = vec![
             super::slice_concatenate_accesses(
                 0,
-                SliceConcatenateStrategy::DivideIntoVarargs {
-                    segment_size: 16
-                },
+                SliceConcatenateStrategy::DivideIntoVarargs { segment_size: 16 },
             ),
             super::slice_concatenate_accesses(
                 1,
-                SliceConcatenateStrategy::DivideIntoVarargs {
-                    segment_size: 8
-                },
+                SliceConcatenateStrategy::DivideIntoVarargs { segment_size: 8 },
             ),
         ];
 
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis{
-            name_to_shape: map
-        });
+        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&program);
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
@@ -5048,9 +5041,12 @@ mod tests {
                 (access-slice (access (access-tensor a) 1) 0 16 32)
                 0
             )"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search_eclass(&runner.egraph, id).unwrap().substs.len(),
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap()
+            .substs
+            .len(),
             1
         );
 
@@ -5062,9 +5058,12 @@ mod tests {
                 (access-slice (access (access-tensor a) 1) 1 24 32)
                 1
             )"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search_eclass(&runner.egraph, id).unwrap().substs.len(),
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap()
+            .substs
+            .len(),
             1
         );
     }
