@@ -1050,7 +1050,9 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                     Some(add_out)
                 }
                 RelayOperator::RelayLeakyReLU => todo!(),
-                RelayOperator::RelaySigmoid => todo!()
+                RelayOperator::RelaySigmoid => todo!(),
+                RelayOperator::RelayAvgPool2D => todo!(),
+                RelayOperator::RelayUpSampling => todo!(),
             }
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {

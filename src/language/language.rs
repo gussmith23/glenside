@@ -324,6 +324,16 @@ pub enum RelayOperator {
     /// (relay-operator relay-global-avg-pool2d <data: access>
     ///  <layout: RelayActivationLayout>)
     RelayGlobalAvgPool2D,
+    
+    /// (relay-operator relay-avg-pool2d <data: access> 
+    /// <pool_size: shape> <strides: shape> <padding: shape> <layout: RelayActivationLayout>
+    /// <ceil_mode: ???> <count_include_pad: ???>
+    /// )
+    RelayAvgPool2D,
+    
+    /// (relay-operator relay-upsampling <data: access> <scale_h: Float64> <scale_w: Float64>
+    /// <layout: RelayActivationLayout> <method: ???> <align_corners: ???>)
+    RelayUpSampling,
 
     /// (relay-operator relay-batch-flatten <data: access>)
     RelayBatchFlatten,
@@ -351,6 +361,8 @@ impl FromStr for RelayOperator {
             "relay-bias-add" => Ok(RelayOperator::RelayBiasAdd),
             "relay-add" => Ok(RelayOperator::RelayAdd),
             "relay-sigmoid" => Ok(RelayOperator::RelaySigmoid),
+            "relay-avg-pool2d" => Ok(RelayOperator::RelayAvgPool2D),
+            "relay-upsampling" => Ok(RelayOperator::RelayUpSampling),
             _ => Err(()),
         }
     }
@@ -371,6 +383,8 @@ impl Display for RelayOperator {
                 RelayOperator::RelayBiasAdd => "relay-bias-add",
                 RelayOperator::RelayAdd => "relay-add",
                 RelayOperator::RelaySigmoid => "relay-sigmoid",
+                RelayOperator::RelayAvgPool2D => "relay-avg-pool2d",
+                RelayOperator::RelayUpSampling => "relay-upsampling"
             }
         )
     }
@@ -1717,6 +1731,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                         access.zero_regions = HashMap::default();
 
                         MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayAvgPool2D => {
+                        todo!()
+                    }
+                    crate::language::RelayOperator::RelayUpSampling => {
+                        todo!()
                     }
                 }
             }
