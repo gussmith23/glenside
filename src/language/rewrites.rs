@@ -2376,6 +2376,40 @@ pub fn systolic_array_conv2d_im2col_fc_with_blocking(
     todo!()
 }
 
+pub fn bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_left(
+    num_varargs: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    // the vec ["?t0", "?t1", ... "?tn"]
+    let vars = (0..num_varargs)
+        .map(|u| format!("?t{}", u))
+        .collect::<Vec<_>>();
+
+    let searcher_pattern = format!(
+        "(access-cartesian-product (access-concatenate-varargs {} ?axis) ?right)",
+        vars.join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+
+    let applier_pattern = format!(
+        "
+             (access-concatenate-varargs
+                {}
+                ?axis
+             )",
+        vars.iter()
+            .map(|s| format!("(access-cartesian-product {} ?right)", s))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+
+    rewrite!(format!("bubble-access-concatenate-varargs-{}-through-access-cartesian-product-not-item-axis-left", num_varargs);
+             { searcher_pattern } =>
+             { applier_pattern }
+             if not_item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
+}
 #[cfg(test)]
 mod tests {
 
@@ -4980,5 +5014,46 @@ mod tests {
                 .search_eclass(&runner.egraph, id).unwrap().substs.len(),
             1
         );
+    }
+
+    #[test]
+    fn bubble_access_concatenate_varargs_through_access_cartesian_product_left() {
+        let program = "
+             (access-cartesian-product
+              (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        let rws = vec![
+            super::bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_left(3),
+        ];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-concatenate-varargs
+              (access-cartesian-product
+               (access (access-tensor t-3-32-32) 1)
+               (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              )
+              (access-cartesian-product
+               (access (access-tensor t-3-32-32) 1)
+               (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              )
+              (access-cartesian-product
+               (access (access-tensor t-3-32-32) 1)
+               (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              )
+              0
+             )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
