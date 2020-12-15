@@ -2410,6 +2410,59 @@ pub fn bubble_access_concatenate_varargs_through_access_cartesian_product_not_it
              { applier_pattern }
              if not_item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
 }
+
+pub fn bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_right(
+    num_varargs: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    let vars = (0..num_varargs)
+        .map(|u| format!("?t{}", u))
+        .collect::<Vec<_>>();
+
+    let searcher_pattern = format!(
+        "(access-cartesian-product ?left (access-concatenate-varargs {} ?axis))",
+        vars.join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+    struct ApplierImpl {
+        axis: Var,
+        left: Var,
+        vars: Vec<String>,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let left = match &egraph[subst[self.left]].data {
+                MyAnalysisData::AccessPattern(a) => a,
+                _ => panic!(),
+            };
+            let axis = MyAnalysis::get_usize(subst[self.axis], egraph);
+            let new_axis = axis + left.shape.ndim();
+            format!(
+                "(access-concatenate-varargs
+                   {}
+                   {}
+                  )",
+                self.vars
+                    .iter()
+                    .map(|s| format!("(access-cartesian-product ?left {})", s))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                new_axis
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!(format!("bubble-access-concatenate-varargs-{}-through-access-cartesian-product-not-item-axis-right", num_varargs);
+            { searcher_pattern } =>
+            { ApplierImpl {
+                axis: "?axis".parse().unwrap(),
+                left: "?left".parse().unwrap(),
+                vars
+            } }
+            if not_item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
+}
 #[cfg(test)]
 mod tests {
 
@@ -5049,6 +5102,47 @@ mod tests {
                (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
               )
               0
+             )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_varargs_through_access_cartesian_product_right() {
+        let program = "
+             (access-cartesian-product
+              (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+              (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        let rws = vec![
+            super::bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_right(3),
+        ];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-concatenate-varargs
+              (access-cartesian-product
+               (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+               (access (access-tensor t-3-32-32) 1)
+              )
+              (access-cartesian-product
+               (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+               (access (access-tensor t-3-32-32) 1)
+              )
+              (access-cartesian-product
+               (access-concatenate-varargs (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
+               (access (access-tensor t-3-32-32) 1)
+              )
+              1
              )"
         .parse::<Pattern<_>>()
         .unwrap()
