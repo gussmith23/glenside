@@ -53,6 +53,8 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         glenside::language::rewrites::flatten_unflatten_any_access(),
         glenside::language::rewrites::simplify_access_flattens(),
         glenside::language::rewrites::simplify_access_reshapes(),
+        glenside::language::rewrites::simplify_access_flatten_access_reshape(),
+        glenside::language::rewrites::simplify_access_reshape_access_flatten(),
 
         glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
         glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
