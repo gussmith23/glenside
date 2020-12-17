@@ -2538,31 +2538,6 @@ pub fn bubble_access_concatenate_varargs_through_access_cartesian_product_same_i
     )
 }
 
-pub fn bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(
-    num_varargs: usize,
-) -> Rewrite<Language, MyAnalysis> {
-    let vars = (0..num_varargs)
-        .map(|u| format!("?t{}", u))
-        .collect::<Vec<_>>();
-
-    let searcher_pattern = format!(
-        "(compute dot-product (access-concatenate-varargs {} ?axis))",
-        vars.join(" ")
-    )
-    .parse::<Pattern<_>>()
-    .unwrap();
-
-    rewrite!(format!("bubble-access-concatenate-varargs-{}-through-compute-dot-product-item-axis", num_varargs);
-             { searcher_pattern } =>
-             "(compute reduce-sum
-               (access-pair
-                (compute dot-product ?a0)
-                (compute dot-product ?a1)
-               )
-              )"
-             if item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
-}
-
 /// Returns the set of all possible values of `n` in an egraph, where `n` is the
 /// number of varargs used in an instance of `access-concatenate-varargs`.
 /// ```
@@ -2627,6 +2602,69 @@ pub fn access_concatenate_vararg_num_varargs(egraph: &EG) -> HashSet<usize> {
     set
 }
 
+/// When bubbling up through (compute dot-product ...), what you do depends on
+/// whether you're concatenating along an item axis or not. If you are not, it's
+/// easy: you just bubble it straight through. If you are, then you are
+/// concatenating along an axis that's getting reduced in the reduction sum. So
+/// we need to explicitly insert another reduction.
+pub fn bubble_access_concatenate_varargs_through_compute_dot_product_not_item_axis(
+    num_varargs: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    let vars = (0..num_varargs)
+        .map(|u| format!("?t{}", u))
+        .collect::<Vec<_>>();
+    let searcher_pattern = format!(
+        "(compute dot-product (access-concatenate-varargs {} ?axis))",
+        vars.join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+    let applier_pattern = format!(
+        "(access-concatenate-varargs
+          {}
+          ?axis
+         )",
+        vars.iter()
+            .map(|s| format!("(compute dot-product {})", s))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+    rewrite!(format!("bubble-access-concatenate-varargs-{}-through-compute-dot-product-not-item-axis", num_varargs);
+             { searcher_pattern } => { applier_pattern }
+             if not_item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
+}
+
+pub fn bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(
+    num_varargs: usize,
+) -> Rewrite<Language, MyAnalysis> {
+    let vars = (0..num_varargs)
+        .map(|u| format!("?t{}", u))
+        .collect::<Vec<_>>();
+    let searcher_pattern = format!(
+        "(compute dot-product (access-concatenate-varargs {} ?axis))",
+        vars.join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+    let applier_pattern = format!(
+        "(compute reduce-sum
+          (access-pair-varargs
+           {}
+          )
+         )",
+        vars.iter()
+            .map(|s| format!("(compute dot-product {})", s))
+            .collect::<Vec<_>>()
+            .join(" ")
+    )
+    .parse::<Pattern<_>>()
+    .unwrap();
+    rewrite!(format!("bubble-access-concatenate-varargs-{}-through-compute-dot-product-item-axis", num_varargs);
+             { searcher_pattern } => { applier_pattern }
+             if item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
+}
 #[cfg(test)]
 mod tests {
 
@@ -5390,6 +5428,116 @@ mod tests {
               )
               3
              )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+    #[test]
+    fn bubble_access_concatenate_varargs_through_compute_dot_product_not_item_axis() {
+        let program = "
+             (compute dot-product
+              (access-concatenate-varargs
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               0
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        let rws = vec![
+            super::bubble_access_concatenate_varargs_through_compute_dot_product_not_item_axis(3),
+        ];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (access-concatenate-varargs
+              (compute dot-product (access (access-tensor t-3-32-32) 1))
+              (compute dot-product (access (access-tensor t-3-32-32) 1))
+              (compute dot-product (access (access-tensor t-3-32-32) 1))
+              0
+             )
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_varargs_through_compute_dot_product_item_access_0() {
+        let program = "
+             (compute dot-product
+              (access-concatenate-varargs
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               1
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(3)];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (compute reduce-sum
+              (access-pair-varargs
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+              )
+             )
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn bubble_access_concatenate_varargs_through_compute_dot_product_item_access_1() {
+        let program = "
+             (compute dot-product
+              (access-concatenate-varargs
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               (access (access-tensor t-3-32-32) 1)
+               2
+              )
+             )"
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        let rws =
+            vec![super::bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(3)];
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+             (compute reduce-sum
+              (access-pair-varargs
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+               (compute dot-product (access (access-tensor t-3-32-32) 1))
+              )
+             )
+             "
         .parse::<Pattern<_>>()
         .unwrap()
         .search_eclass(&runner.egraph, id)
