@@ -48,7 +48,12 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     let id = egraph.add_expr(&expr);
 
     let rws = vec![
+        // Flatten/unflatten all accesses to discover im2col, plus simplifying
+        // rewrites to simplify the mess that this rewrite creates.
         glenside::language::rewrites::flatten_unflatten_any_access(),
+        glenside::language::rewrites::simplify_access_flattens(),
+        glenside::language::rewrites::simplify_access_reshapes(),
+
         glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
         glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
         glenside::language::rewrites::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
