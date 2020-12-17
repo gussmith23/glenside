@@ -232,6 +232,11 @@ define_language! {
         // Simply pair every item of a0 with every item of a1.
         "access-pair" = AccessPair([Id; 2]),
 
+        // (access-pair-varargs <a0> ... <an>)
+        // Pair/tuple every item of a0...an. Adds a new tuple dimension as the
+        // first item dimension.
+        "access-pair-varargs" = AccessPairVarargs(Box<[Id]>),
+
         // (access-shift-right <a0>)
         // Shifts a dimension from shape to item shape.
         "access-shift-right" = AccessShiftRight(Id),
@@ -1133,6 +1138,45 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            AccessPairVarargs(ids) => {
+                let accesses = ids
+                    .iter()
+                    .map(|id| match &egraph[*id].data {
+                        MyAnalysisData::AccessPattern(a0) => a0,
+                        _ => panic!(),
+                    })
+                    .collect::<Vec<_>>();
+
+                assert!(accesses.len() >= 1);
+
+                assert!(accesses.iter().all(|a| a.shape == accesses[0].shape));
+                assert!(accesses
+                    .iter()
+                    .all(|a| a.item_shape == accesses[0].item_shape));
+
+                MyAnalysisData::AccessPattern(AccessPatternData {
+                    // TODO(@gussmith23) Implement zero regions
+                    // It's harmless (I think) if `zero_regions` defaults to
+                    // empty, but for it to be useful, we need to implement it
+                    // for each operator.
+                    zero_regions: {
+                        if accesses.iter().any(|a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        HashMap::default()
+                    },
+                    shape: accesses[0].shape.clone(),
+                    item_shape: IxDyn(
+                        std::iter::once(accesses.len())
+                            .chain(accesses[0].item_shape.as_array_view().iter().cloned())
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    ),
+                })
+            }
             AccessConcatenateVarargs(ids) => {
                 debug_assert!(ids.len() > 1);
 
@@ -5352,5 +5396,41 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn access_pair_varargs() {
+        let program = "
+         (access-pair-varargs
+          (access (access-tensor t-32-32) 1) (access (access-tensor t-32-32) 1)
+          (access (access-tensor t-32-32) 1) (access (access-tensor t-32-32) 1)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32]));
+                assert_eq!(a.item_shape, IxDyn(&[4, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[should_panic = "assertion failed: accesses.iter().all(|a| a.shape == accesses[0].shape)"]
+    #[test]
+    fn access_pair_varargs_panic() {
+        let program = "
+         (access-pair-varargs
+          (access (access-tensor t-32-32) 1) (access (access-tensor t-32-32) 1)
+          (access (access-tensor t-32-32) 0) (access (access-tensor t-32-32) 1)
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
+        egraph.add_expr(&program);
     }
 }

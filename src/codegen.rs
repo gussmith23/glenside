@@ -308,6 +308,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             // Box<[Id]>
             Language::RelayOperatorCall(ids)
             | Language::AccessConcatenateVarargs(ids)
+            | Language::AccessPairVarargs(ids)
             | Language::List(ids)
             | Language::Shape(ids) => {
                 for id in ids.iter() {
@@ -416,6 +417,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             // Box<[Id]>
             Language::RelayOperatorCall(ids)
             | Language::Shape(ids)
+            | Language::AccessPairVarargs(ids)
             | Language::List(ids)
             | Language::AccessConcatenateVarargs(ids) => {
                 for id in ids.iter() {
@@ -1737,6 +1739,7 @@ if (i{i} < {dim_len}) {{
 
         &Language::Literal(_)
         | &Language::AccessConcatenateVarargs(_)
+        | &Language::AccessPairVarargs(_)
         | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
         | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
         | &Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
