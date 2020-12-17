@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use ndarray::Dimension;
@@ -2559,6 +2561,70 @@ pub fn bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(
                )
               )"
              if item_axis("?axis".parse().unwrap(), "?t0".parse().unwrap()))
+}
+
+/// Returns the set of all possible values of `n` in an egraph, where `n` is the
+/// number of varargs used in an instance of `access-concatenate-varargs`.
+/// ```
+/// use egg::{EGraph, RecExpr};
+/// use glenside::language::{Language, MyAnalysis};
+/// use std::collections::{HashMap, HashSet};
+/// use std::iter::FromIterator;
+///
+/// let mut name_to_shape = HashMap::default();
+/// name_to_shape.insert("a".to_string(), vec![32, 32]);
+/// name_to_shape.insert("b".to_string(), vec![32, 64]);
+/// name_to_shape.insert("c".to_string(), vec![32, 128]);
+/// name_to_shape.insert("d".to_string(), vec![32, 256]);
+///
+/// let mut egraph = EGraph::<Language, MyAnalysis>::new(
+///     MyAnalysis{name_to_shape});
+/// egraph.add_expr(&"
+///  (access-concatenate-varargs
+///   (access (access-tensor a) 1)
+///   (access (access-tensor b) 1)
+///   (access (access-tensor c) 1)
+///   (access (access-tensor d) 1)
+///   1
+///  )".parse::<RecExpr<_>>().unwrap());
+/// egraph.add_expr(&"
+///  (access-concatenate-varargs
+///   (access (access-tensor a) 1)
+///   (access (access-tensor b) 1)
+///   (access (access-tensor c) 1)
+///   1
+///  )".parse::<RecExpr<_>>().unwrap());
+/// egraph.add_expr(&"
+///  (access-concatenate-varargs
+///   (access (access-tensor c) 1)
+///   (access (access-tensor a) 1)
+///   (access (access-tensor b) 1)
+///   1
+///  )".parse::<RecExpr<_>>().unwrap());
+/// egraph.add_expr(&"
+///  (access-concatenate-varargs
+///   (access (access-tensor a) 1)
+///   1
+///  )".parse::<RecExpr<_>>().unwrap());
+///
+/// assert_eq!(
+///     glenside::language::rewrites::access_concatenate_vararg_num_varargs(
+///         &egraph),
+///     HashSet::from_iter(vec![1, 3, 4]));
+/// ```
+pub fn access_concatenate_vararg_num_varargs(egraph: &EG) -> HashSet<usize> {
+    let mut set = HashSet::new();
+    for class in egraph.classes() {
+        for node in &class.nodes {
+            match node {
+                Language::AccessConcatenateVarargs(ids) => {
+                    set.insert(ids.len() - 1);
+                }
+                _ => (),
+            }
+        }
+    }
+    set
 }
 
 #[cfg(test)]
