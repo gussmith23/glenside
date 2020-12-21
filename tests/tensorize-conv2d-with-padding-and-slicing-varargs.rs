@@ -83,6 +83,13 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_varargs() {
         glenside::language::rewrites::bubble_access_slice_through_access_cartesian_product_same_item_axis(),
         glenside::language::rewrites::bubble_access_slice_through_compute_dot_product_not_item_axis(),
         glenside::language::rewrites::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(),
+
+        glenside::language::rewrites::bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_left(1),
+        glenside::language::rewrites::bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_right(1),
+        glenside::language::rewrites::bubble_access_concatenate_varargs_through_access_cartesian_product_same_item_axis(1),
+        glenside::language::rewrites::bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(1),
+        glenside::language::rewrites::bubble_access_concatenate_varargs_through_compute_dot_product_not_item_axis(1),
+
     ];
 
     const ITER_LIMIT: usize = 40;
@@ -92,31 +99,9 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_varargs() {
         .with_egraph(egraph)
         .with_time_limit(std::time::Duration::from_secs(EGG_SEARCH_TIME_SECS))
         .with_node_limit(500000)
-        .with_iter_limit(1);
+        .with_iter_limit(ITER_LIMIT);
 
-    while runner.iterations.len() < ITER_LIMIT {
-        let mut vararg_rewrites = Vec::default();
-        for n in glenside::language::rewrites::access_concatenate_vararg_num_varargs(&runner.egraph)
-        {
-            vararg_rewrites.extend(vec![
-                glenside::language::rewrites::bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_left(n),
-                glenside::language::rewrites::bubble_access_concatenate_varargs_through_access_cartesian_product_not_item_axis_right(n),
-                glenside::language::rewrites::bubble_access_concatenate_varargs_through_access_cartesian_product_same_item_axis(n),
-                glenside::language::rewrites::bubble_access_concatenate_varargs_through_compute_dot_product_item_axis(n),
-                glenside::language::rewrites::bubble_access_concatenate_varargs_through_compute_dot_product_not_item_axis(n),
-            ]);
-        }
-
-        runner.stop_reason = None;
-
-        runner = runner.run(
-            base_rws
-                .iter()
-                .chain(vararg_rewrites.iter())
-                .collect::<Vec<_>>(),
-        );
-        runner.print_report();
-    }
+    runner = runner.run(&base_rws);
 
     runner.print_report();
 
