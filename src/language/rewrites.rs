@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
+use log::debug;
 use ndarray::Dimension;
 use ndarray::IxDyn;
 
@@ -1182,6 +1183,8 @@ pub fn slice_concatenate_accesses(
                 .chain(std::iter::once(axis_id))
                 .collect::<Vec<_>>();
 
+            debug!("Sliced into {} parts", concat_args_ids.len() - 1);
+
             let concat_varargs_id = egraph.add(Language::AccessConcatenateVarargs(
                 concat_args_ids.into_boxed_slice(),
             ));
@@ -1774,6 +1777,8 @@ pub fn pad_slice_accesses(
 
             let dim_val = access[self.axis];
             let pad_to = closest_multiple(self.multiple_of, access[self.axis]);
+
+            debug!("Padding axis {} from {} to {}", self.axis, dim_val, pad_to);
 
             let pad_before = match self.pad_location {
                 PadLocation::End => 0,
