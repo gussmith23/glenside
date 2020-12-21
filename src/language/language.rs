@@ -205,7 +205,7 @@ define_language! {
         // (construct-tuple <access> <access> ...)
         // Tuple Construction
         "construct-tuple" = ConstructTuple(Box<[Id]>),
-        
+
         // (tuple-get-item <tuple> <i>)
         // Get the item at the ith index of tuple
         "tuple-get-item" = TupleGetItem([Id;2]),
@@ -312,7 +312,7 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-relu <data: access>)
     RelayReLU,
-    
+
     /// (relay-operator relay-relu <data: access> <data: access>)
     RelayLeakyReLU,
 
@@ -324,15 +324,14 @@ pub enum RelayOperator {
     /// (relay-operator relay-global-avg-pool2d <data: access>
     ///  <layout: RelayActivationLayout>)
     RelayGlobalAvgPool2D,
-    
-    /// (relay-operator relay-avg-pool2d <data: access> 
+
+    /// (relay-operator relay-avg-pool2d <data: access>
     /// <pool_size: shape> <strides: shape> <padding: shape> <layout: RelayActivationLayout>
-    /// <ceil_mode: ???> <count_include_pad: ???>
     /// )
     RelayAvgPool2D,
-    
+
     /// (relay-operator relay-upsampling <data: access> <scale_h: Float64> <scale_w: Float64>
-    /// <layout: RelayActivationLayout> <method: ???> <align_corners: ???>)
+    /// <layout: RelayActivationLayout>
     RelayUpSampling,
 
     /// (relay-operator relay-batch-flatten <data: access>)
@@ -344,9 +343,15 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-add <a: access> <b: access>)
     RelayAdd,
-    
+
     /// (relay-operator relay-sigmoid <data: access>)
     RelaySigmoid,
+
+    /// (relay-operator relay-maximum <a: access> <b: access>)
+    RelayMaximum,
+
+    /// (relay-operator relay-minimum <a:access> <b: access>)
+    RelayMinimum,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -363,6 +368,8 @@ impl FromStr for RelayOperator {
             "relay-sigmoid" => Ok(RelayOperator::RelaySigmoid),
             "relay-avg-pool2d" => Ok(RelayOperator::RelayAvgPool2D),
             "relay-upsampling" => Ok(RelayOperator::RelayUpSampling),
+            "relay-maximum" => Ok(RelayOperator::RelayMaximum),
+            "relay-minimum" => Ok(RelayOperator::RelayMinimum),
             _ => Err(()),
         }
     }
@@ -384,7 +391,9 @@ impl Display for RelayOperator {
                 RelayOperator::RelayAdd => "relay-add",
                 RelayOperator::RelaySigmoid => "relay-sigmoid",
                 RelayOperator::RelayAvgPool2D => "relay-avg-pool2d",
-                RelayOperator::RelayUpSampling => "relay-upsampling"
+                RelayOperator::RelayUpSampling => "relay-upsampling",
+                RelayOperator::RelayMaximum => "relay-maximum",
+                RelayOperator::RelayMinimum => "relay-minimum",
             }
         )
     }
@@ -1398,20 +1407,18 @@ impl egg::Analysis<Language> for MyAnalysis {
             ConstructTuple(ids) => {
                 let tuple_shape = ids
                     .iter()
-                    .map(|id| {
-                        Box::new((&egraph[*id].data).clone())
-                    })
+                    .map(|id| Box::new((&egraph[*id].data).clone()))
                     .collect::<Vec<_>>();
                 MyAnalysisData::Tuple(tuple_shape)
-            },
+            }
             TupleGetItem(ids) => {
                 let index = MyAnalysis::get_usize(ids[1], egraph);
                 let data = match &egraph[ids[0]].data {
                     MyAnalysisData::Tuple(x) => x,
-                    _ => panic!()
+                    _ => panic!(),
                 };
                 *(data[index]).clone()
-            },
+            }
             RelayOperator(op) => MyAnalysisData::RelayOperator(op.clone()),
             RelayOperatorCall(params) => {
                 assert!(params.len() > 0);
@@ -1654,7 +1661,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(_)] => a.clone(),
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(_)] => {
+                                a.clone()
+                            }
                             _ => panic!("Parameters do not type check"),
                         };
 
@@ -1732,12 +1741,10 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::RelayAvgPool2D => {
-                        todo!()
-                    }
-                    crate::language::RelayOperator::RelayUpSampling => {
-                        todo!()
-                    }
+                    crate::language::RelayOperator::RelayAvgPool2D => todo!(),
+                    crate::language::RelayOperator::RelayUpSampling => todo!(),
+                    crate::language::RelayOperator::RelayMaximum => todo!(),
+                    crate::language::RelayOperator::RelayMinimum => todo!(),
                 }
             }
             &AccessLiteral(id) => match &egraph[id].data {
@@ -5322,9 +5329,8 @@ mod tests {
                     (MyAnalysisData::AccessPattern(t1), MyAnalysisData::AccessPattern(t2)) => {
                         assert_eq!(t1.shape, IxDyn(&[32, 64]));
                         assert_eq!(t2.shape, IxDyn(&[16, 32]));
-
-                    },
-                    _ => panic!()
+                    }
+                    _ => panic!(),
                 }
             }
             _ => panic!(),

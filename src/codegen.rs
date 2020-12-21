@@ -7,17 +7,16 @@ use egg::EGraph;
 use egg::Id;
 use itertools::Itertools;
 use log::warn;
-use ndarray::{Array, ArrayD};
 use ndarray::Dimension;
 use ndarray::IxDyn;
+use ndarray::{Array, ArrayD};
+use ndarray_npy::{read_npy, write_npy};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 use std::iter::FromIterator;
 use std::process::Command;
-use ndarray_npy::{read_npy, write_npy};
-use std::fs::File;
-    use std::io::Write;
-    
+
 type Expr = EGraph<Language, MyAnalysis>;
 
 static SYSTOLIC_ARRAY_SIGNATURE: &str = "
@@ -310,7 +309,10 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 find_vars_recursive_helper(set, expr, id);
             }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::List(ids) | Language::Shape(ids) | Language::ConstructTuple(ids) => {
+            Language::RelayOperatorCall(ids)
+            | Language::List(ids)
+            | Language::Shape(ids)
+            | Language::ConstructTuple(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -416,7 +418,10 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
                 }
             }
             // Box<[Id]>
-            Language::RelayOperatorCall(ids) | Language::Shape(ids) | Language::List(ids) | Language::ConstructTuple(ids) => {
+            Language::RelayOperatorCall(ids)
+            | Language::Shape(ids)
+            | Language::List(ids)
+            | Language::ConstructTuple(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
@@ -428,7 +433,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::AccessReshape(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
-            | &Language::AccessSqueeze(ids) 
+            | &Language::AccessSqueeze(ids)
             | &Language::TupleGetItem(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
@@ -1053,6 +1058,8 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                 RelayOperator::RelaySigmoid => todo!(),
                 RelayOperator::RelayAvgPool2D => todo!(),
                 RelayOperator::RelayUpSampling => todo!(),
+                RelayOperator::RelayMaximum => todo!(),
+                RelayOperator::RelayMinimum => todo!(),
             }
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
@@ -1821,10 +1828,8 @@ pub fn run_relay(
         output.status.success(),
         "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
         output.status.code(),
-        std::str::from_utf8(output.stdout.as_slice())
-            .expect("Could not convert stderr to UTF8"),
-        std::str::from_utf8(output.stderr.as_slice())
-            .expect("Could not convert stderr to UTF8")
+        std::str::from_utf8(output.stdout.as_slice()).expect("Could not convert stderr to UTF8"),
+        std::str::from_utf8(output.stderr.as_slice()).expect("Could not convert stderr to UTF8")
     );
 
     // TODO(@gussmith23) output type assumption
@@ -4114,7 +4119,7 @@ int main() {{
             "",
             &vec!["x"],
             &generate_worklist_for_codegen(&egraph, id),
-            true
+            true,
         );
 
         let main_code = format!(
@@ -4260,7 +4265,7 @@ int main() {{
             "",
             &vec!["x"],
             &generate_worklist_for_codegen(&egraph, id),
-            true
+            true,
         );
 
         let main_code = format!(
