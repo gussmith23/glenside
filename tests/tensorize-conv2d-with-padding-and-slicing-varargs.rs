@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 #[test]
-#[ignore = "not yet finished"]
+#[should_panic(expected = "reason")]
 fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_varargs() {
     test_logger::ensure_env_logger_initialized();
 
