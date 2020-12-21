@@ -31,6 +31,8 @@ type EGraph = egg::EGraph<Language, MyAnalysis>;
 
 pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) -> bool {
     if match enode {
+        Language::AccessConcatenateVarargs(_) => todo!(),
+        Language::AccessPairVarargs(_) => todo!(),
 
                 // Things we should never see.
                 Language::CartesianProduct(_)
@@ -109,6 +111,9 @@ pub fn filter_obviously_less_preferable_nodes(
 ) -> bool {
     fn is_obviously_extractable(enode: &Language) -> bool {
         match enode {
+            Language::AccessConcatenateVarargs(_) => todo!(),
+            Language::AccessPairVarargs(_) => todo!(),
+
             // Things we should never see.
             Language::CartesianProduct(_)
             | Language::MapDotProduct(_)
