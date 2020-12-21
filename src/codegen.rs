@@ -4087,6 +4087,7 @@ int main() {{
                 crate::language::RelayOperator::RelayBiasAdd,
                 crate::language::RelayOperator::RelayAdd,
                 crate::language::RelayOperator::RelaySigmoid,
+                crate::language::RelayOperator::RelayUpSampling
             ],
         );
         let mut env = HashMap::default();
