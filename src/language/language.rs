@@ -1,7 +1,7 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::debug;
-use ndarray::{s, Dimension, Ix, IxDyn};
+use ndarray::{s, Dimension, Ix, IxDyn, array};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -1742,7 +1742,40 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayAvgPool2D => todo!(),
-                    crate::language::RelayOperator::RelayUpSampling => todo!(),
+                    crate::language::RelayOperator::RelayUpSampling => {
+                        let mut access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(scale_h), MyAnalysisData::Literal(scale_w), MyAnalysisData::RelayActivationLayout(layout)] => {
+                                assert_eq!(layout.clone(), crate::language::RelayActivationLayout::NCHW, "upsampling only supports NCHW");
+                                // let mut shape = array![a.shape[0], a.shape[1], scale_h.into() * shape[2], scale_w.into() * shape[w]];
+                                let mut shape = a.shape.clone();
+                                assert_eq!(scale_h.ndim(), 0);
+                                assert_eq!(scale_w.ndim(), 0);
+                                shape[2] = (scale_h.first().unwrap() * (shape[2] as f64)) as usize;
+                                shape[3] = (scale_w.first().unwrap() * (shape[3] as f64)) as usize;
+
+                                AccessPatternData {
+                                    shape: shape,
+                                    item_shape: a.item_shape.clone(),
+                                    zero_regions: a.zero_regions.clone()
+                                }
+                            }
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(access)
+                    },
                     crate::language::RelayOperator::RelayMaximum => todo!(),
                     crate::language::RelayOperator::RelayMinimum => todo!(),
                 }
