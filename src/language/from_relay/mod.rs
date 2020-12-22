@@ -1573,6 +1573,7 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::UpSamplingAttrs>()
                         .unwrap();
+                    assert_eq!(attrs.layout.as_str().unwrap(), "NCHW");
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let scale_h_id = glenside_expr
                         .add(Language::NotNanFloat64(NotNan::new(attrs.scale_h).unwrap()));
@@ -1661,7 +1662,7 @@ fn compile_expression(
                         });
                     }
 
-                    let new_shape_id = shape(glenside_expr, new_shape);
+                    let new_shape_id = access_shape(glenside_expr, &new_shape, &[]);
 
                     glenside_expr.add(Language::AccessReshape([data_id, new_shape_id]))
                 }
@@ -1705,7 +1706,7 @@ fn compile_expression(
                         zero_index_id,
                     ])));
 
-                    for i in 1..indices_or_sections.len() - 1 {
+                    for i in 0..indices_or_sections.len() - 1 {
                         let left = glenside_expr.add(Language::Usize(
                             indices_or_sections
                                 .get(i.try_into().ok().unwrap())
@@ -1728,7 +1729,6 @@ fn compile_expression(
                         );
                     }
 
-                    let mut ids = Vec::default();
                     let last_index_id = glenside_expr.add(Language::Usize(
                         indices_or_sections
                             .get((indices_or_sections.len() - 1).try_into().ok().unwrap())
