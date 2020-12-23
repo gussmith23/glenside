@@ -15,8 +15,10 @@ parser.add_argument('--relay_filepath',
                     nargs=1,
                     type=argparse.FileType('rb'),
                     default=sys.stdin)
-parser.add_argument('npy_out_filepath', type=argparse.FileType('wb'))
-parser.add_argument('npy_arg_filepath',
+parser.add_argument('--npy_out_filepath', 
+                    nargs='*',
+                    type=argparse.FileType('wb'))
+parser.add_argument('--npy_arg_filepath',
                     nargs='*',
                     type=argparse.FileType('rb'))
 
@@ -32,6 +34,8 @@ else:
     expr = tvm.parser.fromtext(relay_in)
 
 inputs = [np.load(arg_file) for arg_file in parsed.npy_arg_filepath]
-output = relay.create_executor(mod=expr).evaluate()(*inputs).asnumpy()
+# need graph runtime or crashes for yolo
+output = relay.create_executor(mod=expr, kind="graph").evaluate()(*inputs)
 
-np.save(parsed.npy_out_filepath, output)
+for i in range(len(parsed.npy_out_filepath)):
+    np.save(parsed.npy_out_filepath[i], output[i].asnumpy())
