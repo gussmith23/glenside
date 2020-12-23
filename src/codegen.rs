@@ -1848,7 +1848,6 @@ pub fn run_relay_tuple_out(
         env!("CARGO_MANIFEST_DIR")
     );
     
-
     let mut cmd = Command::new("python3");
     cmd.arg(script_filepath);
     cmd.arg("--npy_out_filepath");
@@ -1869,7 +1868,7 @@ pub fn run_relay_tuple_out(
                 .collect::<String>()
         ));
         cmd.arg(&output_filepath);
-        output_paths.push(output_filepath);
+        output_paths.push(output_filepath.clone().into_os_string().into_string().unwrap());
     }
     cmd.arg("--npy_arg_filepath");
     cmd.stdin(std::process::Stdio::piped())
