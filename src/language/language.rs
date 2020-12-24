@@ -1741,7 +1741,78 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::RelayAvgPool2D => todo!(),
+                    crate::language::RelayOperator::RelayAvgPool2D => {
+                        let (mut access, pool_size, strides, padding, layout) = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(pool_size), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::RelayActivationLayout(l)] => {
+                                (a.clone(), pool_size, strides, padding, l)
+                            }
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        if !access.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        access.zero_regions = HashMap::default();
+
+                        assert_eq!(access.shape.ndim() + access.item_shape.ndim(), 4);
+                        assert_eq!(pool_size.shape.ndim(), 2);
+                        assert_eq!(strides.shape.ndim(), 2);
+                        assert_eq!(padding.shape.ndim(), 4);
+
+                        match layout {
+                            crate::language::RelayActivationLayout::NCHW => {
+                                // Sorry for the horrific indentation...
+                                access[2] =
+                                // The dimension plus padding
+                                    (((padding.shape[0] + access[2] + padding.shape[2])
+                                      // Get the number of spots where we could pool
+                                      - (pool_size.shape[0] - 1))
+                                     // Then calculate the spots we actually pool at
+                                     // using the stride
+                                     + strides.shape[0]
+                                     - 1)
+                                    / strides.shape[0];
+                                access[3] = (((padding.shape[1] + access[3] + padding.shape[3])
+                                              // Get the number of spots where we could pool
+                                              - (pool_size.shape[1] - 1))
+                                             // Then calculate the spots we actually pool at
+                                             // using the stride
+                                             + strides.shape[1]
+                                    - 1)
+                                    / strides.shape[1];
+                            }
+                            crate::language::RelayActivationLayout::NHWC => {
+                                // Sorry for the horrific indentation...
+                                access[1] =
+                                // The dimension plus padding
+                                    (((padding.shape[0] + access[1] + padding.shape[2])
+                                      // Get the number of spots where we could pool
+                                      - (pool_size.shape[0] - 1))
+                                     // Then calculate the spots we actually pool at
+                                     // using the stride
+                                     + strides.shape[0]
+                                     - 1)
+                                    / strides.shape[0];
+                                access[2] = (((padding.shape[1] + access[2] + padding.shape[3])
+                                              // Get the number of spots where we could pool
+                                              - (pool_size.shape[1] - 1))
+                                             // Then calculate the spots we actually pool at
+                                             // using the stride
+                                             + strides.shape[1]
+                                    - 1)
+                                    / strides.shape[1];
+                            }
+                        }
+
+                        MyAnalysisData::AccessPattern(access)
+                    },
                     crate::language::RelayOperator::RelayUpSampling => {
                         let mut access = match params[1..]
                             .iter()
