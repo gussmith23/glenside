@@ -41,4 +41,4 @@ output = relay.create_executor(mod=expr, kind="graph").evaluate()(*inputs)
 for i in range(len(parsed.npy_out_filepath)):
     filepath = parsed.npy_out_filepath[i]
     with open(filepath, "wb"):
-        np.save(filepath, output[i].asnumpy())
+        np.save(filepath, output[i].asnumpy().astype('float32'))
