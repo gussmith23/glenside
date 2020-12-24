@@ -1798,7 +1798,9 @@ pub fn run_relay(
 
     let mut cmd = Command::new("python3");
     cmd.arg(script_filepath);
+    cmd.arg("--npy_out_filepath");
     cmd.arg(&output_filepath);
+    cmd.arg("--npy_arg_filepath");
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
