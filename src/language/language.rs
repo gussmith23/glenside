@@ -1429,7 +1429,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                    crate::language::RelayOperator::RelayAdd => {
+                    crate::language::RelayOperator::RelayAdd | crate::language::RelayOperator::RelayMaximum | crate::language::RelayOperator::RelayMinimum => {
                         let (a, b) = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
@@ -1776,8 +1776,6 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     },
-                    crate::language::RelayOperator::RelayMaximum => todo!(),
-                    crate::language::RelayOperator::RelayMinimum => todo!(),
                 }
             }
             &AccessLiteral(id) => match &egraph[id].data {

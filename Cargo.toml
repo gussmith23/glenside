@@ -39,7 +39,7 @@ git = "https://github.com/gussmith23/rplex"
 # issue.
 # NOTE Keep glenside-evaluation in sync with this
 # If the versions get out of whack, we'll probably have some weird errors.
-rev = "cb1c4effdbc8607f20798985afa9faafa1a1ab34"
+rev = "4ed759f6b6cafbab707f95b57762913a1f57c021"
 git = "https://github.com/hypercubestart/incubator-tvm"
 optional = true
 

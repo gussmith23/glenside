@@ -4155,11 +4155,7 @@ int main() {{
             &vec![
                 crate::language::RelayOperator::RelayBatchNormInference,
                 crate::language::RelayOperator::RelaySoftmax,
-                crate::language::RelayOperator::RelayReLU,
                 crate::language::RelayOperator::RelayLeakyReLU,
-                crate::language::RelayOperator::RelayMaxPool2D,
-                crate::language::RelayOperator::RelayGlobalAvgPool2D,
-                crate::language::RelayOperator::RelayBatchFlatten,
                 crate::language::RelayOperator::RelayBiasAdd,
                 crate::language::RelayOperator::RelayAdd,
                 crate::language::RelayOperator::RelaySigmoid,
@@ -4304,12 +4300,12 @@ int main() {{
             &vec![
                 crate::language::RelayOperator::RelayBatchNormInference,
                 crate::language::RelayOperator::RelaySoftmax,
-                crate::language::RelayOperator::RelayReLU,
-                crate::language::RelayOperator::RelayMaxPool2D,
-                crate::language::RelayOperator::RelayGlobalAvgPool2D,
-                crate::language::RelayOperator::RelayBatchFlatten,
+                crate::language::RelayOperator::RelayLeakyReLU,
                 crate::language::RelayOperator::RelayBiasAdd,
                 crate::language::RelayOperator::RelayAdd,
+                crate::language::RelayOperator::RelayMaximum,
+                crate::language::RelayOperator::RelayMinimum,
+                crate::language::RelayOperator::RelayAvgPool2D
             ],
         );
         let mut env = HashMap::default();
@@ -4344,6 +4340,7 @@ int main() {{
             &generate_worklist_for_codegen(&egraph, id),
             true,
         );
+        panic!();
 
         let main_code = format!(
             "
