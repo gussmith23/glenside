@@ -1,7 +1,7 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::debug;
-use ndarray::{s, Dimension, Ix, IxDyn, array};
+use ndarray::{array, s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -1429,7 +1429,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                    crate::language::RelayOperator::RelayAdd | crate::language::RelayOperator::RelayMaximum | crate::language::RelayOperator::RelayMinimum => {
+                    crate::language::RelayOperator::RelayAdd
+                    | crate::language::RelayOperator::RelayMaximum
+                    | crate::language::RelayOperator::RelayMinimum => {
                         let (a, b) = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
@@ -1812,15 +1814,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
 
                         MyAnalysisData::AccessPattern(access)
-                    },
+                    }
                     crate::language::RelayOperator::RelayUpSampling => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(scale_h), MyAnalysisData::Literal(scale_w), MyAnalysisData::RelayActivationLayout(layout)] => {
-                                assert_eq!(layout.clone(), crate::language::RelayActivationLayout::NCHW, "upsampling only supports NCHW");
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(scale_h), MyAnalysisData::Literal(scale_w), MyAnalysisData::RelayActivationLayout(layout)] =>
+                            {
+                                assert_eq!(
+                                    layout.clone(),
+                                    crate::language::RelayActivationLayout::NCHW,
+                                    "upsampling only supports NCHW"
+                                );
                                 // let mut shape = array![a.shape[0], a.shape[1], scale_h.into() * shape[2], scale_w.into() * shape[w]];
                                 let mut shape = a.shape.clone();
                                 assert_eq!(scale_h.ndim(), 0);
@@ -1831,7 +1838,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 AccessPatternData {
                                     shape: shape,
                                     item_shape: a.item_shape.clone(),
-                                    zero_regions: a.zero_regions.clone()
+                                    zero_regions: a.zero_regions.clone(),
                                 }
                             }
                             _ => panic!("Parameters do not type check"),
@@ -1846,7 +1853,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         access.zero_regions = HashMap::default();
 
                         MyAnalysisData::AccessPattern(access)
-                    },
+                    }
                 }
             }
             &AccessLiteral(id) => match &egraph[id].data {
