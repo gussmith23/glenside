@@ -1,7 +1,7 @@
 use egg::{define_language, merge_if_different, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::debug;
-use ndarray::{array, s, Dimension, Ix, IxDyn};
+use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
