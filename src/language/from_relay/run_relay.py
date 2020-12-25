@@ -38,7 +38,7 @@ for filepath in parsed.npy_arg_filepath:
 # need graph runtime or crashes for yolo
 output = relay.create_executor(mod=expr, kind="graph").evaluate()(*inputs)
 
-if type(output) is tuple:
+if type(output) is list:
     for i in range(len(parsed.npy_out_filepath)):
         filepath = parsed.npy_out_filepath[i]
         with open(filepath, "wb"):

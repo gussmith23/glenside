@@ -4190,16 +4190,16 @@ int main() {{
 
         let result = run_relay_tuple_out(&value_env, &shapes_vec, &relay, 12);
 
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "yolo",
-            "",
-            &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
+        // let code = codegen(
+        //     &egraph,
+        //     id,
+        //     &HashMap::default(),
+        //     "yolo",
+        //     "",
+        //     &vec!["x"],
+        //     &generate_worklist_for_codegen(&egraph, id),
+        //     true,
+        // );
 
         //         let main_code = format!(
         //             "
@@ -4336,16 +4336,16 @@ int main() {{
 
         let result = run_relay(&value_env, &shapes_vec, &relay);
 
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "efficientnet",
-            "",
-            &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
+        // let code = codegen(
+        //     &egraph,
+        //     id,
+        //     &HashMap::default(),
+        //     "efficientnet",
+        //     "",
+        //     &vec!["x"],
+        //     &generate_worklist_for_codegen(&egraph, id),
+        //     true,
+        // );
 
         //         let main_code = format!(
         //             "
