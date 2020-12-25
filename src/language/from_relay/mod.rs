@@ -2042,7 +2042,9 @@ mod tests {
                     if $optional_arg.len() > 0 {
                         cmd.arg($optional_arg);
                     }
+                    cmd.arg("--npy_out_filepath");
                     cmd.arg(&output_filepath);
+                    cmd.arg("--npy_arg_filepath");
                     cmd.stdin(std::process::Stdio::piped())
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped());
