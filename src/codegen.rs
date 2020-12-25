@@ -1843,13 +1843,13 @@ pub fn run_relay_tuple_out(
     env: &HashMap<String, ArrayD<f32>>,
     shapes_vec: &Vec<(String, Vec<usize>)>,
     relay_str: &str,
-    outputs: usize
+    outputs: usize,
 ) -> Vec<ArrayD<f32>> {
     let script_filepath = format!(
         "{}/src/language/from_relay/run_relay.py",
         env!("CARGO_MANIFEST_DIR")
     );
-    
+
     let mut cmd = Command::new("python3");
     cmd.arg(script_filepath);
     cmd.arg("--npy_out_filepath");
@@ -1870,7 +1870,13 @@ pub fn run_relay_tuple_out(
                 .collect::<String>()
         ));
         cmd.arg(&output_filepath);
-        output_paths.push(output_filepath.clone().into_os_string().into_string().unwrap());
+        output_paths.push(
+            output_filepath
+                .clone()
+                .into_os_string()
+                .into_string()
+                .unwrap(),
+        );
     }
     cmd.arg("--npy_arg_filepath");
     cmd.stdin(std::process::Stdio::piped())
@@ -4161,7 +4167,7 @@ int main() {{
                 crate::language::RelayOperator::RelayBiasAdd,
                 crate::language::RelayOperator::RelayAdd,
                 crate::language::RelayOperator::RelaySigmoid,
-                crate::language::RelayOperator::RelayUpSampling
+                crate::language::RelayOperator::RelayUpSampling,
             ],
         );
         let mut env = HashMap::default();
@@ -4197,90 +4203,90 @@ int main() {{
             true,
         );
 
-//         let main_code = format!(
-//             "
-// #include <assert.h>
-// #include <math.h>
-// #include \"{}\"
+        //         let main_code = format!(
+        //             "
+        // #include <assert.h>
+        // #include <math.h>
+        // #include \"{}\"
 
-// {}
-// {}
-// {}
-// {}
+        // {}
+        // {}
+        // {}
+        // {}
 
-// int main() {{
-//     yolo(out, x);
+        // int main() {{
+        //     yolo(out, x);
 
-//   for (int i = 0; i < {}; i++) {{
-//     assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-//   }}
-// }}
-// ",
-//             PathBuf::from_str(
-//                 format!(
-//                     "{}/{}/{}",
-//                     env!("CARGO_MANIFEST_DIR"),
-//                     "c-files",
-//                     "relay-op-implementations.c"
-//                 )
-//                 .as_str()
-//             )
-//             .unwrap()
-//             .to_string_lossy(),
-//             c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
-//             c_assignment_string("", "result", DType::Fp32, &result.view()),
-//             c_assignment_string(
-//                 "",
-//                 "out",
-//                 DType::Fp32,
-//                 &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-//             ),
-//             code,
-//             result.shape().iter().product::<usize>()
-//         );
+        //   for (int i = 0; i < {}; i++) {{
+        //     assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+        //   }}
+        // }}
+        // ",
+        //             PathBuf::from_str(
+        //                 format!(
+        //                     "{}/{}/{}",
+        //                     env!("CARGO_MANIFEST_DIR"),
+        //                     "c-files",
+        //                     "relay-op-implementations.c"
+        //                 )
+        //                 .as_str()
+        //             )
+        //             .unwrap()
+        //             .to_string_lossy(),
+        //             c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
+        //             c_assignment_string("", "result", DType::Fp32, &result.view()),
+        //             c_assignment_string(
+        //                 "",
+        //                 "out",
+        //                 DType::Fp32,
+        //                 &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+        //             ),
+        //             code,
+        //             result.shape().iter().product::<usize>()
+        //         );
 
-//         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-//             "relay-op-yolo-test-{}.c",
-//             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-//         ));
-//         println!("{}", main_c_filepath.to_string_lossy());
+        //         let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+        //             "relay-op-yolo-test-{}.c",
+        //             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        //         ));
+        //         println!("{}", main_c_filepath.to_string_lossy());
 
-//         let binary_filepath = std::env::temp_dir().with_file_name(format!(
-//             "relay-op-yolo-test-{}",
-//             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-//         ));
-//         println!("{}", binary_filepath.to_string_lossy());
+        //         let binary_filepath = std::env::temp_dir().with_file_name(format!(
+        //             "relay-op-yolo-test-{}",
+        //             std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        //         ));
+        //         println!("{}", binary_filepath.to_string_lossy());
 
-//         File::create(&main_c_filepath)
-//             .unwrap()
-//             .write_all(main_code.as_bytes())
-//             .unwrap();
+        //         File::create(&main_c_filepath)
+        //             .unwrap()
+        //             .write_all(main_code.as_bytes())
+        //             .unwrap();
 
-//         let result = Command::new("gcc")
-//             .arg("-Werror")
-//             .arg("-g")
-//             .arg("-o")
-//             .arg(&binary_filepath)
-//             .arg(&main_c_filepath)
-//             .arg("-lm")
-//             .output()
-//             .unwrap();
+        //         let result = Command::new("gcc")
+        //             .arg("-Werror")
+        //             .arg("-g")
+        //             .arg("-o")
+        //             .arg(&binary_filepath)
+        //             .arg(&main_c_filepath)
+        //             .arg("-lm")
+        //             .output()
+        //             .unwrap();
 
-//         assert!(
-//             result.status.success(),
-//             "{}",
-//             std::str::from_utf8(result.stderr.as_slice())
-//                 .expect("Could not convert stderr to UTF8")
-//         );
+        //         assert!(
+        //             result.status.success(),
+        //             "{}",
+        //             std::str::from_utf8(result.stderr.as_slice())
+        //                 .expect("Could not convert stderr to UTF8")
+        //         );
 
-//         let result = Command::new(&binary_filepath).output().unwrap();
+        //         let result = Command::new(&binary_filepath).output().unwrap();
 
-//         assert!(
-//             result.status.success(),
-//             "{}",
-//             std::str::from_utf8(result.stderr.as_slice())
-//                 .expect("Could not convert stderr to UTF8")
-//         );
+        //         assert!(
+        //             result.status.success(),
+        //             "{}",
+        //             std::str::from_utf8(result.stderr.as_slice())
+        //                 .expect("Could not convert stderr to UTF8")
+        //         );
     }
 
     #[test]
@@ -4307,7 +4313,7 @@ int main() {{
                 crate::language::RelayOperator::RelayAdd,
                 crate::language::RelayOperator::RelayMaximum,
                 crate::language::RelayOperator::RelayMinimum,
-                crate::language::RelayOperator::RelayAvgPool2D
+                crate::language::RelayOperator::RelayAvgPool2D,
             ],
         );
         let mut env = HashMap::default();
