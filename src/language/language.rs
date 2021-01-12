@@ -313,7 +313,7 @@ pub enum RelayOperator {
     /// (relay-operator relay-relu <data: access>)
     RelayReLU,
 
-    /// (relay-operator relay-relu <data: access> <data: access>)
+    /// (relay-operator relay-relu <data: access> <alpha: Float64>)
     RelayLeakyReLU,
 
     /// (relay-operator relay-max-pool2d <data: access>
@@ -370,6 +370,7 @@ impl FromStr for RelayOperator {
             "relay-upsampling" => Ok(RelayOperator::RelayUpSampling),
             "relay-maximum" => Ok(RelayOperator::RelayMaximum),
             "relay-minimum" => Ok(RelayOperator::RelayMinimum),
+            "relay-leaky-relu" => Ok(RelayOperator::RelayLeakyReLU),
             _ => Err(()),
         }
     }
@@ -563,7 +564,7 @@ pub enum MyAnalysisData {
     Legacy(MyAnalysisDataLegacyData),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
-    Tuple(Vec<Box<MyAnalysisData>>),
+    Tuple(Vec<MyAnalysisData>),
     // TODO(@gussmith23) Needed?
     //Tensor(TensorData),
     ComputeType(ComputeType),
@@ -1407,7 +1408,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             ConstructTuple(ids) => {
                 let tuple_shape = ids
                     .iter()
-                    .map(|id| Box::new((&egraph[*id].data).clone()))
+                    .map(|id| (&egraph[*id].data).clone())
                     .collect::<Vec<_>>();
                 MyAnalysisData::Tuple(tuple_shape)
             }
@@ -1417,7 +1418,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::Tuple(x) => x,
                     _ => panic!(),
                 };
-                *(data[index]).clone()
+                data[index].clone()
             }
             RelayOperator(op) => MyAnalysisData::RelayOperator(op.clone()),
             RelayOperatorCall(params) => {
@@ -5303,6 +5304,146 @@ mod tests {
     }
 
     #[test]
+    fn relay_operator_call_leaky_relu() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64]);
+        let program = "
+         (relay-operator-call relay-leaky-relu
+          (access-tensor a) 0.1)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[32, 64]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_avgpool2d() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 1280, 7, 7]);
+        let program = "
+         (relay-operator-call relay-avg-pool2d
+          (access-tensor a)
+          (shape 7 7)
+          (shape 1 1)
+          (shape 0 0 0 0)
+          relay-activation-layout-nchw)
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1280, 1, 1]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_upsampling() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 1280, 7, 7]);
+        let program = "
+         (relay-operator-call relay-upsampling
+          (access-tensor a)
+          2.0 2.0
+          (relay-activation-layout-nchw))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1280, 14, 14]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_sigmoid() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 1280, 7, 7]);
+        let program = "
+         (relay-operator-call relay-sigmoid
+          (access-tensor a))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1280, 7, 7]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_maximum() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 1280, 7, 7]);
+        map.insert("b".to_string(), vec![1, 1280, 1, 1]);
+        let program = "
+         (relay-operator-call relay-maximum
+          (access-tensor a) (access-tensor b))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1280, 7, 7]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_minimum() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![1, 1280, 7, 7]);
+        map.insert("b".to_string(), vec![1, 1280, 1, 1]);
+        let program = "
+         (relay-operator-call relay-minimum
+          (access-tensor a) (access-tensor b))
+         "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape, IxDyn(&[1, 1280, 7, 7]));
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
     fn systolic_array_conv2d_nchw_oihw_with_blocking() {
         let mut map = HashMap::default();
         map.insert("data".to_string(), vec![1, 32, 44, 78]);
@@ -5434,7 +5575,7 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::Tuple(a) => {
                 assert_eq!(a.len(), 2);
-                match (*a[0].clone(), *a[1].clone()) {
+                match (a[0].clone(), a[1].clone()) {
                     (MyAnalysisData::AccessPattern(t1), MyAnalysisData::AccessPattern(t2)) => {
                         assert_eq!(t1.shape, IxDyn(&[32, 64]));
                         assert_eq!(t2.shape, IxDyn(&[16, 32]));
