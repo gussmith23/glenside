@@ -467,7 +467,7 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
     assert!(
         tensor_type.dtype.clone() == "float32".parse().unwrap()
             || tensor_type.dtype.clone() == "int32".parse().unwrap(),
-        "only supporting float32x1 and in32x1 at the moment"
+        "only supporting float32x1 and int32x1 at the moment"
     );
     let mut shape = Vec::<usize>::default();
     for j in 0..tensor_type.shape.len() {
@@ -548,6 +548,10 @@ pub fn from_relay(
 /// so we first recursively generate a worklist which we can then iterate over.
 /// The main goal of the worklist is to make sure an expression comes *after*
 /// its children in the worklist; otherwise, we can't compile the expression!
+///
+/// To prevent redundant recursion which made large expressions prohibitively slow,
+/// we keep track of the already visited Expr with "visited", and return if we have already
+/// traversed an expression.
 fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>, visited: &mut HashSet<Expr>) {
     if visited.contains(&relay_expr) {
         return;
@@ -667,9 +671,11 @@ fn compile_expression(
         .clone()
         .downcast::<tvm::ir::relay::TupleGetItem>()
     {
-        // We've only implemented tuple functionality for handling batch norms,
-        // at the moment. So we check to make sure this is handling a batch
-        // norm.
+        // For batch norms, we use a hack where if
+        // simplify_batch_norm_for_inference_hack is set,
+        // we compile the Relay batch norm to a single output.
+
+        // All other expressions are compiled using Language::TupleGetItem construct
 
         let arg = tuple_get_item
             .tuple
@@ -689,10 +695,14 @@ fn compile_expression(
                     .unwrap()
                     == "nn.batch_norm"
                 {
-                    assert_eq!(tuple_get_item.index, 0);
+                    if simplify_batch_norm_for_inference_hack {
+                        assert_eq!(tuple_get_item.index, 0);
 
-                    let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
-                    data_id
+                        let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
+                        data_id
+                    } else {
+                        panic!("Relay batch norm without simplify_batch_norm_for_inference not implemented yet")
+                    }
                 } else {
                     let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
                     let index_id =
@@ -706,17 +716,6 @@ fn compile_expression(
                 glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
             }
         }
-    // assert_eq!(
-    //     arg.op
-    //         .clone()
-    //         .upcast::<tvm::ir::expr::BaseExpr>()
-    //         .downcast::<tvm::ir::op::Op>()
-    //         .unwrap()
-    //         .name
-    //         .as_str(),
-    //     Ok("nn.batch_norm")
-    // );
-    // assert_eq!(tuple_get_item.index, 0);
     } else if let Ok(tuple) = relay_expr.clone().downcast::<tvm::ir::relay::Tuple>() {
         let mut fields = Vec::new();
 
