@@ -1637,29 +1637,16 @@ fn compile_expression(
                 }
                 "reshape" => {
                     assert_eq!(call.args.len(), 1);
-                    let attrs = call
+                    let _attrs = call
                         .attrs
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::transform::ReshapeAttrs>()
                         .unwrap();
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
-                    let mut new_shape = Vec::new();
-                    for i in 0..attrs.newshape.len() {
-                        let val = attrs
-                            .newshape
-                            .get(i.try_into().ok().unwrap())
-                            .unwrap()
-                            .downcast::<IntImm>()
-                            .unwrap()
-                            .value;
-                        new_shape.push(if val < 0 {
-                            // assume -1 = 1 in reshape.newshape
-                            1
-                        } else {
-                            val as usize
-                        });
-                    }
+                    // use relay type information to calculate new shape instead of using attrs
+                    let new_shape =
+                        shape_from_type(call.clone().upcast::<Expr>().checked_type.clone());
 
                     let new_shape_id = access_shape(glenside_expr, &new_shape, &[]);
 
