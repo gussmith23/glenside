@@ -671,20 +671,13 @@ fn compile_expression(
         .clone()
         .downcast::<tvm::ir::relay::TupleGetItem>()
     {
-        // For batch norms, we use a hack where if
-        // simplify_batch_norm_for_inference_hack is set,
-        // we compile the Relay batch norm to a single output.
-
-        // All other expressions are compiled using Language::TupleGetItem construct
-
-        let arg = tuple_get_item
+        if let Ok(call) = tuple_get_item
             .tuple
             .clone()
-            .downcast::<tvm::ir::relay::Call>();
-
-        match arg {
-            Ok(arg) => {
-                if arg
+            .downcast::<tvm::ir::relay::Call>()
+        {
+            if simplify_batch_norm_for_inference_hack
+                && call
                     .op
                     .clone()
                     .upcast::<tvm::ir::expr::BaseExpr>()
@@ -694,27 +687,23 @@ fn compile_expression(
                     .as_str()
                     .unwrap()
                     == "nn.batch_norm"
-                {
-                    if simplify_batch_norm_for_inference_hack {
-                        assert_eq!(tuple_get_item.index, 0);
-
-                        let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
-                        data_id
-                    } else {
-                        panic!("Relay batch norm without simplify_batch_norm_for_inference not implemented yet")
-                    }
-                } else {
-                    let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
-                    let index_id =
-                        glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
-                    glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
-                }
-            }
-            Err(_) => {
+                && tuple_get_item.index == 0
+            {
+                // For batch norms, we use a hack where if
+                // simplify_batch_norm_for_inference_hack is set,
+                // we compile the Relay batch norm to a single output.
+                get_compiled_expression(tuple_get_item.tuple.clone())
+            } else {
+                // All other expressions are compiled using Language::TupleGetItem construct
                 let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
                 let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
                 glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
             }
+        } else {
+            // All other expressions are compiled using Language::TupleGetItem construct
+            let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
+            let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
+            glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
         }
     } else if let Ok(tuple) = relay_expr.clone().downcast::<tvm::ir::relay::Tuple>() {
         let mut fields = Vec::new();
@@ -1637,11 +1626,6 @@ fn compile_expression(
                 }
                 "reshape" => {
                     assert_eq!(call.args.len(), 1);
-                    let _attrs = call
-                        .attrs
-                        .clone()
-                        .downcast::<tvm::ir::relay::attrs::transform::ReshapeAttrs>()
-                        .unwrap();
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
                     // use relay type information to calculate new shape instead of using attrs

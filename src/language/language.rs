@@ -313,7 +313,7 @@ pub enum RelayOperator {
     /// (relay-operator relay-relu <data: access>)
     RelayReLU,
 
-    /// (relay-operator relay-relu <data: access> <alpha: Float64>)
+    /// (relay-operator relay-leaky-relu <data: access> <alpha: Float64>)
     RelayLeakyReLU,
 
     /// (relay-operator relay-max-pool2d <data: access>
