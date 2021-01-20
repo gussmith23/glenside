@@ -676,6 +676,12 @@ fn compile_expression(
             .clone()
             .downcast::<tvm::ir::relay::Call>()
         {
+            // For batch norms, we use a hack where if
+            // simplify_batch_norm_for_inference_hack is set,
+            // we compile the Relay batch norm to a single output.
+
+            // All other expressions are compiled using Language::TupleGetItem construct
+
             if simplify_batch_norm_for_inference_hack
                 && call
                     .op
@@ -689,18 +695,13 @@ fn compile_expression(
                     == "nn.batch_norm"
                 && tuple_get_item.index == 0
             {
-                // For batch norms, we use a hack where if
-                // simplify_batch_norm_for_inference_hack is set,
-                // we compile the Relay batch norm to a single output.
                 get_compiled_expression(tuple_get_item.tuple.clone())
             } else {
-                // All other expressions are compiled using Language::TupleGetItem construct
                 let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
                 let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
                 glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
             }
         } else {
-            // All other expressions are compiled using Language::TupleGetItem construct
             let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
             let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
             glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
