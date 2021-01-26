@@ -331,7 +331,7 @@ pub enum RelayOperator {
     RelayAvgPool2D,
 
     /// (relay-operator relay-upsampling <data: access> <scale_h: Float64> <scale_w: Float64>
-    /// <layout: RelayActivationLayout>
+    /// <layout: RelayActivationLayout>)
     RelayUpSampling,
 
     /// (relay-operator relay-batch-flatten <data: access>)

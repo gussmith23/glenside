@@ -30,6 +30,9 @@ else:
     relay_in = parsed.relay_filepath.read()
     expr = tvm.parser.fromtext(relay_in)
 
+# iteratively open/close files instead of using `type=`
+# argument in argparse to prevent opening too many files at the same time
+# and causing the test to fail
 inputs = []
 for filepath in parsed.npy_arg_filepath:
     with open(filepath, 'rb') as arg_file:
@@ -39,6 +42,7 @@ for filepath in parsed.npy_arg_filepath:
 output = relay.create_executor(mod=expr, kind="graph").evaluate()(*inputs)
 
 if type(output) is list:
+    assert len(output) == len(parsed.npy_out_filepath)
     for i in range(len(parsed.npy_out_filepath)):
         filepath = parsed.npy_out_filepath[i]
         with open(filepath, "wb"):
