@@ -4146,7 +4146,847 @@ int main() {{
     }
 
     #[test]
-    #[should_panic(expected = "unfinished test")]
+    #[ignore = "unfinished test"]
+    fn relay_op_leakyrelu() {
+        let relay = r#"
+#[version = "0.0.5"]
+fn (%data: Tensor[(10, 10), float32]) {
+    nn.leaky_relu(%data, alpha=0.1f)
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelayLeakyReLU],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::from_shape_vec(
+                    v.clone(),
+                    (0..v.iter().product::<usize>()).map(|x| x as f32).collect(),
+                )
+                .unwrap(),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_leakyrelu",
+            "",
+            &vec!["data"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true,
+        );
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_leakyrelu(out, data);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string(
+                "",
+                "data",
+                DType::Fp32,
+                &value_env.get("data").unwrap().view()
+            ),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-leakyrelu-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-leakyrelu-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    #[ignore = "unfinished test"]
+    fn relay_op_sigmoid() {
+        let relay = r#"
+#[version = "0.0.5"]
+fn (%data: Tensor[(10, 10), float32]) {
+    sigmoid(%data)
+}       
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelaySigmoid],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::from_shape_vec(
+                    v.clone(),
+                    (0..v.iter().product::<usize>()).map(|x| x as f32).collect(),
+                )
+                .unwrap(),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_sigmoid",
+            "",
+            &vec!["data"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true,
+        );
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_sigmoid(out, data);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string(
+                "",
+                "data",
+                DType::Fp32,
+                &value_env.get("data").unwrap().view()
+            ),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-sigmoid-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-sigmoid-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    #[ignore = "unfinished test"]
+    fn relay_op_avgpool2d() {
+        let relay = r#"
+#[version = "0.0.5"]
+fn (%data: Tensor[(1, 1280, 7, 7), float32]) {
+    nn.avg_pool2d(%data, pool_size=[7, 7], padding=[0, 0, 0, 0])
+} 
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelaySigmoid],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::from_shape_vec(
+                    v.clone(),
+                    (0..v.iter().product::<usize>()).map(|x| x as f32).collect(),
+                )
+                .unwrap(),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_avgpool2d",
+            "",
+            &vec!["data"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true,
+        );
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_avgpool2d(out, data);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string(
+                "",
+                "data",
+                DType::Fp32,
+                &value_env.get("data").unwrap().view()
+            ),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-avgpool2d-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-avgpool2d-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    #[ignore = "unfinished test"]
+    fn relay_op_upsampling() {
+        let relay = r#"
+#[version = "0.0.5"]
+fn (%data: Tensor[(1, 256, 13, 13), float32]) {
+    nn.upsampling(%data, scale_h=2f, scale_w=2f)
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelaySigmoid],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::from_shape_vec(
+                    v.clone(),
+                    (0..v.iter().product::<usize>()).map(|x| x as f32).collect(),
+                )
+                .unwrap(),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_upsampling",
+            "",
+            &vec!["data"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true,
+        );
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_upsampling(out, data);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string(
+                "",
+                "data",
+                DType::Fp32,
+                &value_env.get("data").unwrap().view()
+            ),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-upsampling-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-upsampling-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    #[ignore = "unfinished test"]
+    fn relay_op_maximum() {
+        let relay = r#"
+#[version = "0.0.5"]
+fn (%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) {
+    maximum(%x, %y)
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelaySigmoid],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::from_shape_vec(
+                    v.clone(),
+                    (0..v.iter().product::<usize>()).map(|x| x as f32).collect(),
+                )
+                .unwrap(),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_maximum",
+            "",
+            &vec!["x", "y"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true,
+        );
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_maximum(out, x, y);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
+            c_assignment_string("", "y", DType::Fp32, &value_env.get("y").unwrap().view()),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-maximum-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-maximum-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    #[ignore = "unfinished test"]
+    fn relay_op_minimum() {
+        let relay = r#"
+#[version = "0.0.5"]
+fn (%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) {
+    minimum(%x, %y)
+}
+"#;
+
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+            &module,
+            true,
+            &vec![crate::language::RelayOperator::RelaySigmoid],
+        );
+
+        let mut env = HashMap::default();
+        let mut value_env = HashMap::default();
+        for (k, v) in &shapes_vec {
+            env.insert(k.clone(), v.clone());
+            value_env.insert(
+                k.clone(),
+                ndarray::ArrayD::from_shape_vec(
+                    v.clone(),
+                    (0..v.iter().product::<usize>()).map(|x| x as f32).collect(),
+                )
+                .unwrap(),
+            );
+        }
+
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: env.clone(),
+        });
+
+        let id = egraph.add_expr(&expr);
+
+        let result_output = run_relay(&value_env, &shapes_vec, relay);
+
+        let code = codegen(
+            &egraph,
+            id,
+            &HashMap::default(),
+            "relay_minimum",
+            "",
+            &vec!["x", "y"],
+            &generate_worklist_for_codegen(&egraph, id),
+            true,
+        );
+        let main_code = format!(
+            "
+#include <assert.h>
+#include <math.h>
+#include \"{}\"
+
+{}
+{}
+{}
+{}
+{}
+
+int main() {{
+    relay_minimum(out, x, y);
+
+  for (int i = 0; i < {}; i++) {{
+    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
+  }}
+}}
+",
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "c-files",
+                    "relay-op-implementations.c"
+                )
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy(),
+            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
+            c_assignment_string("", "y", DType::Fp32, &value_env.get("y").unwrap().view()),
+            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
+            c_assignment_string(
+                "",
+                "out",
+                DType::Fp32,
+                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
+            ),
+            code,
+            result_output.shape().iter().product::<usize>()
+        );
+
+        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-minimum-test-{}.c",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", main_c_filepath.to_string_lossy());
+
+        let binary_filepath = std::env::temp_dir().with_file_name(format!(
+            "relay-op-minimum-test-{}",
+            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+        ));
+        println!("{}", binary_filepath.to_string_lossy());
+
+        File::create(&main_c_filepath)
+            .unwrap()
+            .write_all(main_code.as_bytes())
+            .unwrap();
+
+        let result = Command::new("gcc")
+            .arg("-Werror")
+            .arg("-g")
+            .arg("-o")
+            .arg(&binary_filepath)
+            .arg(&main_c_filepath)
+            .arg("-lm")
+            .output()
+            .unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+
+        let result = Command::new(&binary_filepath).output().unwrap();
+
+        assert!(
+            result.status.success(),
+            "{}",
+            std::str::from_utf8(result.stderr.as_slice())
+                .expect("Could not convert stderr to UTF8")
+        );
+    }
+
+    #[test]
+    #[ignore = "unfinished test"]
     fn relay_model_yolov3() {
         // Generate yolov3 with directions from:
         // https://tvm.apache.org/docs/tutorials/frontend/from_darknet.html
@@ -4197,7 +5037,7 @@ int main() {{
     }
 
     #[test]
-    #[should_panic(expected = "unfinished test")]
+    #[ignore = "unfinished test"]
     fn relay_model_efficientnet_lite4_11() {
         // efficientnet onnx model source: https://github.com/onnx/models/blob/master/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11.onnx
         // imported into relay

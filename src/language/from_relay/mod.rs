@@ -695,13 +695,18 @@ fn compile_expression(
                     == "nn.batch_norm"
                 && tuple_get_item.index == 0
             {
+                // special case: compile Relay batch norm to a single output
                 get_compiled_expression(tuple_get_item.tuple.clone())
             } else {
+                // common case: Relay TupleGetItem gets converted to Glenside TupleGetItem
+                // handles if tuple is a CallNode
                 let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
                 let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
                 glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
             }
         } else {
+            // common case: Relay TupleGetItem gets converted to Glenside TupleGetItem
+            // handles if tuple is not a CallNode
             let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
             let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
             glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
