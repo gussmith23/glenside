@@ -1637,7 +1637,6 @@ fn compile_expression(
                     // use relay type information to calculate new shape instead of using attrs
                     let new_shape =
                         shape_from_type(call.clone().upcast::<Expr>().checked_type.clone());
-
                     let new_shape_id = access_shape(glenside_expr, &new_shape, &[]);
 
                     glenside_expr.add(Language::AccessReshape([data_id, new_shape_id]))
@@ -2560,5 +2559,89 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
         r#"
 (compute softmax (access (compute softmax (access (access-tensor x) 0)) 0))
 "#
+    );
+
+    test!(
+        concatenate,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 5, 1, 1), float32], %y: Tensor[(1, 3, 1, 1), float32]) {
+    %0 = (%x, %y);
+    concatenate(%0, axis=1)
+}
+"#,
+        r#"
+(access-concatenate (access-tensor x) (access-tensor y) 1)
+"#
+    );
+
+    // TODO: Uncomment out this test when reshape is implemented for the interpreter
+    // Note: the #[ignore] doesn't work because it has to go after #[test]
+    // and moving #[test] out of the macro causes dead code warnings!
+    //
+    //
+    //     #[ignore = "reshape not implemented for interpreter"]
+    //     test!(
+    //         reshape,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%x: Tensor[(1, 255, 52, 52), float32]) {
+    //     reshape(%x, newshape=[-1, 3, 85, 52, 52])
+    // }
+    // "#,
+    //         r#"
+    // (access-reshape (access-tensor x) (access-shape (shape 1 3 85 52 52) (shape )))
+    // "#
+    //     );
+
+    // TODO: add tuple output support to test macro
+    // and need someway to handle tuples in interpreter
+    //
+    //     test!(
+    //         split,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%x: Tensor[(1, 6, 1), float32]) {
+    //     split(%x, indices_or_sections=[2, 4], axis=1)
+    // }
+    // "#,
+    //         r#"
+    // (construct-tuple
+    //     (access-slice (access-tensor x) 1 0 2)
+    //     (access-slice (access-tensor x) 1 2 4)
+    //     (access-slice (access-tensor x) 1 4 6)
+    // )
+    // "#
+    //     );
+
+    test!(
+        transpose,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 5), float32]) {
+    transpose(%x, axes=[1, 0])
+}
+"#,
+        r#"
+(access-transpose (access-tensor x) (list 1 0))
+        "#
+    );
+
+    test!(
+        squeeze,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
+    squeeze(%x, axis=[2, 3])
+}
+"#,
+        r#"
+(access-squeeze (access-squeeze (access-tensor x) 3) 2)
+        "#
     );
 }

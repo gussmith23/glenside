@@ -4150,7 +4150,7 @@ int main() {{
     fn relay_op_leakyrelu() {
         let relay = r#"
 #[version = "0.0.5"]
-fn (%data: Tensor[(10, 10), float32]) {
+def @main(%data: Tensor[(10, 10), float32]) {
     nn.leaky_relu(%data, alpha=0.1f)
 }
 "#;
@@ -4291,7 +4291,7 @@ int main() {{
     fn relay_op_sigmoid() {
         let relay = r#"
 #[version = "0.0.5"]
-fn (%data: Tensor[(10, 10), float32]) {
+def @main(%data: Tensor[(10, 10), float32]) {
     sigmoid(%data)
 }       
 "#;
@@ -4432,7 +4432,7 @@ int main() {{
     fn relay_op_avgpool2d() {
         let relay = r#"
 #[version = "0.0.5"]
-fn (%data: Tensor[(1, 1280, 7, 7), float32]) {
+def @main(%data: Tensor[(1, 1280, 7, 7), float32]) {
     nn.avg_pool2d(%data, pool_size=[7, 7], padding=[0, 0, 0, 0])
 } 
 "#;
@@ -4573,7 +4573,7 @@ int main() {{
     fn relay_op_upsampling() {
         let relay = r#"
 #[version = "0.0.5"]
-fn (%data: Tensor[(1, 256, 13, 13), float32]) {
+def @main(%data: Tensor[(1, 256, 13, 13), float32]) {
     nn.upsampling(%data, scale_h=2f, scale_w=2f)
 }
 "#;
@@ -4714,7 +4714,7 @@ int main() {{
     fn relay_op_maximum() {
         let relay = r#"
 #[version = "0.0.5"]
-fn (%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) {
+def @main(%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) {
     maximum(%x, %y)
 }
 "#;
@@ -4852,7 +4852,7 @@ int main() {{
     fn relay_op_minimum() {
         let relay = r#"
 #[version = "0.0.5"]
-fn (%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) {
+def @main(%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) {
     minimum(%x, %y)
 }
 "#;
