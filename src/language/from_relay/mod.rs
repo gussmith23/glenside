@@ -2644,4 +2644,93 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
 (access-squeeze (access-squeeze (access-tensor x) 3) 2)
         "#
     );
+
+    // TODO: uncomment these tests once
+    // from_relay can parse these relay operators without using the opaque relay op hack
+    // and when the interpreter supports the operations
+    //     test!(
+    //         leakyrelu,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
+    //     nn.leaky_relu(%x, alpha=0.1f)
+    // }
+    // "#,
+    //         r#"
+    // (relay-operator-call relay-leaky-relu (access-tensor x) 0.1)
+    //         "#
+    //     );
+
+    //     test!(
+    //         maximum,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%x: Tensor[(1, 100, 5, 1), float32], %y: Tensor[(1, 100), float32]) {
+    //     maximum(%x, %y)
+    // }
+    // "#,
+    //         r#"
+    // (relay-operator-call relay-maximum (access-tensor x) (access-tensor y))
+    //         "#
+    //     );
+
+    //     test!(
+    //         minimum,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%x: Tensor[(1, 100, 5, 1), float32], %y: Tensor[(1, 100), float32]) {
+    //     minimum(%x, %y)
+    // }
+    // "#,
+    //         r#"
+    // (relay-operator-call relay-minimum (access-tensor x) (access-tensor y))
+    //         "#
+    //     );
+
+    //     test!(
+    //         upsampling,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%data: Tensor[(1, 256, 13, 13), float32]) {
+    //     nn.upsampling(%data, scale_h=2f, scale_w=2f)
+    // }
+    // "#,
+    //         r#"
+    // (relay-operator-call relay-upsampling (access-tensor data) 2 2 relay-activation-layout-nchw)
+    //         "#
+    //     );
+
+    //     test!(
+    //         sigmoid,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%data: Tensor[(10, 10), float32]) {
+    //     sigmoid(%data)
+    // }
+    // "#,
+    //         r#"
+    // (relay-operator-call relay-sigmoid (access-tensor data))
+    //         "#
+    //     );
+
+    //     test!(
+    //         avg_pool2d,
+    //         1e-7,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%data: Tensor[(1, 1280, 7, 7), float32]) {
+    //     nn.avg_pool2d(%data, pool_size=[7, 7], padding=[0, 0, 0, 0])
+    // }
+    // "#,
+    //         r#"
+    // (relay-operator-call relay-avg-pool2d (access-tensor data)
+    // (shape 7 7) (shape 1 1) (shape 0 0 0 0)
+    // relay-activation-layout-nchw)
+    //         "#
+    //     );
 }
