@@ -1833,8 +1833,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let mut shape = a.shape.clone();
                                 assert_eq!(scale_h.ndim(), 0);
                                 assert_eq!(scale_w.ndim(), 0);
-                                shape[2] = (scale_h.first().unwrap() * (shape[2] as f64)) as usize;
-                                shape[3] = (scale_w.first().unwrap() * (shape[3] as f64)) as usize;
+                                shape[2] =
+                                    (scale_h.first().unwrap() * (shape[2] as f64)).round() as usize;
+                                shape[3] =
+                                    (scale_w.first().unwrap() * (shape[3] as f64)).round() as usize;
 
                                 AccessPatternData {
                                     shape: shape,
