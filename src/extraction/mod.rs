@@ -101,7 +101,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Compute(_)
             | Language::AccessTranspose(_) => 1,
 
-            // Penalaize specific compute types. In the future, these constructs
+            // Penalize specific compute types. In the future, these constructs
             // shouldn't be extractable at all.
             // TODO(@gussmith23) We shouldn't have to extract ANY computes!
             Language::ComputeType(t) => match t {
