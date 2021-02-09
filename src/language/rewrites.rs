@@ -741,7 +741,7 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
     struct ApplierImpl {
         left_shape: Var,
         right_shape: Var,
-    };
+    }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let left_shape = match &egraph[subst[self.left_shape]].data {
