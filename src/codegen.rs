@@ -1778,6 +1778,7 @@ mod tests {
     use ndarray::ArrayD;
     use ndarray::{SliceInfo, SliceOrIndex};
     #[cfg(feature = "tvm")]
+    #[cfg(not(feature = "wasm-bindgen"))]
     use ndarray_npy::{read_npy, write_npy};
     #[cfg(feature = "tvm")]
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
