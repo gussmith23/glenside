@@ -33,7 +33,7 @@ version = "0.7.3"
 # Limited features so we can compile to WASM. Probably slows things down when
 # not compiling to WASM, but whatever!
 default-features = false
-features = ['rand/getrandom', 'rand/wasm-bindgen']
+features = ['getrandom', 'wasm-bindgen']
 
 [dependencies.rplex]
 optional = true
