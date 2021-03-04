@@ -2003,7 +2003,7 @@ mod tests {
                     // wrong w/ how I'm reading files!)
                     let output_filepath = std::env::temp_dir().with_file_name(format!(
                         "output-{}.npy",
-                        rand::thread_rng()
+                        OsRng
                             .sample_iter(&rand::distributions::Alphanumeric)
                             .take(30)
                             .collect::<String>()
@@ -2031,7 +2031,7 @@ mod tests {
                         env.insert(name.as_str(), value.clone());
                         let filepath = std::env::temp_dir().with_file_name(format!(
                             "arg-{}.npy",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()

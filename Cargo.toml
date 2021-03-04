@@ -12,7 +12,7 @@ default = ['tvm', 'cplex', 'cli', 'ndarray-npy']
 
 cplex = ['rplex']
 run-on-github-actions = []
-wasm-bindgen = ['rand/wasm-bindgen']
+wasm-bindgen = []
 # Glenside's command-line interface
 cli = ['clap']
 
@@ -25,9 +25,15 @@ ndarray-npy = {version=  "0.6.0", optional = true}
 num-traits = "0.2.11"
 serde_json = "1.0"
 clap = {version= "2.33.1", optional = true}
-rand = "0.7.3"
 ndarray-rand = { version = "0.11.0", optional = true }
 ordered-float = "2.0.0"
+
+[dependencies.rand]
+version = "0.7.3"
+# Limited features so we can compile to WASM. Probably slows things down when
+# not compiling to WASM, but whatever!
+default-features = false
+features = ['rand/getrandom', 'rand/wasm-bindgen']
 
 [dependencies.rplex]
 optional = true
