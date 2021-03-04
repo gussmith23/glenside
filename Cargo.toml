@@ -12,7 +12,7 @@ default = ['tvm', 'cplex', 'cli', 'ndarray-npy']
 
 cplex = ['rplex']
 run-on-github-actions = []
-wasm-bindgen = []
+wasm-bindgen = ['rand/wasm-bindgen']
 # Glenside's command-line interface
 cli = ['clap']
 
