@@ -1781,6 +1781,7 @@ mod tests {
     #[cfg(not(feature = "wasm-bindgen"))]
     use ndarray_npy::{read_npy, write_npy};
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
     #[cfg(feature = "tvm")]
     use rand::{rngs::SmallRng, SeedableRng};
@@ -3279,6 +3280,7 @@ int main() {{
 
     #[test]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_op_batchnorm() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3606,6 +3608,7 @@ int main() {{
 
     #[test]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_op_relu() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3746,6 +3749,7 @@ int main() {{
 
     #[test]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_op_maxpool2d_resnet_3x3() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3885,6 +3889,7 @@ int main() {{
 
     #[test]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_op_batchflatten() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4024,6 +4029,7 @@ int main() {{
 
     #[test]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_op_globalavgpool2d() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -5010,6 +5016,7 @@ int main() {{
     #[test]
     #[ignore = "unfinished test"]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_model_yolov3() {
         // Generate yolov3 with directions from:
         // https://tvm.apache.org/docs/tutorials/frontend/from_darknet.html
@@ -5062,6 +5069,7 @@ int main() {{
     #[test]
     #[ignore = "unfinished test"]
     #[cfg(feature = "tvm")]
+    #[cfg(feature = "ndarray-rand")]
     fn relay_model_efficientnet_lite4_11() {
         // efficientnet onnx model source: https://github.com/onnx/models/blob/master/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11.onnx
         // imported into relay

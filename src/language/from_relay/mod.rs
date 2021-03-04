@@ -1913,6 +1913,7 @@ mod tests {
     use approx::AbsDiffEq;
     use egg::{EGraph, Pattern, Searcher};
     use ndarray_npy::{read_npy, write_npy};
+    #[cfg(feature = "ndarray-rand")]
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::collections::HashMap;
@@ -1954,6 +1955,8 @@ mod tests {
         };
         ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr) => {
             #[test]
+            // TODO(@gussmith23) Using this feature flag here is probably overkill
+            #[cfg(feature = "ndarray-rand")]
             fn $test_name() {
                 // The number of times to run each program and compare their
                 // outputs.
