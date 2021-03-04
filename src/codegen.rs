@@ -1774,10 +1774,14 @@ if (i{i} < {dim_len}) {{
 mod tests {
     use super::*;
     use egg::RecExpr;
+    #[cfg(feature = "tvm")]
     use ndarray::ArrayD;
     use ndarray::{SliceInfo, SliceOrIndex};
+    #[cfg(feature = "tvm")]
     use ndarray_npy::{read_npy, write_npy};
+    #[cfg(feature = "tvm")]
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
+    #[cfg(feature = "tvm")]
     use rand::{rngs::SmallRng, SeedableRng};
     use std::fs::File;
     use std::io::Write;
@@ -1786,6 +1790,7 @@ mod tests {
     use std::process::Command;
     use std::str::FromStr;
 
+    #[cfg(feature = "tvm")]
     fn run_relay(
         env: &HashMap<String, ArrayD<f32>>,
         shapes_vec: &Vec<(String, Vec<usize>)>,
@@ -1855,6 +1860,7 @@ mod tests {
         relay_output
     }
 
+    #[cfg(feature = "tvm")]
     fn run_relay_tuple_out(
         env: &HashMap<String, ArrayD<f32>>,
         shapes_vec: &Vec<(String, Vec<usize>)>,
@@ -2993,6 +2999,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_add() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3131,6 +3138,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_biasadd() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3269,6 +3277,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_batchnorm() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3454,6 +3463,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_softmax() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3594,6 +3604,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_relu() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3733,6 +3744,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_maxpool2d_resnet_3x3() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -3871,6 +3883,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_batchflatten() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4009,6 +4022,7 @@ int main() {{
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn relay_op_globalavgpool2d() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4148,6 +4162,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_op_leakyrelu() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4289,6 +4304,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_op_sigmoid() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4430,6 +4446,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_op_avgpool2d() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4571,6 +4588,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_op_upsampling() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4712,6 +4730,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_op_maximum() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4850,6 +4869,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_op_minimum() {
         let relay = r#"
 #[version = "0.0.5"]
@@ -4988,6 +5008,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_model_yolov3() {
         // Generate yolov3 with directions from:
         // https://tvm.apache.org/docs/tutorials/frontend/from_darknet.html
@@ -5039,6 +5060,7 @@ int main() {{
 
     #[test]
     #[ignore = "unfinished test"]
+    #[cfg(feature = "tvm")]
     fn relay_model_efficientnet_lite4_11() {
         // efficientnet onnx model source: https://github.com/onnx/models/blob/master/vision/classification/efficientnet-lite4/model/efficientnet-lite4-11.onnx
         // imported into relay

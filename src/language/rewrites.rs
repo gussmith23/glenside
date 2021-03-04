@@ -2319,9 +2319,12 @@ pub fn systolic_array_conv2d_im2col_fc_with_blocking(
 mod tests {
 
     use super::*;
-    use egg::{Pattern, RecExpr, Runner, Searcher};
+    #[cfg(feature = "tvm")]
+    use egg::RecExpr;
+    use egg::{Pattern, Runner, Searcher};
     use ndarray::IxDyn;
     use std::collections::HashMap;
+    #[cfg(feature = "tvm")]
     use std::str::FromStr;
 
     #[test]
@@ -3608,6 +3611,7 @@ mod tests {
     /// This test tests the newer conv2d syntax, on a more realistically-shaped
     /// set of inputs.
     #[test]
+    #[cfg(feature = "tvm")]
     fn conv2d_im2col_systolic_array_1() {
         test_logger::ensure_env_logger_initialized();
 
@@ -4288,6 +4292,7 @@ mod tests {
 
     #[test]
     #[should_panic]
+    #[cfg(feature = "tvm")]
     fn conv2d_im2col_fc_systolic_array() {
         let data_shape = vec![1, 32, 32, 3];
         let kernel_shape = vec![3, 3, 3, 8];
@@ -4354,6 +4359,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn systolic_array_conv2d_nchw_oihw_with_blocking() {
         let data_shape = vec![1, 64, 32, 32]; // NCHW
         let kernel_shape = vec![128, 64, 3, 3]; // OIHW
@@ -4464,6 +4470,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn systolic_array_conv2d_nhwc_hwio_with_blocking() {
         let data_shape = vec![1, 32, 32, 64]; // NHWC
         let kernel_shape = vec![3, 3, 64, 128]; // HWIO
@@ -4630,6 +4637,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn systolic_array_conv2d_im2col_nchw_oihw_with_blocking() {
         let data_shape = vec![1, 64, 32, 32]; // NCHW
         let kernel_shape = vec![128, 64, 3, 3]; // OIHW
@@ -4741,6 +4749,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tvm")]
     fn systolic_array_conv2d_im2col_nhwc_hwio_with_blocking() {
         let data_shape = vec![1, 32, 32, 64]; // NHWC
         let kernel_shape = vec![3, 3, 64, 128]; // HWIO

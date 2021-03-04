@@ -1,3 +1,6 @@
+// Command line binary doesn't generated when this feature is active.
+#![cfg(not(feature = "wasm-bindgen"))]
+
 use log::debug;
 use std::process::Command;
 

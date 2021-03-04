@@ -12,6 +12,7 @@ default = ['tvm', 'cplex']
 
 cplex = ['rplex']
 run-on-github-actions = []
+wasm-bindgen = []
 
 [dependencies]
 approx = "0.3.2"

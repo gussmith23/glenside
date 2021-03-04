@@ -1,3 +1,5 @@
+#![cfg(feature = "tvm")]
+
 use egg::Pattern;
 use egg::Searcher;
 use egg::{RecExpr, Runner};

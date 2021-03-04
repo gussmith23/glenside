@@ -1,13 +1,19 @@
-use clap::{App, Arg, SubCommand};
-use egg::{EGraph, RecExpr, Runner};
-use glenside::language::rewrites::{PadLocation, PadSliceStrategy, SliceConcatenateStrategy};
-use glenside::language::{Language, MyAnalysis, PadType};
-use serde_json::Value;
-use std::collections::HashMap;
-use std::io::Write;
-use std::str::FromStr;
+// We have an empty main function when we're building for wasm. This feels
+// hacky.
+#[cfg(feature = "wasm-bindgen")]
+fn main() {}
 
+#[cfg(not(feature = "wasm-bindgen"))]
 fn main() {
+    use clap::{App, Arg, SubCommand};
+    use egg::{EGraph, RecExpr, Runner};
+    use glenside::language::rewrites::{PadLocation, PadSliceStrategy, SliceConcatenateStrategy};
+    use glenside::language::{Language, MyAnalysis, PadType};
+    use serde_json::Value;
+    use std::collections::HashMap;
+    use std::io::Write;
+    use std::str::FromStr;
+
     #[allow(unused_mut)]
     let mut app = App::new("glenside");
 
