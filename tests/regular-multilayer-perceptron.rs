@@ -3,8 +3,6 @@ use glenside::language::*;
 
 #[test]
 fn regular_multilayer_perceptron() {
-    test_logger::ensure_env_logger_initialized();
-
     let program = "
      (compute dot-product
       (access-cartesian-product

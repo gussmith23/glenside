@@ -63,8 +63,6 @@ use std::process::Command;
 #[test]
 fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_with_blocking_from_command_line(
 ) {
-    test_logger::ensure_env_logger_initialized();
-
     #[cfg(not(feature = "run-on-github-actions"))]
     pub const EGG_SEARCH_TIME_SECS: i64 = 60;
     #[cfg(feature = "run-on-github-actions")]

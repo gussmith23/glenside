@@ -2329,8 +2329,6 @@ mod tests {
 
     #[test]
     fn split() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "t-32-32".parse().unwrap();
 
         let rws = vec![
@@ -2384,8 +2382,6 @@ mod tests {
 
     #[test]
     fn slice_move_axis() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "(slice (move-axis t-32-32 0 1) 0 0 16)".parse().unwrap();
 
         let rws = vec![super::slice_move_axis_composition_commutative()];
@@ -2446,8 +2442,6 @@ mod tests {
 
     #[test]
     fn flatten_unflatten_access_windows() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "
          (access-windows
           (access (access-tensor t-3-32-32) 3)
@@ -2491,8 +2485,6 @@ mod tests {
 
     #[test]
     fn bubble_reshape_through_cartesian_product() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "
          (access-cartesian-product
           (access (access-tensor t-8-3-3-3) 1)
@@ -2560,8 +2552,6 @@ mod tests {
 
     #[test]
     fn bubble_reshape_through_dot_product() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "
          (compute dot-product
           (access-reshape (access (access-tensor t-1024-2-256) 1) (access-shape (shape 32 32) (shape 2 16 16)))
@@ -2665,8 +2655,6 @@ mod tests {
 
     #[test]
     fn slice_concatenate_accesses_divide_into_0() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "(access (access-tensor t-32-32) 1)".parse().unwrap();
 
         let rws = vec![
@@ -2703,8 +2691,6 @@ mod tests {
 
     #[test]
     fn slice_concatenate_accesses() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "(access (access-tensor t-32-32) 1)".parse().unwrap();
 
         let rws = vec![
@@ -3613,8 +3599,6 @@ mod tests {
     #[test]
     #[cfg(feature = "tvm")]
     fn conv2d_im2col_systolic_array_1() {
-        test_logger::ensure_env_logger_initialized();
-
         pub const IMAGE_SHAPE: &[usize] = &[1, 32, 32, 3];
         pub const KERNEL_SHAPE: &[usize] = &[3, 3, 3, 8];
 

@@ -3595,8 +3595,6 @@ mod tests {
 
     #[test]
     fn access_slice_zero_pad_0() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "(access-slice (access-pad (access (access-tensor t-3-32-32) 1) zero-padding 0 2 3) 0 0 3)"
             .parse()
             .unwrap();
@@ -3616,8 +3614,6 @@ mod tests {
 
     #[test]
     fn access_slice_zero_pad_1() {
-        test_logger::ensure_env_logger_initialized();
-
         let program = "
 (access-slice
  (access-pad
