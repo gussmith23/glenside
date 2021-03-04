@@ -552,7 +552,8 @@ pub fn codegen(
     for found_var in found_vars.iter() {
         assert!(
             args.contains(&found_var.as_str()),
-            format!("Found {} in program, but did not find in `args`", found_var)
+            "Found {} in program, but did not find in `args`",
+            found_var
         );
     }
 
