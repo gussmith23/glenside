@@ -1,3 +1,5 @@
+#![cfg(feature = "ndarray-npy")]
+
 mod common;
 
 use common::load_npy;
