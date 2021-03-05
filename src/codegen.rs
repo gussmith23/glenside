@@ -1784,7 +1784,7 @@ mod tests {
     #[cfg(feature = "ndarray-rand")]
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
     #[cfg(feature = "tvm")]
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::rngs::OsRng;
     use std::fs::File;
     use std::io::Write;
     use std::iter::FromIterator;
@@ -1863,6 +1863,8 @@ mod tests {
     }
 
     #[cfg(feature = "tvm")]
+    // This is only used by an ignored test at the moment.
+    #[allow(dead_code)]
     fn run_relay_tuple_out(
         env: &HashMap<String, ArrayD<f32>>,
         shapes_vec: &Vec<(String, Vec<usize>)>,

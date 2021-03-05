@@ -1907,15 +1907,20 @@ fn compile_expression(
 }
 
 #[cfg(test)]
+// TODO(@gussmith23) Probably not a good idea I added this feature gate while
+// making Glenside wasm-friendly. I started to realize, though, that a lot of
+// the wasm-unfriendly content was in tests. A cleaner way to do what I wanted
+// to do would be to separate out test dependencies.
+#[cfg(feature = "ndarray-rand")]
 mod tests {
     use crate::language::interpreter::interpret;
     use crate::language::{Language, MyAnalysis};
     use approx::AbsDiffEq;
     use egg::{EGraph, Pattern, Searcher};
     use ndarray_npy::{read_npy, write_npy};
-    #[cfg(feature = "ndarray-rand")]
     use ndarray_rand::{rand_distr::Uniform, RandomExt};
-    use rand::{rngs::SmallRng, Rng, SeedableRng};
+    use rand::rngs::OsRng;
+    use rand::Rng;
     use std::collections::HashMap;
     use std::io::Write;
     use std::process::Command;
@@ -1965,7 +1970,7 @@ mod tests {
 
                 // Random number generator for generating random tensors.
                 const SEED: u64 = 23;
-                let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+                let mut tensor_rng = OsRng;
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
