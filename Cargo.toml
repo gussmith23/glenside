@@ -8,7 +8,7 @@ edition = "2018"
 
 # See src/lib.rs for documentation of Glenside's features.
 [features]
-default = ['tvm', 'cplex', 'cli', 'ndarray-npy']
+default = ['tvm', 'cplex', 'cli', 'ndarray-npy', 'ndarray-rand']
 
 cplex = ['rplex']
 run-on-github-actions = []
