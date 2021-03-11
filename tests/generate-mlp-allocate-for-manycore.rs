@@ -2,7 +2,8 @@
 fn asplos_demo_generate_mlp_allocate_for_manycore() {
     /* Runs the following:
 
-    target/debug/glenside demo  \
+    target/debug/examples/glenside-cli \
+      demo                             \
       --allocate-for-manycore          \
       mlp                              \
       data/asplos-demo/mlp.glenside    \
@@ -16,7 +17,7 @@ fn asplos_demo_generate_mlp_allocate_for_manycore() {
 
     */
     std::process::Command::new(format!(
-        "{}/target/debug/glenside",
+        "{}/target/debug/examples/glenside-cli",
         env!("CARGO_MANIFEST_DIR")
     ))
     .current_dir(std::env::temp_dir())
