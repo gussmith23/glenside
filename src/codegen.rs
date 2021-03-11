@@ -10,7 +10,7 @@ use log::warn;
 use ndarray::Array;
 use ndarray::Dimension;
 use ndarray::IxDyn;
-use rand::Rng;
+use rand::{rngs::OsRng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
@@ -704,7 +704,7 @@ fn codegen_helper(
                         // Currently generating random strings. Not great IMO.
                         let out = format!(
                             "relay_op_batchnorminference_out_{}",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
@@ -764,7 +764,7 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                         // Currently generating random strings. Not great IMO.
                         let out = format!(
                             "relay_op_softmax_out_{}",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
@@ -808,7 +808,7 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
                         // Currently generating random strings. Not great IMO.
                         let out = format!(
                             "relay_op_relu_out_{}",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
@@ -866,7 +866,7 @@ relu((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         // Currently generating random strings. Not great IMO.
                         let out = format!(
                             "relay_op_maxpool2d_out_{}",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
@@ -924,7 +924,7 @@ maxpool2D3x3_resnet18_op6((float*) {X}, (float*) {Y});
                         // Currently generating random strings. Not great IMO.
                         let out = format!(
                             "relay_op_globalavgpool2d_out_{}",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
@@ -987,7 +987,7 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
                         // Currently generating random strings. Not great IMO.
                         let out = format!(
                             "relay_op_add_out_{}",
-                            rand::thread_rng()
+                            OsRng
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
@@ -1006,21 +1006,21 @@ globalAvgPool((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C});
 
                     let out_shape_str = format!(
                         "out_shape_add_{}",
-                        rand::thread_rng()
+                        OsRng
                             .sample_iter(&rand::distributions::Alphanumeric)
                             .take(30)
                             .collect::<String>()
                     );
                     let a_shape_str = format!(
                         "a_shape_add_{}",
-                        rand::thread_rng()
+                        OsRng
                             .sample_iter(&rand::distributions::Alphanumeric)
                             .take(30)
                             .collect::<String>()
                     );
                     let b_shape_str = format!(
                         "b_shape_add_{}",
-                        rand::thread_rng()
+                        OsRng
                             .sample_iter(&rand::distributions::Alphanumeric)
                             .take(30)
                             .collect::<String>()
@@ -1088,7 +1088,7 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
                     "access_windows_out_{}",
-                    rand::thread_rng()
+                    OsRng
                         .sample_iter(&rand::distributions::Alphanumeric)
                         .take(30)
                         .collect::<String>()
@@ -1198,7 +1198,7 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
                     "access_slice_out_{}",
-                    rand::thread_rng()
+                    OsRng
                         .sample_iter(&rand::distributions::Alphanumeric)
                         .take(30)
                         .collect::<String>()
@@ -1434,7 +1434,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
                     "pad_out_{}",
-                    rand::thread_rng()
+                    OsRng
                         .sample_iter(&rand::distributions::Alphanumeric)
                         .take(30)
                         .collect::<String>()
@@ -1553,7 +1553,7 @@ if (i{pad_axis} < {pad_before_index} || i{pad_axis} >= {pad_after_index}) {{
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
                     "transpose_out_{}",
-                    rand::thread_rng()
+                    OsRng
                         .sample_iter(&rand::distributions::Alphanumeric)
                         .take(30)
                         .collect::<String>()
@@ -1660,7 +1660,7 @@ for (int {i} = 0; {i} < {limit}; {i}++) {{",
                 // Currently generating random strings. Not great IMO.
                 let out = format!(
                     "concat_out_{}",
-                    rand::thread_rng()
+                    OsRng
                         .sample_iter(&rand::distributions::Alphanumeric)
                         .take(30)
                         .collect::<String>()
@@ -1804,7 +1804,7 @@ mod tests {
         // wrong w/ how I'm reading files!)
         let output_filepath = std::env::temp_dir().with_file_name(format!(
             "output-{}.npy",
-            rand::thread_rng()
+            OsRng
                 .sample_iter(&rand::distributions::Alphanumeric)
                 .take(30)
                 .collect::<String>()
@@ -1823,7 +1823,7 @@ mod tests {
             // TODO(@gussmith23) output type assumption
             let filepath = std::env::temp_dir().with_file_name(format!(
                 "arg-{}.npy",
-                rand::thread_rng()
+                OsRng
                     .sample_iter(&rand::distributions::Alphanumeric)
                     .take(30)
                     .collect::<String>()
@@ -1880,7 +1880,7 @@ mod tests {
             // wrong w/ how I'm reading files!)
             let output_filepath = std::env::temp_dir().with_file_name(format!(
                 "output-{}.npy",
-                rand::thread_rng()
+                OsRng
                     .sample_iter(&rand::distributions::Alphanumeric)
                     .take(30)
                     .collect::<String>()
@@ -1903,7 +1903,7 @@ mod tests {
             // TODO(@gussmith23) output type assumption
             let filepath = std::env::temp_dir().with_file_name(format!(
                 "arg-{}.npy",
-                rand::thread_rng()
+                OsRng
                     .sample_iter(&rand::distributions::Alphanumeric)
                     .take(30)
                     .collect::<String>()
