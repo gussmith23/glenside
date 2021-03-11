@@ -14,7 +14,7 @@ use std::process::Command;
  # conv2d-hw-design.json: A JSON description of the resulting hardware.
  # The other arguments tell Glenside how hard to search, and what kind of
  # design to search for.
- cargo run demo \
+ cargo run --example glenside-cli demo \
      conv2d \
      data/conv2d/conv2d.glenside \
      data/conv2d/conv2d-shapes.json \
@@ -98,7 +98,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing_from_comman
     ));
 
     // Run Glenside!
-    let output = Command::new("target/debug/glenside")
+    let output = Command::new("target/debug/examples/glenside-cli")
         // Subcommand of the glenside binary.
         .arg("demo")
         // Argument 1: the name of the function to compile.
