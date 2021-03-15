@@ -7,6 +7,7 @@ use num_traits::Pow;
 use std::collections::hash_map::HashMap;
 use std::iter::FromIterator;
 use std::ops::Div;
+use std::str::FromStr;
 
 pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
@@ -25,6 +26,52 @@ pub struct Access<DataType> {
 }
 
 pub type Environment<'a, DataType> = HashMap<&'a str, ArrayD<DataType>>;
+
+/// Simple wrapper over [`interpret`].
+///
+/// This was created for the web demo. Specifically, this lets us avoid having
+/// the web demo depend on egg directly, thus avoiding versioning mismatches
+/// between glenside's egg and the web demo's egg. There may be a much better
+/// way to handle that, though.
+///
+/// ```
+/// use glenside::language::interpreter::interpret_from_str;
+/// use glenside::language::interpreter::Value;
+/// use std::collections::HashMap;
+/// use ndarray::Dimension;
+///
+/// match interpret_from_str::<i64>("(access-shape (shape 1 2) (shape 3 4))", &HashMap::default()) {
+///     Value::AccessShape(shape, access_axis) => {
+///         assert_eq!(shape.slice(), &[1, 2, 3, 4]);
+///         assert_eq!(access_axis, 2);
+///     }
+///     _ => panic!(),
+/// }
+/// ```
+pub fn interpret_from_str<DataType: 'static>(
+    program: &str,
+    env: &Environment<DataType>,
+) -> Value<DataType>
+where
+    DataType: Copy
+        + std::ops::Mul<Output = DataType>
+        + std::ops::Div<Output = DataType>
+        + std::ops::Neg<Output = DataType>
+        + std::iter::Sum
+        + num_traits::identities::One
+        + num_traits::identities::Zero
+        + std::cmp::PartialOrd
+        + num_traits::Bounded
+        + Exp
+        + Sqrt
+        + FromNotNanFloat64Literal
+        + ndarray::ScalarOperand,
+    usize: num_traits::cast::AsPrimitive<DataType>,
+{
+    let expr = RecExpr::<Language>::from_str(program).unwrap();
+
+    interpret(&expr, expr.as_ref().len() - 1, env)
+}
 
 // TODO(@gussmith23) Interpreter stack overflows on large programs
 // If I want to interpret something like a full resnet, then I will have to
