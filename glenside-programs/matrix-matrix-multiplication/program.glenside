@@ -1,0 +1,4 @@
+(compute dot-product
+ (access-cartesian-product
+  (access (access-tensor a) 1)
+  (access (access-transpose (access-tensor b) (list 1 0)) 1)))
