@@ -224,13 +224,19 @@ mod tests {
         pair,
         "
         (pair
-         (dimension-map-definition
-          (dimension-definition M 16)
-          (dimension-definition N 32)
+         (input
+          input_MxN
+          (dimension-map-definition
+           (dimension-definition M 16)
+           (dimension-definition N 32)
+          )
          )
-         (dimension-map-definition
-          (dimension-definition N 32)
-          (dimension-definition O 64)
+         (input
+          input_NxO
+          (dimension-map-definition
+           (dimension-definition N 32)
+           (dimension-definition O 64)
+          )
          )
         )",
         match result {
