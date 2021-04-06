@@ -10,3 +10,5 @@ pub mod rewrites;
 pub mod from_relay;
 
 pub mod language_new;
+
+pub mod interpreter_new;
