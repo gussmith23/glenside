@@ -23,6 +23,25 @@ define_language! {
         // (dimension-identifier <name: String>)
         "dimension-identifier" = DimensionIdentifier([Id; 1]),
 
+        // (pair <i0> <i1>)
+        //
+        // Pair dimensions of two inputs. Equivalent dimensions are paired,
+        // non-equivalent dimensions are left alone.
+        //
+        // Will likely need another version of this which explicitly pairs
+        // dimensions:
+        //
+        // (pair <dimension-list-0: DimensionIdentifierList>
+        //       <dimension-list-1: DimensionIdentifierList>
+        //       <out-identifiers: DimensionIdentifierList>
+        //       <i0> <i1>)
+        //
+        // Pairs dimensions of two inputs. Dimensions to be matched up must have
+        // the same length. Paired dimensions are given the new identifiers from
+        // `out-identifiers`. Additionally, a tuple dimension "tuple" is added,
+        // with length 2.
+        "pair" = Pair([Id; 2]),
+
         Usize(usize),
         String(String),
     }
@@ -113,6 +132,37 @@ impl Analysis<Glenside> for GlensideTypeAnalysis {
                     }
                 }
             ),
+            Glenside::Pair(ids) => make_glenside_type!(
+                egraph,
+                match ids {
+                    (
+                        GlensideType::DimensionMap(in_dims_0),
+                        GlensideType::DimensionMap(in_dims_1),
+                    ) => {
+                        let mut out_map = HashMap::new();
+
+                        for (dim_name, dim_len) in in_dims_0.iter() {
+                            out_map.insert(dim_name.clone(), *dim_len);
+                        }
+
+                        for (dim_name, dim_len) in in_dims_1.iter() {
+                            if out_map.contains_key(dim_name) {
+                                assert_eq!(out_map.get(dim_name).unwrap(), dim_len);
+                            } else {
+                                out_map.insert(dim_name.clone(), *dim_len);
+                            }
+                        }
+
+                        // Add tuple dimension
+                        // TODO(@gussmith23) How to name the tuple dim?
+                        // For now just going with "T" by default.
+                        assert!(!out_map.contains_key("T"));
+                        out_map.insert("T".to_string(), 2);
+
+                        GlensideType::DimensionMap(out_map)
+                    }
+                }
+            ),
         }
     }
 
@@ -192,6 +242,30 @@ mod tests {
         match result {
             GlensideType::DimensionIdentifierList(list) => {
                 assert_eq!(list, &vec!["N", "C", "H", "W"]);
+            }
+        }
+    );
+
+    test!(
+        pair,
+        "
+        (pair
+         (dimension-map-definition
+          (dimension-definition (dimension-identifier M) 16)
+          (dimension-definition (dimension-identifier N) 32)
+         )
+         (dimension-map-definition
+          (dimension-definition (dimension-identifier N) 32)
+          (dimension-definition (dimension-identifier O) 64)
+         )
+        )",
+        match result {
+            GlensideType::DimensionMap(map) => {
+                assert_eq!(map.len(), 4);
+                assert_eq!(map.get(&"M".to_string()), Some(&16));
+                assert_eq!(map.get(&"N".to_string()), Some(&32));
+                assert_eq!(map.get(&"O".to_string()), Some(&64));
+                assert_eq!(map.get(&"T".to_string()), Some(&2));
             }
         }
     );
