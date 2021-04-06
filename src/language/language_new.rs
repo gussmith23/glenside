@@ -4,14 +4,24 @@ use egg::{define_language, Analysis, Id};
 
 define_language! {
     pub enum Glenside {
-        // (input <name: String> <dimension-set: DimensionSet>)
+        // (input <name: String>
+        //        <dimension-map-definition: DimensionMapDefinition>)
         "input" = Input([Id; 2]),
 
-        // (dimension-set <dimension: Dimension>...)
-        "dimension-set" = DimensionSet(Box<[Id]>),
+        // (dimension-map-defintion
+        //   <dimension-definition: DimensionDefinition>...)
+        "dimension-map-definition" = DimensionMapDefinition(Box<[Id]>),
 
-        // (dimension <name: String> <length: Usize>)
-        "dimension" = Dimension([Id; 2]),
+        // (dimension-definition <dimension-identifier: DimensionIdentifier>
+        //                       <length: Usize>)
+        "dimension-definition" = DimensionDefinition([Id; 2]),
+
+        // (dimension-identifier-list
+        //   <dimension-identifier: DimensionIdentifier>...)
+        "dimension-identifier-list" = DimensionIdentifierList(Box<[Id]>),
+
+        // (dimension-identifier <name: String>)
+        "dimension-identifier" = DimensionIdentifier([Id; 1]),
 
         Usize(usize),
         String(String),
@@ -20,8 +30,10 @@ define_language! {
 
 #[derive(Debug, PartialEq)]
 enum GlensideType {
-    DimensionSet(HashMap<String, usize>),
+    DimensionMap(HashMap<String, usize>),
     Dimension { name: String, length: usize },
+    DimensionIdentifier(String),
+    DimensionIdentifierList(Vec<String>),
     Usize(usize),
     String(String),
 }
@@ -47,7 +59,7 @@ impl Analysis<Glenside> for GlensideTypeAnalysis {
         }
 
         match &enode {
-            Glenside::DimensionSet(ids) => {
+            Glenside::DimensionMapDefinition(ids) => {
                 let mut out = HashMap::new();
 
                 for (k, v) in ids
@@ -61,12 +73,12 @@ impl Analysis<Glenside> for GlensideTypeAnalysis {
                     out.insert(k.clone(), *v);
                 }
 
-                GlensideType::DimensionSet(out)
+                GlensideType::DimensionMap(out)
             }
-            Glenside::Dimension(ids) => make_glenside_type!(
+            Glenside::DimensionDefinition(ids) => make_glenside_type!(
                 egraph,
                 match ids {
-                    (GlensideType::String(name), GlensideType::Usize(length)) => {
+                    (GlensideType::DimensionIdentifier(name), GlensideType::Usize(length)) => {
                         GlensideType::Dimension {
                             name: name.clone(),
                             length: *length,
@@ -77,13 +89,30 @@ impl Analysis<Glenside> for GlensideTypeAnalysis {
             Glenside::Input(ids) => make_glenside_type!(
                 egraph,
                 match ids {
-                    (GlensideType::String(_name), GlensideType::DimensionSet(map)) => {
-                        GlensideType::DimensionSet(map.clone())
+                    (GlensideType::String(_name), GlensideType::DimensionMap(map)) => {
+                        GlensideType::DimensionMap(map.clone())
                     }
                 }
             ),
             Glenside::Usize(u) => GlensideType::Usize(*u),
             Glenside::String(s) => GlensideType::String(s.clone()),
+            Glenside::DimensionIdentifierList(ids) => GlensideType::DimensionIdentifierList(
+                ids.iter()
+                    .map(|id| match &egraph[*id].data {
+                        GlensideType::DimensionIdentifier(name) => name,
+                        _ => panic!(),
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            ),
+            Glenside::DimensionIdentifier(ids) => make_glenside_type!(
+                egraph,
+                match ids {
+                    (GlensideType::String(name)) => {
+                        GlensideType::DimensionIdentifier(name.clone())
+                    }
+                }
+            ),
         }
     }
 
@@ -113,8 +142,8 @@ mod tests {
     }
 
     test!(
-        dimension,
-        "(dimension N 1)",
+        dimension_definition,
+        "(dimension-definition (dimension-identifier N) 1)",
         match result {
             GlensideType::Dimension { name, length } => {
                 assert_eq!(name, "N");
@@ -124,15 +153,45 @@ mod tests {
     );
 
     test!(
-        dimension_set,
-        "(dimension-set (dimension N 1) (dimension C 3) (dimension H 32) (dimension W 64))",
+        dimension_map_definition,
+        "(dimension-map-definition
+            (dimension-definition (dimension-identifier N) 1)
+            (dimension-definition (dimension-identifier C) 3)
+            (dimension-definition (dimension-identifier H) 32)
+            (dimension-definition (dimension-identifier W) 64)
+        )",
         match result {
-            GlensideType::DimensionSet(map) => {
+            GlensideType::DimensionMap(map) => {
                 assert_eq!(map.len(), 4);
                 assert_eq!(map.get(&"N".to_string()), Some(&1));
                 assert_eq!(map.get(&"C".to_string()), Some(&3));
                 assert_eq!(map.get(&"H".to_string()), Some(&32));
                 assert_eq!(map.get(&"W".to_string()), Some(&64));
+            }
+        }
+    );
+
+    test!(
+        dimension_identifier,
+        "(dimension-identifier N)",
+        match result {
+            GlensideType::DimensionIdentifier(name) => {
+                assert_eq!(name, "N");
+            }
+        }
+    );
+
+    test!(
+        dimension_identifier_list,
+        "(dimension-identifier-list
+            (dimension-identifier N)
+            (dimension-identifier C)
+            (dimension-identifier H)
+            (dimension-identifier W)
+        )",
+        match result {
+            GlensideType::DimensionIdentifierList(list) => {
+                assert_eq!(list, &vec!["N", "C", "H", "W"]);
             }
         }
     );
