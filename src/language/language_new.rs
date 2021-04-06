@@ -26,6 +26,11 @@ define_language! {
         // equivalent are paired, non-equivalent dimensions are left alone.
         "pair" = Pair([Id; 2]),
 
+        // (dot-product <i0> <i1>)
+        // Reduce identical dimensions using dot product. In the result, only
+        // the non-shared dimensions will remain.
+        "dot-product" = DotProduct([Id; 2]),
+
         Usize(usize),
         String(String),
     }
@@ -142,6 +147,35 @@ impl Analysis<Glenside> for GlensideTypeAnalysis {
                     }
                 }
             ),
+            Glenside::DotProduct(ids) => make_glenside_type!(
+                egraph,
+                match ids {
+                    (GlensideType::DimensionMap(i0), GlensideType::DimensionMap(i1)) => {
+                        let mut out_map = HashMap::new();
+
+                        for (dim_name, i0_dim_len) in i0.iter() {
+                            if let Some(i1_dim_len) = i1.get(dim_name) {
+                                // if this is a shared dimension, then make sure
+                                // they match in length, and then drop the
+                                // dimension.
+                                assert_eq!(i0_dim_len, i1_dim_len);
+                            } else {
+                                // If this dimension isn't shared, keep it.
+                                out_map.insert(dim_name.clone(), *i0_dim_len);
+                            }
+                        }
+
+                        for (dim_name, i1_dim_len) in i1.iter() {
+                            if !i0.contains_key(dim_name) {
+                                // If this dimension isn't shared, keep it.
+                                out_map.insert(dim_name.clone(), *i1_dim_len);
+                            }
+                        }
+
+                        GlensideType::DimensionMap(out_map)
+                    }
+                }
+            ),
         }
     }
 
@@ -246,6 +280,34 @@ mod tests {
                 assert_eq!(map.get(&"N".to_string()), Some(&32));
                 assert_eq!(map.get(&"O".to_string()), Some(&64));
                 assert_eq!(map.get(&"T".to_string()), Some(&2));
+            }
+        }
+    );
+
+    test!(
+        dot_product,
+        "
+        (dot-product
+         (input
+          input_MxN
+          (dimension-map-definition
+           (dimension-definition M 16)
+           (dimension-definition N 32)
+          )
+         )
+         (input
+          input_NxO
+          (dimension-map-definition
+           (dimension-definition N 32)
+           (dimension-definition O 64)
+          )
+         )
+        )",
+        match result {
+            GlensideType::DimensionMap(map) => {
+                assert_eq!(map.len(), 2);
+                assert_eq!(map.get(&"M".to_string()), Some(&16));
+                assert_eq!(map.get(&"O".to_string()), Some(&64));
             }
         }
     );
