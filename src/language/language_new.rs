@@ -1,30 +1,31 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 use egg::{define_language, Analysis, Id};
 
 define_language! {
     pub enum Glenside {
+        // (apply <program> <args>)
+        // Apply a program represented in the egraph to concrete arguments.
+        "apply" = Apply([Id; 2]),
+
         // (input <name: String>
-        //        <dimension-map-definition: DimensionMapDefinition>)
+        //        <dimension-set: DimensionSet>)
         "input" = Input([Id; 2]),
 
-        // (dimension-map-defintion
-        //   <dimension-definition: DimensionDefinition>...)
-        "dimension-map-definition" = DimensionMapDefinition(Box<[Id]>),
-
-        // (dimension-definition <dimension-identifier: String>
-        //                       <length: Usize>)
-        "dimension-definition" = DimensionDefinition([Id; 2]),
-
-        // (dimension-list
-        //   <dimension-identifier: String>...)
-        "dimension-list" = DimensionList(Box<[Id]>),
-
-        // (pair <i0> <i1>)
+        // (d <dimension-identifier: String> <length: Usize>)
         //
-        // Pair dimensions of two inputs. Dimensions whose identifiers are
-        // equivalent are paired, non-equivalent dimensions are left alone.
-        "pair" = Pair([Id; 2]),
+        // The definition of a dimension. A dimension is uniquely identified by
+        // some identifier, and a length.
+        "d" = Dimension([Id; 2]),
+
+        // (dimension-set <dimension-identifier: Id>...)
+        //
+        // A set of dimension identifiers. Should not contain duplicates. In its
+        // canonical form, it should be sorted.
+        //
+        // TODO(@gussmith23) Make a rewrite to convert to canonical form.
+        "ds" = DimensionSet(Box<[Id]>),
 
         // (dot-product <i0> <i1>)
         // Reduce identical dimensions using dot product. In the result, only
@@ -36,11 +37,35 @@ define_language! {
     }
 }
 
+pub type Dimension = (String, usize);
+
+// Inputs should have single type, one set of dimensions.
+// functions should be like {set1} -> {set2} -> {set3}
+// for example, and given set1 and set2, results in type set3.
+struct TypePayload {}
+
 #[derive(Debug, PartialEq)]
 enum GlensideType {
-    DimensionMap(HashMap<String, usize>),
-    DimensionDefinition { name: String, length: usize },
-    DimensionList(Vec<String>),
+    ///
+    Type(),
+    /// Represents a function taking in specific dimensions and outputting a new
+    /// dimension set.
+    Function {
+        inputs: HashSet<Id>,
+        output: Id,
+    },
+    /// Uniquely identifies a dimension. A dimension is an `(id, length)` pair,
+    /// where `id` is an [`Id`] pointing to an eclass that uniquely identifies
+    /// the dimension (for now, just a String).
+    /// TODO(@gussmith23) Explain why we need length.
+    Dimension(Dimension),
+    DimensionSet(HashSet<Dimension>),
+
+    Node {
+        /// The unbound/in
+        unbound: HashSet<Id>,
+    },
+
     Usize(usize),
     String(String),
 }
@@ -66,113 +91,46 @@ impl Analysis<Glenside> for GlensideTypeAnalysis {
         }
 
         match &enode {
-            Glenside::DimensionMapDefinition(ids) => {
-                let mut out = HashMap::new();
-
-                for (k, v) in ids
-                    .iter()
-                    .map(|id| match &egraph[*id].data {
-                        GlensideType::DimensionDefinition { name, length } => (name, length),
-                        _ => panic!(),
-                    })
-                    .collect::<Vec<_>>()
-                {
-                    out.insert(k.clone(), *v);
-                }
-
-                GlensideType::DimensionMap(out)
-            }
-            Glenside::DimensionDefinition(ids) => make_glenside_type!(
+            Glenside::Apply(_ids) => todo!(),
+            Glenside::Dimension(ids) => make_glenside_type!(
                 egraph,
                 match ids {
                     // In the future, dimension identifiers may not all be
                     // Strings.
                     (GlensideType::String(name), GlensideType::Usize(length)) => {
-                        GlensideType::DimensionDefinition {
-                            name: name.clone(),
-                            length: *length,
-                        }
+                        GlensideType::Dimension((name.clone(), *length))
                     }
                 }
             ),
             Glenside::Input(ids) => make_glenside_type!(
                 egraph,
                 match ids {
-                    (GlensideType::String(_name), GlensideType::DimensionMap(map)) => {
-                        GlensideType::DimensionMap(map.clone())
+                    (GlensideType::String(_name), GlensideType::DimensionSet(set)) => {
+                        GlensideType::DimensionSet(set.clone())
                     }
                 }
             ),
             Glenside::Usize(u) => GlensideType::Usize(*u),
             Glenside::String(s) => GlensideType::String(s.clone()),
-            Glenside::DimensionList(ids) => GlensideType::DimensionList(
-                ids.iter()
-                    .map(|id| match &egraph[*id].data {
-                        // In the future, dimension identifiers may not all be
-                        // Strings.
-                        GlensideType::String(name) => name,
+            Glenside::DimensionSet(ids) => {
+                let mut vec = ids.to_vec();
+                vec.sort_unstable();
+                let len_before_dedup = vec.len();
+                vec.dedup();
+                assert_eq!(vec.len(), len_before_dedup, "Set contained duplicates");
+
+                GlensideType::DimensionSet(HashSet::from_iter(vec.drain(..).map(|id| {
+                    match &egraph[id].data {
+                        GlensideType::Dimension(d) => d.clone(),
                         _ => panic!(),
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            ),
-            Glenside::Pair(ids) => make_glenside_type!(
-                egraph,
-                match ids {
-                    (
-                        GlensideType::DimensionMap(in_dims_0),
-                        GlensideType::DimensionMap(in_dims_1),
-                    ) => {
-                        let mut out_map = HashMap::new();
-
-                        for (dim_name, dim_len) in in_dims_0.iter() {
-                            out_map.insert(dim_name.clone(), *dim_len);
-                        }
-
-                        for (dim_name, dim_len) in in_dims_1.iter() {
-                            if out_map.contains_key(dim_name) {
-                                assert_eq!(out_map.get(dim_name).unwrap(), dim_len);
-                            } else {
-                                out_map.insert(dim_name.clone(), *dim_len);
-                            }
-                        }
-
-                        // Add tuple dimension
-                        // TODO(@gussmith23) How to name the tuple dim?
-                        // For now just going with "T" by default.
-                        assert!(!out_map.contains_key("T"));
-                        out_map.insert("T".to_string(), 2);
-
-                        GlensideType::DimensionMap(out_map)
                     }
-                }
-            ),
+                })))
+            }
             Glenside::DotProduct(ids) => make_glenside_type!(
                 egraph,
                 match ids {
-                    (GlensideType::DimensionMap(i0), GlensideType::DimensionMap(i1)) => {
-                        let mut out_map = HashMap::new();
-
-                        for (dim_name, i0_dim_len) in i0.iter() {
-                            if let Some(i1_dim_len) = i1.get(dim_name) {
-                                // if this is a shared dimension, then make sure
-                                // they match in length, and then drop the
-                                // dimension.
-                                assert_eq!(i0_dim_len, i1_dim_len);
-                            } else {
-                                // If this dimension isn't shared, keep it.
-                                out_map.insert(dim_name.clone(), *i0_dim_len);
-                            }
-                        }
-
-                        for (dim_name, i1_dim_len) in i1.iter() {
-                            if !i0.contains_key(dim_name) {
-                                // If this dimension isn't shared, keep it.
-                                out_map.insert(dim_name.clone(), *i1_dim_len);
-                            }
-                        }
-
-                        GlensideType::DimensionMap(out_map)
+                    (GlensideType::DimensionSet(i0), GlensideType::DimensionSet(i1)) => {
+                        GlensideType::DimensionSet(i0.symmetric_difference(i1).cloned().collect())
                     }
                 }
             ),
@@ -205,10 +163,10 @@ mod tests {
     }
 
     test!(
-        dimension_definition,
-        "(dimension-definition N 1)",
+        dimension,
+        "(d N 1)",
         match result {
-            GlensideType::DimensionDefinition { name, length } => {
+            GlensideType::Dimension((name, length)) => {
                 assert_eq!(name, "N");
                 assert_eq!(*length, 1);
             }
@@ -216,20 +174,27 @@ mod tests {
     );
 
     test!(
-        dimension_map_definition,
-        "(dimension-map-definition
-            (dimension-definition N 1)
-            (dimension-definition C 3)
-            (dimension-definition H 32)
-            (dimension-definition W 64)
-        )",
+        dimension_set,
+        "(ds
+          (d N 1)
+          (d C 3)
+          (d H 32)
+          (d W 64)
+         )",
         match result {
-            GlensideType::DimensionMap(map) => {
-                assert_eq!(map.len(), 4);
-                assert_eq!(map.get(&"N".to_string()), Some(&1));
-                assert_eq!(map.get(&"C".to_string()), Some(&3));
-                assert_eq!(map.get(&"H".to_string()), Some(&32));
-                assert_eq!(map.get(&"W".to_string()), Some(&64));
+            GlensideType::DimensionSet(set) => {
+                assert_eq!(
+                    set,
+                    &HashSet::from_iter(
+                        vec![
+                            ("N".to_string(), 1),
+                            ("C".to_string(), 3),
+                            ("H".to_string(), 32),
+                            ("W".to_string(), 64),
+                        ]
+                        .drain(..)
+                    )
+                )
             }
         }
     );
@@ -245,69 +210,32 @@ mod tests {
     );
 
     test!(
-        dimension_identifier_list,
-        "(dimension-list N C H W)",
-        match result {
-            GlensideType::DimensionList(list) => {
-                assert_eq!(list, &vec!["N", "C", "H", "W"]);
-            }
-        }
-    );
-
-    test!(
-        pair,
-        "
-        (pair
-         (input
-          input_MxN
-          (dimension-map-definition
-           (dimension-definition M 16)
-           (dimension-definition N 32)
-          )
-         )
-         (input
-          input_NxO
-          (dimension-map-definition
-           (dimension-definition N 32)
-           (dimension-definition O 64)
-          )
-         )
-        )",
-        match result {
-            GlensideType::DimensionMap(map) => {
-                assert_eq!(map.len(), 4);
-                assert_eq!(map.get(&"M".to_string()), Some(&16));
-                assert_eq!(map.get(&"N".to_string()), Some(&32));
-                assert_eq!(map.get(&"O".to_string()), Some(&64));
-                assert_eq!(map.get(&"T".to_string()), Some(&2));
-            }
-        }
-    );
-
-    test!(
         dot_product,
         "
         (dot-product
          (input
           input_MxN
-          (dimension-map-definition
-           (dimension-definition M 16)
-           (dimension-definition N 32)
+          (ds
+           (d M 16)
+           (d N 32)
           )
          )
          (input
           input_NxO
-          (dimension-map-definition
-           (dimension-definition N 32)
-           (dimension-definition O 64)
+          (ds
+           (d N 32)
+           (d O 64)
           )
          )
         )",
         match result {
-            GlensideType::DimensionMap(map) => {
-                assert_eq!(map.len(), 2);
-                assert_eq!(map.get(&"M".to_string()), Some(&16));
-                assert_eq!(map.get(&"O".to_string()), Some(&64));
+            GlensideType::DimensionSet(set) => {
+                assert_eq!(
+                    set,
+                    &HashSet::from_iter(
+                        vec![("M".to_string(), 16), ("O".to_string(), 64),].drain(..)
+                    )
+                )
             }
         }
     );

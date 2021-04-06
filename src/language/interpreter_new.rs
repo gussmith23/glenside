@@ -1,17 +1,19 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 use super::language_new::Glenside;
 
 use egg::RecExpr;
 use ndarray::ArrayD;
 
+type Dimension = crate::language::language_new::Dimension;
+
 pub enum Value {
     Code(fn(Vec<ArrayD<f64>>) -> ArrayD<f64>),
     Usize(usize),
     String(String),
-    DimensionMap(HashMap<String, usize>),
-    DimensionDefinition { name: String, length: usize },
-    DimensionList(Vec<String>),
+    Dimension(Dimension),
+    DimensionSet(HashSet<Dimension>),
 }
 
 /// Interpret a Glenside expression
@@ -32,54 +34,36 @@ pub fn interpret(expr: &RecExpr<Glenside>, index: usize) -> Value {
     }
 
     match &expr.as_ref()[index] {
+        Glenside::Apply(_ids) => todo!(),
         Glenside::Input(ids) => make_interpreter_arm!(
             expr,
             match ids {
-                (Value::String(_name), Value::DimensionMap(map)) => {
-                    Value::DimensionMap(map.clone())
+                (Value::String(_name), Value::DimensionSet(set)) => {
+                    Value::DimensionSet(set.clone())
                 }
             }
         ),
-        Glenside::DimensionMapDefinition(ids) => {
-            let mut out = HashMap::new();
-
-            for (k, v) in ids
-                .iter()
-                .map(|id| match interpret(expr, usize::from(*id)) {
-                    Value::DimensionDefinition { name, length } => (name, length),
-                    _ => panic!(),
-                })
-                .collect::<Vec<_>>()
-            {
-                out.insert(k, v);
-            }
-
-            Value::DimensionMap(out)
-        }
-        Glenside::DimensionDefinition(ids) => make_interpreter_arm!(
+        Glenside::Dimension(ids) => make_interpreter_arm!(
             expr,
             match ids {
                 (Value::String(name), Value::Usize(length)) => {
-                    Value::DimensionDefinition {
-                        name: name.clone(),
-                        length: *length,
-                    }
+                    Value::Dimension((name.clone(), *length))
                 }
             }
         ),
-        Glenside::DimensionList(ids) => Value::DimensionList(
-            ids.iter()
-                .map(|id| match interpret(expr, usize::from(*id)) {
-                    Value::String(name) => name,
+        Glenside::DimensionSet(ids) => {
+            assert!(ids.is_sorted());
+            Value::DimensionSet(HashSet::from_iter(ids.iter().map(|id| {
+                match interpret(expr, usize::from(*id)) {
+                    Value::Dimension(d) => d,
                     _ => panic!(),
-                })
-                .collect::<Vec<_>>(),
-        ),
-        Glenside::Pair(_) => panic!("Remove pair"),
+                }
+            })))
+        }
         Glenside::DotProduct(ids) => make_interpreter_arm!(
             expr,
             match ids {
-                (Value::DimensionMap(_i0), Value::DimensionMap(_i1)) => {
+                (Value::DimensionSet(_i0), Value::DimensionSet(_i1)) => {
                     Value::Code(|_inputs| todo!("you ran the code!"))
                 }
             }
@@ -132,31 +116,12 @@ mod tests {
     }
 
     test!(
-        dimension_definition,
-        "(dimension-definition N 1)",
+        dimension,
+        "(d N 1)",
         match result {
-            Value::DimensionDefinition { name, length } => {
+            Value::Dimension((name, length)) => {
                 assert_eq!(name, "N");
                 assert_eq!(length, 1);
-            }
-        }
-    );
-
-    test!(
-        dimension_map_definition,
-        "(dimension-map-definition
-            (dimension-definition N 1)
-            (dimension-definition C 3)
-            (dimension-definition H 32)
-            (dimension-definition W 64)
-        )",
-        match result {
-            Value::DimensionMap(map) => {
-                assert_eq!(map.len(), 4);
-                assert_eq!(map.get(&"N".to_string()), Some(&1));
-                assert_eq!(map.get(&"C".to_string()), Some(&3));
-                assert_eq!(map.get(&"H".to_string()), Some(&32));
-                assert_eq!(map.get(&"W".to_string()), Some(&64));
             }
         }
     );
@@ -172,11 +137,22 @@ mod tests {
     );
 
     test!(
-        dimension_identifier_list,
-        "(dimension-list N C H W)",
+        dimension_set,
+        "(ds (d N 1) (d C 3) (d H 224) (d W 224))",
         match result {
-            Value::DimensionList(list) => {
-                assert_eq!(list, vec!["N", "C", "H", "W"]);
+            Value::DimensionSet(set) => {
+                assert_eq!(
+                    set,
+                    HashSet::from_iter(
+                        vec![
+                            ("N".to_string(), 1),
+                            ("C".to_string(), 3),
+                            ("H".to_string(), 224),
+                            ("W".to_string(), 224)
+                        ]
+                        .drain(..)
+                    )
+                );
             }
         }
     );
@@ -184,20 +160,27 @@ mod tests {
     test!(
         input,
         "(input test_input
-          (dimension-map-definition
-           (dimension-definition N 1)
-           (dimension-definition C 3)
-           (dimension-definition H 32)
-           (dimension-definition W 64)
+          (ds
+           (d N 1)
+           (d C 3)
+           (d H 32)
+           (d W 64)
           )
          )",
         match result {
-            Value::DimensionMap(map) => {
-                assert_eq!(map.len(), 4);
-                assert_eq!(map.get(&"N".to_string()), Some(&1));
-                assert_eq!(map.get(&"C".to_string()), Some(&3));
-                assert_eq!(map.get(&"H".to_string()), Some(&32));
-                assert_eq!(map.get(&"W".to_string()), Some(&64));
+            Value::DimensionSet(set) => {
+                assert_eq!(
+                    set,
+                    HashSet::from_iter(
+                        vec![
+                            ("N".to_string(), 1),
+                            ("C".to_string(), 3),
+                            ("H".to_string(), 32),
+                            ("W".to_string(), 64)
+                        ]
+                        .drain(..)
+                    )
+                );
             }
         }
     );
@@ -205,20 +188,23 @@ mod tests {
     test!(
         #[should_panic = "not yet implemented: you ran the code!"]
         dot_product,
-        "(dot-product
-          (input test_input_0
-           (dimension-map-definition
-            (dimension-definition M 16)
-            (dimension-definition N 32)
-           )
+        "
+        (dot-product
+         (input
+          input_MxN
+          (ds
+           (d M 16)
+           (d N 32)
           )
-          (input test_input_1
-           (dimension-map-definition
-            (dimension-definition N 32)
-            (dimension-definition O 64)
-           )
+         )
+         (input
+          input_NxO
+          (ds
+           (d N 32)
+           (d O 64)
           )
-         )",
+         )
+        )",
         match result {
             Value::Code(code) => {
                 code(vec![]);
