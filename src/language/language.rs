@@ -562,6 +562,7 @@ impl Display for PadType {
 pub enum MyAnalysisData {
     Literal(ndarray::ArrayD<f64>),
     Legacy(MyAnalysisDataLegacyData),
+    Usize(usize),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
     Tuple(Vec<MyAnalysisData>),
@@ -1045,14 +1046,19 @@ pub struct MyAnalysis {
 }
 impl MyAnalysis {
     pub fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
+        // match &egraph[id].data {
+        //     MyAnalysisData::Legacy(s) => s.usize_value.unwrap(),
+        //     _ => panic!(),
+        // }
+        //VISHAL_CHANGE
         match &egraph[id].data {
-            MyAnalysisData::Legacy(s) => s.usize_value.unwrap(),
+            MyAnalysisData::Usize(s) => *s,
             _ => panic!(),
         }
     }
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         match &egraph[id].data {
-            MyAnalysisData::Legacy(s) => s.shape.as_ref().unwrap(),
+            MyAnalysisData::Shape(s) => &s.shape,
             _ => panic!(),
         }
     }
@@ -1183,23 +1189,41 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Legacy(rows),
-                        MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::Legacy(rows),
+                        // MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::AccessPattern(weights),
+                        // MyAnalysisData::AccessPattern(data),
+                        // MyAnalysisData::Legacy(kh),
+                        // MyAnalysisData::Legacy(kw),
+                        // MyAnalysisData::Legacy(stride_h),
+                        // MyAnalysisData::Legacy(stride_w),
+                        //VISHAL_CHANGE
+                        MyAnalysisData::Usize(rows),
+                        MyAnalysisData::Usize(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Legacy(kh),
-                        MyAnalysisData::Legacy(kw),
-                        MyAnalysisData::Legacy(stride_h),
-                        MyAnalysisData::Legacy(stride_w),
+                        MyAnalysisData::Usize(kh),
+                        MyAnalysisData::Usize(kw),
+                        MyAnalysisData::Usize(stride_h),
+                        MyAnalysisData::Usize(stride_w),
                     ) => (
-                        rows.usize_value.unwrap(),
-                        cols.usize_value.unwrap(),
+                        // rows.usize_value.unwrap(),
+                        // cols.usize_value.unwrap(),
+                        // weights,
+                        // data,
+                        // kh.usize_value.unwrap(),
+                        // kw.usize_value.unwrap(),
+                        // stride_h.usize_value.unwrap(),
+                        // stride_w.usize_value.unwrap(),
+                        *rows,
+                        *cols,
                         weights,
                         data,
-                        kh.usize_value.unwrap(),
-                        kw.usize_value.unwrap(),
-                        stride_h.usize_value.unwrap(),
-                        stride_w.usize_value.unwrap(),
+                        *kh,
+                        *kw,
+                        *stride_h,
+                        *stride_w,
+
                     ),
                     _ => panic!("Does not type check"),
                 };
@@ -1242,23 +1266,40 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Legacy(rows),
-                        MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::Legacy(rows),
+                        // MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::AccessPattern(weights),
+                        // MyAnalysisData::AccessPattern(data),
+                        // MyAnalysisData::Legacy(kh),
+                        // MyAnalysisData::Legacy(kw),
+                        // MyAnalysisData::Legacy(stride_h),
+                        // MyAnalysisData::Legacy(stride_w),
+                        //VISHAL_CHANGE
+                        MyAnalysisData::Usize(rows),
+                        MyAnalysisData::Usize(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Legacy(kh),
-                        MyAnalysisData::Legacy(kw),
-                        MyAnalysisData::Legacy(stride_h),
-                        MyAnalysisData::Legacy(stride_w),
+                        MyAnalysisData::Usize(kh),
+                        MyAnalysisData::Usize(kw),
+                        MyAnalysisData::Usize(stride_h),
+                        MyAnalysisData::Usize(stride_w),
                     ) => (
-                        rows.usize_value.unwrap(),
-                        cols.usize_value.unwrap(),
+                        // rows.usize_value.unwrap(),
+                        // cols.usize_value.unwrap(),
+                        // weights,
+                        // data,
+                        // kh.usize_value.unwrap(),
+                        // kw.usize_value.unwrap(),
+                        // stride_h.usize_value.unwrap(),
+                        // stride_w.usize_value.unwrap(),
+                        *rows,
+                        *cols,
                         weights,
                         data,
-                        kh.usize_value.unwrap(),
-                        kw.usize_value.unwrap(),
-                        stride_h.usize_value.unwrap(),
-                        stride_w.usize_value.unwrap(),
+                        *kh,
+                        *kw,
+                        *stride_h,
+                        *stride_w,
                     ),
                     _ => panic!("Does not type check"),
                 };
@@ -1300,23 +1341,40 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Legacy(rows),
-                        MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::Legacy(rows),
+                        // MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::AccessPattern(weights),
+                        // MyAnalysisData::AccessPattern(data),
+                        // MyAnalysisData::Legacy(kh),
+                        // MyAnalysisData::Legacy(kw),
+                        // MyAnalysisData::Legacy(stride_h),
+                        // MyAnalysisData::Legacy(stride_w),
+                        //VISHAL_CHANGE
+                        MyAnalysisData::Usize(rows),
+                        MyAnalysisData::Usize(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Legacy(kh),
-                        MyAnalysisData::Legacy(kw),
-                        MyAnalysisData::Legacy(stride_h),
-                        MyAnalysisData::Legacy(stride_w),
+                        MyAnalysisData::Usize(kh),
+                        MyAnalysisData::Usize(kw),
+                        MyAnalysisData::Usize(stride_h),
+                        MyAnalysisData::Usize(stride_w),
                     ) => (
-                        rows.usize_value.unwrap(),
-                        cols.usize_value.unwrap(),
+                        // rows.usize_value.unwrap(),
+                        // cols.usize_value.unwrap(),
+                        // weights,
+                        // data,
+                        // kh.usize_value.unwrap(),
+                        // kw.usize_value.unwrap(),
+                        // stride_h.usize_value.unwrap(),
+                        // stride_w.usize_value.unwrap(),
+                        *rows,
+                        *cols,
                         weights,
                         data,
-                        kh.usize_value.unwrap(),
-                        kw.usize_value.unwrap(),
-                        stride_h.usize_value.unwrap(),
-                        stride_w.usize_value.unwrap(),
+                        *kh,
+                        *kw,
+                        *stride_h,
+                        *stride_w,
                     ),
                     _ => panic!("Does not type check"),
                 };
@@ -1359,23 +1417,40 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Legacy(rows),
-                        MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::Legacy(rows),
+                        // MyAnalysisData::Legacy(cols),
+                        // MyAnalysisData::AccessPattern(weights),
+                        // MyAnalysisData::AccessPattern(data),
+                        // MyAnalysisData::Legacy(kh),
+                        // MyAnalysisData::Legacy(kw),
+                        // MyAnalysisData::Legacy(stride_h),
+                        // MyAnalysisData::Legacy(stride_w),
+                        //VISHAL_CHANGE
+                        MyAnalysisData::Usize(rows),
+                        MyAnalysisData::Usize(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Legacy(kh),
-                        MyAnalysisData::Legacy(kw),
-                        MyAnalysisData::Legacy(stride_h),
-                        MyAnalysisData::Legacy(stride_w),
+                        MyAnalysisData::Usize(kh),
+                        MyAnalysisData::Usize(kw),
+                        MyAnalysisData::Usize(stride_h),
+                        MyAnalysisData::Usize(stride_w),
                     ) => (
-                        rows.usize_value.unwrap(),
-                        cols.usize_value.unwrap(),
+                        // rows.usize_value.unwrap(),
+                        // cols.usize_value.unwrap(),
+                        // weights,
+                        // data,
+                        // kh.usize_value.unwrap(),
+                        // kw.usize_value.unwrap(),
+                        // stride_h.usize_value.unwrap(),
+                        // stride_w.usize_value.unwrap(),
+                        *rows,
+                        *cols,
                         weights,
                         data,
-                        kh.usize_value.unwrap(),
-                        kw.usize_value.unwrap(),
-                        stride_h.usize_value.unwrap(),
-                        stride_w.usize_value.unwrap(),
+                        *kh,
+                        *kw,
+                        *stride_h,
+                        *stride_w,
                     ),
                     _ => panic!("Does not type check"),
                 };
@@ -1487,7 +1562,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_)] => {
+                            //VISHAL_CHANGE
+                            // [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_)] => {
+                            //     a.clone()
+                            // }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Usize(_)] => {
+                                a.clone()
+                            }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Shape(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
@@ -1706,7 +1788,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Legacy(_)] => {
+                            // [MyAnalysisData::AccessPattern(a), MyAnalysisData::Legacy(_)] => {
+                            //     a.clone()
+                            // }
+                            //VISHAL_CHANGE
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(_)] => {
+                                a.clone()
+                            }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
@@ -1728,7 +1817,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_), MyAnalysisData::Literal(_)] => {
+                            // [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Legacy(_), MyAnalysisData::Literal(_)] => {
+                            //     a.clone()
+                            // }
+                            //VISHAL_CHANGE
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Usize(_), MyAnalysisData::Literal(_)] => {
+                                a.clone()
+                            }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Shape(_), MyAnalysisData::Literal(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
@@ -2149,7 +2245,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // for each operator.
                 zero_regions: { HashMap::default() },
                 shape: match &egraph[t_id].data {
-                    MyAnalysisData::Legacy(l) => l.shape.as_ref().unwrap().clone(),
+                    // MyAnalysisData::Legacy(l) => l.shape.as_ref().unwrap().clone(),
+                    //VISHAL_CHANGE
+                    MyAnalysisData::Shape(l) => l.shape.clone(),
                     _ => panic!(),
                 },
                 item_shape: IxDyn(&[]),
@@ -2588,7 +2686,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             &SliceShape([shape_id, dim_id]) => {
-                let shape = MyAnalysis::get_shape_of_value(shape_id, egraph);
+                // VISHAL_CHANGE
+                // let shape = MyAnalysis::get_shape_of_value(shape_id, egraph);
+                let shape =  match &egraph[shape_id].data {
+                    MyAnalysisData::Shape(s) => &s.shape,
+                    _ => panic!(),
+                };
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
                 MyAnalysisData::Shape(ShapeData {
                     shape: IxDyn(shape.as_array_view().slice(s![dim..]).to_slice().unwrap()),
@@ -2679,9 +2782,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                 new_shape[dest_axis] = new_shape[src_axis];
                 new_shape[src_axis] = tmp;
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(new_shape),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(new_shape),
+                //     usize_value: None,
+                // });
+                //Changing the return type to shape or usize depending on method (VISHAL_CHANGE)
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
                 })
             }
             &CartesianProduct([t0_id, t1_id]) => {
@@ -2720,9 +2827,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                         + 1
                         + 1
                 );
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(new_shape),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(new_shape),
+                //     usize_value: None,
+                // })
+                //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
                 })
             }
             &MapDotProduct(tensor_id) => {
@@ -2740,9 +2851,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .collect::<Vec<usize>>()[..],
                 );
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(new_shape),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(new_shape),
+                //     usize_value: None,
+                // })
+                //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
                 })
             }
             &BsgSystolicArray([rows_id, cols_id, t0_id, t1_id]) => {
@@ -2770,9 +2885,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .chain(right_shape.as_array_view().iter().cloned().skip(1))
                     .collect();
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(ndarray::IxDyn(&new_shape)),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(ndarray::IxDyn(&new_shape)),
+                //     usize_value: None,
+                // })
+                //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape: ndarray::IxDyn(&new_shape),
                 })
             }
             &SystolicArray([rows_id, cols_id, a0_id, a1_id])
@@ -2854,9 +2973,13 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 new_shape[axis] = high - low;
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(new_shape),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(new_shape),
+                //     usize_value: None,
+                // })                
+                //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
                 })
             }
             &Concatenate([t0_id, t1_id, axis_id]) => {
@@ -2870,9 +2993,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert!(axis < t1_shape.as_array_view().len());
                 new_shape[axis] += t1_shape[axis];
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(new_shape),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(new_shape),
+                //     usize_value: None,
+                // })
+                //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
                 })
             }
             &ElementwiseAdd([t0_id, t1_id]) => {
@@ -2881,19 +3008,65 @@ impl egg::Analysis<Language> for MyAnalysis {
                     Self::get_shape(t1_id, egraph)
                 );
 
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(Self::get_shape(t0_id, egraph).clone()),
-                    usize_value: None,
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(Self::get_shape(t0_id, egraph).clone()),
+                //     usize_value: None,
+                // })
+                //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape : Self::get_shape(t0_id, egraph).clone(),
                 })
             }
-            Usize(u) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                shape: None,
-                usize_value: Some(*u),
-            }),
+            // Usize(u) => MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+            //     shape: None,
+            //     usize_value: Some(*u),
+            // })
+            //VISHAL_CHANGE
+            Usize(u) => MyAnalysisData::Usize(*u),
             Symbol(name) => {
                 //println!("Symbol");
-                MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                    shape: Some(ndarray::IxDyn(
+                // MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                //     shape: Some(ndarray::IxDyn(
+                //         &(match &name[..] {
+                //             "in" => vec![1, 784],
+                //             "w1" => vec![784, 512],
+                //             "w2" => vec![512, 512],
+                //             "w3" => vec![512, 10],
+                            // TODO(@gussmith23) have to figure out a way around this.
+                            // Max seems to think the tensors should just go
+                            // into the egraph. I was hoping to have some kind
+                            // of environment that we could wrap the egraph in
+                            // (would have to be accessible from here), but Max
+                            // doesn't have that nor does he plan to implement
+                            // it.
+                            //
+                            // Update, Max is implementing something that will
+                            // allow for this.
+                    //         "single-matrix-multiply-input-a" => vec![32, 32],
+                    //         "single-matrix-multiply-input-b" => vec![32, 32],
+                    //         "v-32" => vec![32],
+                    //         "t-32-32" => vec![32, 32],
+                    //         "t-32-64" => vec![32, 64],
+                    //         "t-64-128" => vec![64, 128],
+                    //         "t-128-16" => vec![128, 16],
+                    //         // A 3-channel "image" in CHW format.
+                    //         "t-3-32-32" => vec![3, 32, 32],
+                    //         // An OIHW set of convolution filters.
+                    //         "t-8-3-3-3" => vec![8, 3, 3, 3],
+                    //         "t-1024-2-256" => vec![1024, 2, 256],
+                    //         "t-1-2-3-4" => vec![1, 2, 3, 4],
+                    //         _ => egraph
+                    //             .analysis
+                    //             .name_to_shape
+                    //             .get(name)
+                    //             .unwrap_or_else(|| panic!("No shape defined for {}", name))
+                    //             .clone(),
+                    //     })[..],
+                    // )),
+                    // usize_value: None,
+                    //VISHAL_CHANGE
+                MyAnalysisData::Shape(ShapeData {
+                    shape : ndarray::IxDyn(
                         &(match &name[..] {
                             "in" => vec![1, 784],
                             "w1" => vec![784, 512],
@@ -2929,8 +3102,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 .unwrap_or_else(|| panic!("No shape defined for {}", name))
                                 .clone(),
                         })[..],
-                    )),
-                    usize_value: None,
+                    )
                 })
             }
             PadType(t) => MyAnalysisData::PadType(*t),
