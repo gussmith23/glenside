@@ -23,4 +23,6 @@ docker run -it glenside cargo test
 ...and "soon" I will add interactive web demos and pretty visualizations!
 
 ## Publications
+
+- TODO: Glenside is accepted to MAPS at PLDI 2021! Add link to MAPS paper
 - [Enumerating Hardware-Software Splits with Program Rewriting](https://arxiv.org/abs/2003.00290), a two-page proposal of Glenside which was accepted into the [Second Young Architects Workshop](https://sites.psu.edu/yarch2020/) at ASPLOS 2020.
