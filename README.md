@@ -22,6 +22,23 @@ docker run -it glenside cargo test
 
 ...and "soon" I will add interactive web demos and pretty visualizations!
 
+## CPLEX
+
+Glenside uses the [CPLEX](https://www.ibm.com/products/ilog-cplex-optimization-studio)
+  ILP solver.
+It isn't actually used
+  in the core of Glenside anymore,
+  and needs to be removed
+  or cordoned off,
+  but for now,
+  to get Glenside fully working,
+  you need CPLEX.
+To set up CPLEX,
+  follow these steps:
+
+1. **Get access to CPLEX.** Students and academics can do so by making an account through their academic program. Download and install CPLEX on your machine.
+2. **Set environment variables.** Set `$CPLEX_LIB` to the location of the newly-installed CPLEX library on your machine. For me on OSX, it resides in `/Applications/CPLEX_Studio1210/cplex/lib/x86-64_osx/static_pic/`.
+
 ## Publications
 
 - TODO: Glenside is accepted to MAPS at PLDI 2021! Add link to MAPS paper
