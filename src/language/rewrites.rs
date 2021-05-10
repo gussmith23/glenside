@@ -95,13 +95,11 @@ fn item_axis(axis: Var, access: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -
 }
 
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
-// checks to make sure it has a shape and that it's an input
-//VISHAL_CHANGE
 pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| match &egraph[subst[var]].data {
-       MyAnalysisData::Shape(_s) => true,
-       _ => false,
+        MyAnalysisData::Shape(_s) => true,
+        _ => false,
     }
 }
 /// short_circuit lets us return early if we don't actually care about the
@@ -259,14 +257,14 @@ pub fn split(
     split_all_nodes: bool,
 ) -> Rewrite<Language, MyAnalysis> {
     rewrite!(format!("split-axis-{}", axis); "?a" =>
-                  {SplitApplier{axis: axis}}
-             if is_symbol(split_all_nodes, "?a")
-             if has_shape("?a")
-             
-             if has_axis("?a", axis)
-             if dimension_is_even("?a", axis)
-             if self::dimension_greater_than("?a", axis, dimension_greater_than)
-        )
+              {SplitApplier{axis: axis}}
+         if is_symbol(split_all_nodes, "?a")
+         if has_shape("?a")
+
+         if has_axis("?a", axis)
+         if dimension_is_even("?a", axis)
+         if self::dimension_greater_than("?a", axis, dimension_greater_than)
+    )
 }
 
 pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
@@ -1901,14 +1899,11 @@ pub fn bubble_access_slice_through_access_pad_inequal_axes() -> Rewrite<Language
               )"
     if constrain_vars(vec!["?slice-axis".parse().unwrap(), "?pad-axis".parse().unwrap()], |data| {
         assert_eq!(data.len(), 2);
-        //VISHAL_CHANGE
         let slice_axis = match &data[0] {
-            // MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
             MyAnalysisData::Usize(l) => *l,
             _ =>panic!(),
         };
         let pad_axis = match &data[1] {
-            // MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
             MyAnalysisData::Usize(l) => *l,
             _ =>panic!(),
         };
@@ -2003,7 +1998,7 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
     }}
               if same_item_axis("?axis0".parse().unwrap(), "?a0".parse().unwrap(), "?axis1".parse().unwrap(), "?a1".parse().unwrap())
     if constrain_vars(vec!["?a0".parse().unwrap(), "?a1".parse().unwrap(), "?axis0".parse().unwrap(), "?axis1".parse().unwrap()], |data| {
-        
+
         let a0 = match &data[0] {
             MyAnalysisData::AccessPattern(a) =>a,
             _ => panic!(),
@@ -2013,13 +2008,10 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
             _ => panic!(),
         };
         let axis0 = match &data[2] {
-            //VISHAL_CHANGE
-            // MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
             MyAnalysisData::Usize(l) => *l,
             _ => panic!(),
         };
         let axis1 = match &data[3] {
-            // MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
             MyAnalysisData::Usize(l) => *l,
             _ => panic!(),
         };
@@ -2062,18 +2054,14 @@ pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
                                        _ => panic!(),
                                    };
                                    let axis = match &data[1] {
-                                    //VISHAL_CHANGE
-                                    //    MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
                                        MyAnalysisData::Usize(l) => *l,
                                        _ => panic!(),
                                    };
                                    let low = match &data[2] {
-                                    //    MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
                                        MyAnalysisData::Usize(l) => *l,
                                        _ => panic!(),
                                    };
                                    let high = match &data[3] {
-                                    //    MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
                                        MyAnalysisData::Usize(l) => *l,
                                        _ => panic!(),
                                    };
@@ -2211,13 +2199,10 @@ pub fn systolic_array_conv2d_nhwc_hwio_with_blocking(
                   ApplierImpl {rows, cols}
               }
              if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?rows".parse().unwrap()]].data {
-                 //VISHAL_CHANGE
-                //  MyAnalysisData::Legacy(l) => l.usize_value.unwrap() == rows,
                  MyAnalysisData::Usize(l) => *l == rows,
                  _ => panic!(),
              }
              if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?cols".parse().unwrap()]].data {
-                //  MyAnalysisData::Legacy(l) => l.usize_value.unwrap() == cols,
                  MyAnalysisData::Usize(l) => *l == cols,
                  _ => panic!(),
              }
