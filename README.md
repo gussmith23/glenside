@@ -3,6 +3,8 @@
 ![Build and test](https://github.com/gussmith23/glenside/workflows/Build%20and%20test/badge.svg)
 ![Check formatting](https://github.com/gussmith23/glenside/workflows/Check%20formatting/badge.svg)
 
+[web demo](https://gussmith23.github.io/glenside-web-demo)
+
 Hardware–software partition exploration with e-graphs!
 
 Glenside is a research project which seeks to answer the question: given a deep learning program, can we *automatically* generate an accelerator design and compiler by *simultaneously* optimizing over hardware configuration, memory layout, and software schedule? We first introduce a new representation for tensor programs which includes constructs for representing memory layouts and hardware components. We then utilize *equality graphs* (provided by the [`egg` crate](https://docs.rs/egg/)) to run rewrites over the program and explore the design space of hardware/software designs. Finally, we use the resulting expanded design space to construct an ILP problem. Solutions to the ILP problem encode both hardware configurations and software schedules.
