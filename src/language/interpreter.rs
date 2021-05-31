@@ -1414,7 +1414,7 @@ mod tests {
         "(compute dot-product
             (access (access-tensor t) 2)
            )",
-        vec![(            
+        vec![(
             "t",
             // 3 x 2 x 2
             array![[[1, 2], [3, 4]], [[5, 6], [7, 8]], [[9, 10], [11, 12]],].into_dyn(),
@@ -1432,10 +1432,9 @@ mod tests {
                         array![[1 * 2, 3 * 4], [5 * 6, 7 * 8], [9 * 10, 11 * 12]].into_dyn()
                     );
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
-        
     );
 
     benchmark_test!(
@@ -1478,7 +1477,7 @@ mod tests {
         }
     );
 
-    benchmark_test! (
+    benchmark_test!(
         access,
         "(access (access-tensor t) 1)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
@@ -1496,13 +1495,12 @@ mod tests {
         }
     );
 
-    benchmark_test_panic! (
+    benchmark_test_panic!(
         access_panic,
         "access (access-tensor t) 3)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| value
     );
-
 
     benchmark_test!(
         access_windows,
@@ -1567,11 +1565,10 @@ mod tests {
         |value| {
             match value {
                 Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 2])),
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
-
 
     benchmark_test!(
         slice_shape_1,
@@ -1697,7 +1694,6 @@ mod tests {
         );
     }
 
-
     benchmark_test!(
         shape_of,
         "(shape-of t)",
@@ -1733,7 +1729,7 @@ mod tests {
                 _ => panic!(),
             }
         }
-    ); 
+    );
 
     benchmark_test!(
         access_tensor,
@@ -1748,7 +1744,7 @@ mod tests {
                     assert_eq!(tensor, array![[1., 2.], [3., 4.]].into_dyn());
                     assert_eq!(access_axis, 0);
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
@@ -1798,7 +1794,10 @@ mod tests {
         "(compute reduce-max
             (access (access-tensor t) 0)
            )",
-        vec![("t", array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn())],
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -1808,7 +1807,7 @@ mod tests {
                     assert_eq!(access_axis, 0);
                     assert_eq!(tensor, ndarray::arr0(12).into_dyn());
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
@@ -1817,7 +1816,10 @@ mod tests {
         "(compute reduce-max
             (access (access-tensor t) 1)
            )",
-        vec![("t", array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn())],
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -1827,7 +1829,7 @@ mod tests {
                     assert_eq!(access_axis, 1);
                     assert_eq!(tensor, array![3, 8, 12].into_dyn());
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
@@ -1837,7 +1839,10 @@ mod tests {
         "(compute reduce-max
             (access (access-tensor t) 2)
            )",
-        vec![("t", array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn())],
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -1847,7 +1852,7 @@ mod tests {
                     assert_eq!(access_axis, 2);
                     assert_eq!(tensor, array![[1, 3], [6, 8], [10, 12]].into_dyn());
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
@@ -1857,7 +1862,10 @@ mod tests {
         "(compute reduce-max
             (access (access-tensor t) 3)
             )",
-        vec![("t", array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn())],
+        vec![(
+            "t",
+            array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -1867,10 +1875,11 @@ mod tests {
                     assert_eq!(access_axis, 3);
                     assert_eq!(
                         tensor,
-                        array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],].into_dyn(),
+                        array![[[1, -2], [3, 0]], [[-5, 6], [0, 8]], [[-9, 10], [11, 12]],]
+                            .into_dyn(),
                     );
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
@@ -1926,7 +1935,6 @@ mod tests {
         }
     );
 
-  
     benchmark_test!(
         max_pool2d,
         "(compute reduce-max
@@ -1952,7 +1960,7 @@ mod tests {
                     assert_eq!(tensor.shape(), [3, 1, 2]);
                     assert_eq!(tensor, array![[[6, 5]], [[6, 8]], [[2, 12]]].into_dyn(),);
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
@@ -2036,7 +2044,7 @@ mod tests {
         access_pair_panic,
         "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
         vec![
-            ("a", array![[1], [3]].into_dyn()), 
+            ("a", array![[1], [3]].into_dyn()),
             ("b", array![[5, 6], [7, 8]].into_dyn())
         ],
         |value| {
@@ -2052,11 +2060,11 @@ mod tests {
                     );
                     assert_eq!(access_axis, 2);
                 }
-                _ => panic!(), 
+                _ => panic!(),
             }
         }
     );
- 
+
     benchmark_test!(
         access_insert_axis_0,
         "(access-insert-axis (access (access-tensor t) 0) 0)",
@@ -2074,7 +2082,7 @@ mod tests {
             }
         }
     );
-   
+
     benchmark_test!(
         access_insert_axis_1,
         "(access-insert-axis (access (access-tensor t) 0) 1)",
@@ -2092,7 +2100,7 @@ mod tests {
             }
         }
     );
-  
+
     benchmark_test!(
         access_broadcast,
         "(access-broadcast (access (access-tensor t) 0) (access-shape (shape 2 2) (shape)))",
@@ -2110,7 +2118,6 @@ mod tests {
             }
         }
     );
-
 
     benchmark_test_panic!(
         access_broadcast_panic,
@@ -2187,24 +2194,21 @@ mod tests {
         access_transpose_panic_0,
         "(access-transpose (access (access-tensor t) 0) (list 1 0 2))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
-        |value| {
-            value
-        }
+        |value| { value }
     );
     benchmark_test_panic!(
         access_transpose_panic_1,
         "(access-transpose (access (access-tensor t) 0) (list 1 1))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
-        |value| {
-            value
-        }
+        |value| { value }
     );
     benchmark_test!(
         compute_softmax,
         "(compute softmax (access (access-tensor t) 1))",
-        vec![
-            ("t",array![[0.4597965, 0.8250755], [0.14535584, 0.16271448]].into_dyn())
-            ],
+        vec![(
+            "t",
+            array![[0.4597965, 0.8250755], [0.14535584, 0.16271448]].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -2346,10 +2350,9 @@ mod tests {
         compute_reduce_mean_0,
         "(compute reduce-mean (access (access-tensor t) 0))",
         vec![(
-             "t", 
-             array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn()
-            )
-        ],
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -2358,20 +2361,24 @@ mod tests {
                 }) => {
                     assert_eq!(
                         tensor,
-                        ndarray::arr0((1f64 + 2f64 + 3f64 + 4f64 + 5f64 + 6f64 + 7f64 + 8f64) / 8f64)
-                            .into_dyn(),
+                        ndarray::arr0(
+                            (1f64 + 2f64 + 3f64 + 4f64 + 5f64 + 6f64 + 7f64 + 8f64) / 8f64
+                        )
+                        .into_dyn(),
                     );
                     assert_eq!(access_axis, 0);
                 }
                 _ => panic!(),
             }
         }
-        
     );
     benchmark_test!(
         compute_reduce_mean_1,
         "(compute reduce-mean (access (access-tensor t) 1))",
-        vec![("t", array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn())],
+        vec![(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -2396,7 +2403,10 @@ mod tests {
     benchmark_test!(
         compute_reduce_mean_2,
         "(compute reduce-mean (access (access-tensor t) 2))",
-        vec![("t", array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn())],
+        vec![(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -2420,7 +2430,10 @@ mod tests {
     benchmark_test!(
         compute_reduce_mean_3,
         "(compute reduce-mean (access (access-tensor t) 3))",
-        vec![("t", array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn())],
+        vec![(
+            "t",
+            array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn()
+        )],
         |value| {
             match value {
                 Value::Access(Access {
@@ -2429,7 +2442,8 @@ mod tests {
                 }) => {
                     assert_eq!(
                         tensor,
-                        array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]].into_dyn(),
+                        array![[[1f64, 2f64], [3f64, 4f64]], [[5f64, 6f64], [7f64, 8f64]]]
+                            .into_dyn(),
                     );
                     assert_eq!(access_axis, 3);
                 }
@@ -2437,7 +2451,6 @@ mod tests {
             }
         }
     );
-
 
     benchmark_test!(
         access_pad_min_padding,
@@ -2469,13 +2482,14 @@ mod tests {
             }
         }
     );
- 
+
     benchmark_test!(
         compute_elementwise_div,
         "(compute elementwise-div
             (access (access-tensor t) 0)
            )",
-        vec![( "t",
+        vec![(
+            "t",
             array![
                 [[1f32, -2f32], [3f32, 1f32]],
                 [[-5f32, 6f32], [1f32, 8f32]],
@@ -2536,13 +2550,14 @@ mod tests {
         "(compute sqrt
             (access (access-tensor t) 0)
            )",
-        vec![(            
+        vec![(
             "t",
             array![
                 [[1f64, 2f64], [3f64, 0f64]],
                 [[5f64, 6f64], [0f64, 8f64]],
                 [[9f64, 10f64], [11f64, 12f64]],
-            ].into_dyn()
+            ]
+            .into_dyn()
         )],
         |value| {
             match value {
@@ -2565,7 +2580,6 @@ mod tests {
             }
         }
     );
- 
 
     benchmark_test!(
         compute_negative,
@@ -2644,27 +2658,23 @@ mod tests {
         }
     );
 
-     benchmark_test_panic!(
+    benchmark_test_panic!(
         access_concatenate_panic_0,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 1) 1)",
         vec![
             ("t", array![[1], [2]].into_dyn()),
             ("n", array![[1, 2], [3, 4]].into_dyn())
         ],
-        |value| {
-            value
-        }
+        |value| { value }
     );
-     benchmark_test_panic!(
+    benchmark_test_panic!(
         access_concatenate_panic_1,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
         vec![
             ("t", array![[1], [2]].into_dyn()),
             ("n", array![[1, 2], [3, 4]].into_dyn())
         ],
-        |value| {
-            value
-        }
+        |value| { value }
     );
     benchmark_test!(
         access_slice_0,
@@ -2720,22 +2730,17 @@ mod tests {
         }
     );
 
-
     benchmark_test_panic!(
         access_slice_panic_0,
         "(access-slice (access (access-tensor t) 0) 0 0 3)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
-        |value| {
-            value
-        }
+        |value| { value }
     );
     benchmark_test_panic!(
         access_slice_panic_1,
         "(access-slice (access (access-tensor t) 0) 2 0 1)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
-        |value| {
-            value
-        }
+        |value| { value }
     );
     #[test]
     fn access_shape() {
@@ -2749,5 +2754,3 @@ mod tests {
         }
     }
 }
-
-
