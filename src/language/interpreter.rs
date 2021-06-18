@@ -1091,15 +1091,21 @@ mod tests {
     /// Creates a benchmark test for the interpreter
     /// The test does the following:
     ///  1. Parses $glenside_str as glenside expression
-    ///  2. Creates a new Environment from the vector of (key, value) pairs
+    ///  2. Creates a new Environment from the vector of (key, value) pairs if present
     ///  3. Calls the interpreter with the glenside expression and env,
     ///         and passes the value to check_correct
     /// $test_name: the name of the created benchmark test
     /// $glenside_str: A string containing the Glenside program
-    /// $env: A vector of 2-tuples of key, value pairs to put into the environment
+    /// $env: An optional vector of 2-tuples of key, value pairs to put
+    /// into the environment. If your environment is empty, do not pass
+    /// an enviroment argument, otherwise you will get a compile time
+    /// error.
     /// $check_correct: A closure with arguments (value) that checks for correctness
+    /// $(#[$meta:meta]): Attributes to add to test. If you do not have any attributes,
+    /// do not pass any attribute arguments
     macro_rules! benchmark_test {
-        ($test_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
+        ($(#[$meta:meta])* $test_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
+            $(#[$meta])*
             #[bench]
             fn $test_name(b: &mut Bencher) {
                 let mut env = Environment::new();
@@ -1119,17 +1125,11 @@ mod tests {
                 });
             }
         };
-    }
-    macro_rules! benchmark_test_panic {
-        ($test_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
-            #[should_panic]
+        ($(#[$meta:meta])* $test_name:ident, $glenside_str: expr, $check_correct: expr) => {
+            $(#[$meta])*
             #[bench]
             fn $test_name(b: &mut Bencher) {
-                let mut env = Environment::new();
-                for (key, value) in $env.into_iter() {
-                    env.insert(key, value);
-                }
-
+                let env = Environment::<f32>::default();
                 let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
 
                 b.iter(|| {
@@ -1495,7 +1495,8 @@ mod tests {
         }
     );
 
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_panic,
         "access (access-tensor t) 3)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
@@ -1545,18 +1546,12 @@ mod tests {
         }
     );
 
-    #[test]
-    fn shape() {
-        let expr = RecExpr::<Language>::from_str("(shape 1 2 3)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
+    benchmark_test!(shape, "(shape 1 2 3)", |value| {
+        match value {
             Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
             _ => panic!(),
         }
-    }
+    });
 
     benchmark_test!(
         slice_shape_0,
@@ -1593,106 +1588,81 @@ mod tests {
             }
         }
     );
-
-    #[test]
-    fn shape_insert_axis_0() {
-        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 0)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
-            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
-            _ => panic!(),
+    benchmark_test!(
+        shape_insert_axis_0,
+        "(shape-insert-axis (shape 2 3) 0)",
+        |value| {
+            match value {
+                Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
+                _ => panic!(),
+            }
         }
-    }
+    );
 
-    #[test]
-    fn shape_insert_axis_1() {
-        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 1)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
-            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 1, 3])),
-            _ => panic!(),
+    benchmark_test!(
+        shape_insert_axis_1,
+        "(shape-insert-axis (shape 2 3) 1)",
+        |value| {
+            match value {
+                Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 1, 3])),
+                _ => panic!(),
+            }
         }
-    }
-
-    #[test]
-    fn shape_insert_axis_2() {
-        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 2)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
-            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3, 1])),
-            _ => panic!(),
+    );
+    benchmark_test!(
+        shape_insert_axis_2,
+        "(shape-insert-axis (shape 2 3) 2)",
+        |value| {
+            match value {
+                Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3, 1])),
+                _ => panic!(),
+            }
         }
-    }
-
-    #[test]
-    #[should_panic]
-    fn shape_insert_axis_panic() {
-        let expr = RecExpr::<Language>::from_str("(shape-insert-axis (shape 2 3) 3)").unwrap();
-        interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        );
-    }
-
-    #[test]
-    fn shape_remove_axis_0() {
-        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 0)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
-            Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3])),
-            _ => panic!(),
+    );
+    benchmark_test!(
+        #[should_panic]
+        shape_insert_axis_panic,
+        "(shape-insert-axis (shape 2 3) 3)",
+        |value| { value }
+    );
+    benchmark_test!(
+        shape_remove_axis_0,
+        "(shape-remove-axis (shape 1 2 3) 0)",
+        |value| {
+            match value {
+                Value::Shape(s) => assert_eq!(s, IxDyn(&[2, 3])),
+                _ => panic!(),
+            }
         }
-    }
+    );
 
-    #[test]
-    fn shape_remove_axis_1() {
-        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 1)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
-            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 3])),
-            _ => panic!(),
+    benchmark_test!(
+        shape_remove_axis_1,
+        "(shape-remove-axis (shape 1 2 3) 1)",
+        |value| {
+            match value {
+                Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 3])),
+                _ => panic!(),
+            }
         }
-    }
+    );
 
-    #[test]
-    fn shape_remove_axis_2() {
-        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 2)").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
-            Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2])),
-            _ => panic!(),
+    benchmark_test!(
+        shape_remove_axis_2,
+        "(shape-remove-axis (shape 1 2 3) 2)",
+        |value| {
+            match value {
+                Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2])),
+                _ => panic!(),
+            }
         }
-    }
-
-    #[test]
-    #[should_panic]
-    fn shape_remove_axis_panic() {
-        let expr = RecExpr::<Language>::from_str("(shape-remove-axis (shape 1 2 3) 3)").unwrap();
-        interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        );
-    }
+    );
+    benchmark_test!(
+        #[should_panic]
+        shape_remove_axis_panic,
+        "(shape-remove-axis (shape 1 2 3) 3)",
+        |value| { value }
+    );
 
     benchmark_test!(
         shape_of,
@@ -1706,19 +1676,12 @@ mod tests {
         }
     );
 
-    #[test]
-    fn usize() {
-        let expr = RecExpr::<Language>::from_str("23").unwrap();
-        match interpret(
-            &expr,
-            expr.as_ref().len() - 1,
-            &Environment::<f32>::default(),
-        ) {
+    benchmark_test!(usize, "23", |value| {
+        match value {
             Value::Usize(23) => (),
             _ => panic!(),
         }
-    }
-
+    });
     benchmark_test!(
         symbol,
         "t",
@@ -1749,14 +1712,12 @@ mod tests {
         }
     );
 
-    #[test]
-    fn pad_type() {
-        let expr = RecExpr::<Language>::from_str("zero-padding").unwrap();
-        match interpret::<i64>(&expr, expr.as_ref().len() - 1, &Environment::default()) {
+    benchmark_test!(pad_type, "zero-padding", |value| {
+        match value {
             Value::PadType(PadType::ZeroPadding) => (),
             _ => panic!(),
-        };
-    }
+        }
+    });
 
     benchmark_test!(
         access_pad,
@@ -1917,7 +1878,8 @@ mod tests {
             }
         }
     );
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_squeeze_panic,
         "(access-squeeze (access (access-tensor t) 1) 1)",
         vec![("t", array![[1., 2.]].into_dyn())],
@@ -2040,7 +2002,8 @@ mod tests {
         }
     );
 
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_pair_panic,
         "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
         vec![
@@ -2119,7 +2082,8 @@ mod tests {
         }
     );
 
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_broadcast_panic,
         "(access-broadcast (access (access-tensor t) 0) (shape 2 2 2))",
         vec![("t", array![[1, 2]].into_dyn())],
@@ -2190,13 +2154,15 @@ mod tests {
         }
     );
 
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_transpose_panic_0,
         "(access-transpose (access (access-tensor t) 0) (list 1 0 2))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
         |value| { value }
     );
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_transpose_panic_1,
         "(access-transpose (access (access-tensor t) 0) (list 1 1))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
@@ -2517,33 +2483,31 @@ mod tests {
             }
         }
     );
-    #[test]
-    fn literal_0() {
-        let expr = RecExpr::<Language>::from_str("(literal 0.1234)").unwrap();
-
-        match interpret::<f64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
+    benchmark_test!(literal_0, "(literal 0.1234)", |value| {
+        match value {
             Value::Tensor(t) => {
                 assert_eq!(t, ndarray::arr0(0.1234).into_dyn());
             }
             _ => panic!(),
         }
-    }
+    });
 
-    #[test]
-    fn access_literal() {
-        let expr = RecExpr::<Language>::from_str("(access-literal (literal 0.1234))").unwrap();
-
-        match interpret::<f64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
-            Value::Access(Access {
-                tensor,
-                access_axis,
-            }) => {
-                assert_eq!(tensor, ndarray::arr0(0.1234).into_dyn());
-                assert_eq!(access_axis, 0);
+    benchmark_test!(
+        access_literal,
+        "(access-literal (literal 0.1234))",
+        |value| {
+            match value {
+                Value::Access(Access {
+                    tensor,
+                    access_axis,
+                }) => {
+                    assert_eq!(tensor, ndarray::arr0(0.1234).into_dyn());
+                    assert_eq!(access_axis, 0);
+                }
+                _ => panic!(),
             }
-            _ => panic!(),
         }
-    }
+    );
 
     benchmark_test!(
         compute_sqrt,
@@ -2658,7 +2622,8 @@ mod tests {
         }
     );
 
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_concatenate_panic_0,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 1) 1)",
         vec![
@@ -2667,7 +2632,8 @@ mod tests {
         ],
         |value| { value }
     );
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_concatenate_panic_1,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
         vec![
@@ -2730,27 +2696,31 @@ mod tests {
         }
     );
 
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_slice_panic_0,
         "(access-slice (access (access-tensor t) 0) 0 0 3)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| { value }
     );
-    benchmark_test_panic!(
+    benchmark_test!(
+        #[should_panic]
         access_slice_panic_1,
         "(access-slice (access (access-tensor t) 0) 2 0 1)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| { value }
     );
-    #[test]
-    fn access_shape() {
-        let expr = RecExpr::<Language>::from_str("(access-shape (shape 1 2) (shape 3 4))").unwrap();
-        match interpret::<i64>(&expr, expr.as_ref().len() - 1, &HashMap::default()) {
-            Value::AccessShape(shape, access_axis) => {
-                assert_eq!(shape.slice(), &[1, 2, 3, 4]);
-                assert_eq!(access_axis, 2);
+    benchmark_test!(
+        access_shape,
+        "(access-shape (shape 1 2) (shape 3 4))",
+        |value| {
+            match value {
+                Value::AccessShape(shape, access_axis) => {
+                    assert_eq!(shape.slice(), &[1, 2, 3, 4]);
+                    assert_eq!(access_axis, 2);
+                }
+                _ => panic!(),
             }
-            _ => panic!(),
         }
-    }
+    );
 }
