@@ -3,13 +3,28 @@
 ![Build and test](https://github.com/gussmith23/glenside/workflows/Build%20and%20test/badge.svg)
 ![Check formatting](https://github.com/gussmith23/glenside/workflows/Check%20formatting/badge.svg)
 
-[web demo](https://gussmith23.github.io/glenside-web-demo)
+Check out the [web demo](https://gussmith23.github.io/glenside-web-demo)!
 
-Hardware–software partition exploration with e-graphs!
-
-Glenside is a research project which seeks to answer the question: given a deep learning program, can we *automatically* generate an accelerator design and compiler by *simultaneously* optimizing over hardware configuration, memory layout, and software schedule? We first introduce a new representation for tensor programs which includes constructs for representing memory layouts and hardware components. We then utilize *equality graphs* (provided by the [`egg` crate](https://docs.rs/egg/)) to run rewrites over the program and explore the design space of hardware/software designs. Finally, we use the resulting expanded design space to construct an ILP problem. Solutions to the ILP problem encode both hardware configurations and software schedules.
-
-See the [docs](https://gussmith23.github.io/glenside/glenside) for technical details and examples!
+Glenside 
+  is a pure, low-level 
+  tensor program representation 
+  which enables tensor program optimization via program rewriting, using rewriting frameworks such as
+  the [egg equality saturation library](https://egraphs-good.github.io/).
+If you are interested
+  in transforming and optimizing
+  tensor kernels
+  (e.g. fusing kernels,
+   exploring data layouts,
+   or
+   mapping to custom hardware),
+  then Glenside is of interest to you!
+See the [**web demo**](https://gussmith23.github.io/glenside-web-demo)
+  for concrete examples.
+See our [**MAPS 2021 paper**](https://arxiv.org/abs/2105.09377)
+  to understand why Glenside exists
+  and how it can be used.
+Finally, see the [docs](https://gussmith23.github.io/glenside/glenside)
+  for technical documentation.
 
 ## Quickstart
 
@@ -24,7 +39,15 @@ docker run -it glenside cargo test
 
 ...and "soon" I will add interactive web demos and pretty visualizations!
 
-## CPLEX
+## Dependencies
+
+Glenside optionally depends on TVM and CPLEX.
+To disable these optional dependencies,
+  use the `--no-default-features`
+  flag with `cargo`, e.g.
+  `cargo test --no-default-features`.
+
+### CPLEX
 
 Glenside uses the [CPLEX](https://www.ibm.com/products/ilog-cplex-optimization-studio)
   ILP solver.
@@ -43,5 +66,5 @@ To set up CPLEX,
 
 ## Publications
 
-- TODO: Glenside is accepted to MAPS at PLDI 2021! Add link to MAPS paper
+- [Pure Tensor Program Rewriting via Access Patterns (Representation Pearl)](https://arxiv.org/abs/2105.09377) (published at the MAPS symposium at PLDI 2021)
 - [Enumerating Hardware-Software Splits with Program Rewriting](https://arxiv.org/abs/2003.00290), a two-page proposal of Glenside which was accepted into the [Second Young Architects Workshop](https://sites.psu.edu/yarch2020/) at ASPLOS 2020.
