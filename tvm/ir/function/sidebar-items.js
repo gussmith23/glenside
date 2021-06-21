@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BaseFunc",""],["BaseFuncNode",""]],"type":[["DictAttrs",""]]});

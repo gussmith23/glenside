@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error",""]],"fn":[["compile_module","Compile a module from a configuration and IRModule."],["compile_to_module","The interface to the compile subcommand."]],"struct":[["CompilerConfig",""]]});

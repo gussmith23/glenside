@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["PyGCMethods","All FFI functions for gc protocols."],["PyTraverseError",""],["PyVisit","Object visitor for GC."]],"trait":[["PyGCClearProtocol",""],["PyGCProtocol","GC support"],["PyGCTraverseProtocol",""]]});

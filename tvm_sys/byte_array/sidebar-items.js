@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["ByteArray","A newtype wrapping a raw TVM byte-array."]]});

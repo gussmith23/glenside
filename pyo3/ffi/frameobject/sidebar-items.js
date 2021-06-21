@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["PyFrame_BlockPop",""],["PyFrame_BlockSetup",""],["PyFrame_Check",""],["PyFrame_ClearFreeList",""],["PyFrame_FastToLocals",""],["PyFrame_FastToLocalsWithError",""],["PyFrame_GetLineNumber",""],["PyFrame_LocalsToFast",""],["PyFrame_New",""]],"static":[["PyFrame_Type",""]],"struct":[["PyFrameObject",""],["PyTryBlock",""]]});
