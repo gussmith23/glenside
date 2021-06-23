@@ -257,14 +257,12 @@ pub fn split(
     split_all_nodes: bool,
 ) -> Rewrite<Language, MyAnalysis> {
     rewrite!(format!("split-axis-{}", axis); "?a" =>
-              {SplitApplier{axis: axis}}
-         if is_symbol(split_all_nodes, "?a")
-         if has_shape("?a")
-
-         if has_axis("?a", axis)
-         if dimension_is_even("?a", axis)
-         if self::dimension_greater_than("?a", axis, dimension_greater_than)
-    )
+                  {SplitApplier{axis: axis}}
+             if is_symbol(split_all_nodes, "?a")
+             if has_shape("?a")
+             if has_axis("?a", axis)
+             if dimension_is_even("?a", axis)
+             if self::dimension_greater_than("?a", axis, dimension_greater_than))
 }
 
 pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
