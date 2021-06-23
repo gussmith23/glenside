@@ -95,12 +95,11 @@ fn item_axis(axis: Var, access: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -
 }
 
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
-// checks to make sure it has a shape and that it's an input
 pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| match &egraph[subst[var]].data {
-        MyAnalysisData::Legacy(s) => !s.shape.is_none(),
-        _ => panic!(),
+        MyAnalysisData::Shape(_) => true,
+        _ => false,
     }
 }
 /// short_circuit lets us return early if we don't actually care about the
@@ -1899,11 +1898,11 @@ pub fn bubble_access_slice_through_access_pad_inequal_axes() -> Rewrite<Language
     if constrain_vars(vec!["?slice-axis".parse().unwrap(), "?pad-axis".parse().unwrap()], |data| {
         assert_eq!(data.len(), 2);
         let slice_axis = match &data[0] {
-            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            MyAnalysisData::Usize(l) => *l,
             _ =>panic!(),
         };
         let pad_axis = match &data[1] {
-            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            MyAnalysisData::Usize(l) => *l,
             _ =>panic!(),
         };
         slice_axis != pad_axis
@@ -2006,11 +2005,11 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
             _ => panic!(),
         };
         let axis0 = match &data[2] {
-            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            MyAnalysisData::Usize(l) => *l,
             _ => panic!(),
         };
         let axis1 = match &data[3] {
-            MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+            MyAnalysisData::Usize(l) => *l,
             _ => panic!(),
         };
 
@@ -2052,15 +2051,15 @@ pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
                                        _ => panic!(),
                                    };
                                    let axis = match &data[1] {
-                                       MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+                                       MyAnalysisData::Usize(l) => *l,
                                        _ => panic!(),
                                    };
                                    let low = match &data[2] {
-                                       MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+                                       MyAnalysisData::Usize(l) => *l,
                                        _ => panic!(),
                                    };
                                    let high = match &data[3] {
-                                       MyAnalysisData::Legacy(l) => l.usize_value.unwrap(),
+                                       MyAnalysisData::Usize(l) => *l,
                                        _ => panic!(),
                                    };
 
@@ -2197,11 +2196,11 @@ pub fn systolic_array_conv2d_nhwc_hwio_with_blocking(
                   ApplierImpl {rows, cols}
               }
              if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?rows".parse().unwrap()]].data {
-                 MyAnalysisData::Legacy(l) => l.usize_value.unwrap() == rows,
+                 MyAnalysisData::Usize(l) => *l == rows,
                  _ => panic!(),
              }
              if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?cols".parse().unwrap()]].data {
-                 MyAnalysisData::Legacy(l) => l.usize_value.unwrap() == cols,
+                 MyAnalysisData::Usize(l) => *l == cols,
                  _ => panic!(),
              }
              if constrain_access("?weights".parse().unwrap(),
