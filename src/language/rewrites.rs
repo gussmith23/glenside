@@ -98,7 +98,7 @@ fn item_axis(axis: Var, access: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -
 pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| match &egraph[subst[var]].data {
-        MyAnalysisData::Shape(_s) => true,
+        MyAnalysisData::Shape(_) => true,
         _ => false,
     }
 }
@@ -1998,7 +1998,6 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
     }}
               if same_item_axis("?axis0".parse().unwrap(), "?a0".parse().unwrap(), "?axis1".parse().unwrap(), "?a1".parse().unwrap())
     if constrain_vars(vec!["?a0".parse().unwrap(), "?a1".parse().unwrap(), "?axis0".parse().unwrap(), "?axis1".parse().unwrap()], |data| {
-
         let a0 = match &data[0] {
             MyAnalysisData::AccessPattern(a) =>a,
             _ => panic!(),

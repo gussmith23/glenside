@@ -561,7 +561,6 @@ impl Display for PadType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MyAnalysisData {
     Literal(ndarray::ArrayD<f64>),
-    Legacy(MyAnalysisDataLegacyData),
     Usize(usize),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
@@ -2655,8 +2654,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let tmp = new_shape[dest_axis];
                 new_shape[dest_axis] = new_shape[src_axis];
                 new_shape[src_axis] = tmp;
-
-                //Changing the return type to shape or usize depending on method (~VC)
                 MyAnalysisData::Shape(ShapeData { shape: new_shape })
             }
             &CartesianProduct([t0_id, t1_id]) => {
