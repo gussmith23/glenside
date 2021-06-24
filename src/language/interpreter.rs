@@ -1091,9 +1091,10 @@ mod tests {
     /// Creates a benchmark test for the interpreter
     /// The test does the following:
     ///  1. Parses $glenside_str as glenside expression
-    ///  2. Creates a new Environment from the vector of (key, value) pairs if present
-    ///  3. Calls the interpreter with the glenside expression and env,
-    ///         and passes the value to check_correct
+    ///  2. Creates a new Environment from the vector of (key, value) pairs if
+    ///     present
+    ///  3. Calls the interpreter with the glenside expression and env, and
+    ///         passes the value to check_correct
     /// $test_name: the name of the created benchmark test
     /// $glenside_str: A string containing the Glenside program
     /// $env: An optional vector of 2-tuples of key, value pairs to put
@@ -1104,10 +1105,10 @@ mod tests {
     /// $(#[$meta:meta]): Attributes to add to test. If you do not have any attributes,
     /// do not pass any attribute arguments
     macro_rules! benchmark_test {
-        ($(#[$meta:meta])* $test_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
+        ($(#[$meta:meta])* $test_name: ident, $bench_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
             $(#[$meta])*
             #[bench]
-            fn $test_name(b: &mut Bencher) {
+            fn $bench_name(b: &mut Bencher) {
                 let mut env = Environment::new();
                 for (key, value) in $env.into_iter() {
                     env.insert(key, value);
@@ -1120,32 +1121,32 @@ mod tests {
                     let expr = test::black_box(&expr);
                     let env = test::black_box(&env);
 
-                    let value = interpret(&expr, expr.as_ref().len() - 1, &env);
-                    $check_correct(value);
+                    interpret(&expr, expr.as_ref().len() - 1, &env);
                 });
             }
-        };
-        ($(#[$meta:meta])* $test_name:ident, $glenside_str: expr, $check_correct: expr) => {
+
             $(#[$meta])*
-            #[bench]
-            fn $test_name(b: &mut Bencher) {
-                let env = Environment::<f32>::default();
+            #[test]
+            fn $test_name() {
+                let mut env = Environment::new();
+                for (key, value) in $env.into_iter() {
+                    env.insert(key, value);
+                }
+
                 let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
 
-                b.iter(|| {
-                    // use black box to prevent compiler optimizations
-                    let expr = test::black_box(&expr);
-                    let env = test::black_box(&env);
-
-                    let value = interpret(&expr, expr.as_ref().len() - 1, &env);
-                    $check_correct(value);
-                });
+                let value = interpret(&expr, expr.as_ref().len() - 1, &env);
+                $check_correct(value);
             }
+        };
+        ($(#[$meta:meta])* $test_name: ident, $bench_name:ident, $glenside_str: expr, $check_correct: expr) => {
+            benchmark_test!($(#[$meta])* $test_name, $bench_name, $glenside_str, Vec::<(&str, ArrayD<f32>)>::new(), $check_correct);
         };
     }
 
     benchmark_test!(
         compute_elementwise_add_0,
+        bench_compute_elementwise_add_0,
         "(compute elementwise-add
         (access (access-tensor t) 0)
         )",
@@ -1172,6 +1173,7 @@ mod tests {
 
     benchmark_test!(
         compute_elementwise_mul_0,
+        bench_compute_elementwise_mul_0,
         "(compute elementwise-mul
         (access (access-tensor t) 0)
         )",
@@ -1198,6 +1200,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_sum_0,
+        bench_compute_reduce_sum_0,
         "(compute reduce-sum
         (access (access-tensor t) 0)
         )",
@@ -1225,6 +1228,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_sum_1,
+        bench_compute_reduce_sum_1,
         "(compute reduce-sum
         (access (access-tensor t) 1)
         )",
@@ -1251,6 +1255,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_sum_2,
+        bench_compute_reduce_sum_2,
         "(compute reduce-sum
         (access (access-tensor t) 2)
         )",
@@ -1277,6 +1282,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_sum_3,
+        bench_compute_reduce_sum_3,
         "(compute reduce-sum
         (access (access-tensor t) 3)
         )",
@@ -1304,6 +1310,7 @@ mod tests {
 
     benchmark_test!(
         compute_relu_0,
+        bench_compute_relu_0,
         "(compute relu
         (access (access-tensor t) 0)
         )",
@@ -1330,6 +1337,7 @@ mod tests {
 
     benchmark_test!(
         compute_relu_1,
+        bench_compute_relu_1,
         "(compute relu
         (access (access-tensor t) 2)
         )",
@@ -1356,6 +1364,7 @@ mod tests {
 
     benchmark_test!(
         compute_dot_product_0,
+        bench_compute_dot_product_0,
         "(compute dot-product
         (access (access-tensor t) 0)
         )",
@@ -1384,6 +1393,7 @@ mod tests {
 
     benchmark_test!(
         compute_dot_product_1,
+        bench_compute_dot_product_1,
         "(compute dot-product
         (access (access-tensor t) 1)
         )",
@@ -1411,6 +1421,7 @@ mod tests {
     );
     benchmark_test!(
         compute_dot_product_2,
+        bench_compute_dot_product_2,
         "(compute dot-product
             (access (access-tensor t) 2)
            )",
@@ -1439,6 +1450,7 @@ mod tests {
 
     benchmark_test!(
         access_cartesian_product,
+        bench_access_cartesian_product,
         "(access-cartesian-product
         (access (access-tensor t0) 2)
         (access (access-tensor t1) 2)
@@ -1479,6 +1491,7 @@ mod tests {
 
     benchmark_test!(
         access,
+        bench_access,
         "(access (access-tensor t) 1)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1498,6 +1511,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_panic,
+        bench_access_panic,
         "access (access-tensor t) 3)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| value
@@ -1505,6 +1519,7 @@ mod tests {
 
     benchmark_test!(
         access_windows,
+        bench_access_windows,
         "(access-windows
             (access (access-tensor t) 3)
             (shape 3 2 2)
@@ -1546,7 +1561,7 @@ mod tests {
         }
     );
 
-    benchmark_test!(shape, "(shape 1 2 3)", |value| {
+    benchmark_test!(shape, bench_shape, "(shape 1 2 3)", |value| {
         match value {
             Value::Shape(s) => assert_eq!(s, IxDyn(&[1, 2, 3])),
             _ => panic!(),
@@ -1555,6 +1570,7 @@ mod tests {
 
     benchmark_test!(
         slice_shape_0,
+        bench_slice_shape_0,
         "(slice-shape (shape-of t) 0)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1567,6 +1583,7 @@ mod tests {
 
     benchmark_test!(
         slice_shape_1,
+        bench_slice_shape_1,
         "(slice-shape (shape-of t) 1)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1579,6 +1596,7 @@ mod tests {
 
     benchmark_test!(
         slice_shape_2,
+        bench_slice_shape_2,
         "(slice-shape (shape-of t) 2)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1590,6 +1608,7 @@ mod tests {
     );
     benchmark_test!(
         shape_insert_axis_0,
+        bench_shape_insert_axis_0,
         "(shape-insert-axis (shape 2 3) 0)",
         |value| {
             match value {
@@ -1601,6 +1620,7 @@ mod tests {
 
     benchmark_test!(
         shape_insert_axis_1,
+        bench_shape_insert_axis_1,
         "(shape-insert-axis (shape 2 3) 1)",
         |value| {
             match value {
@@ -1611,6 +1631,7 @@ mod tests {
     );
     benchmark_test!(
         shape_insert_axis_2,
+        bench_shape_insert_axis_2,
         "(shape-insert-axis (shape 2 3) 2)",
         |value| {
             match value {
@@ -1622,11 +1643,13 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         shape_insert_axis_panic,
+        bench_shape_insert_axis_panic,
         "(shape-insert-axis (shape 2 3) 3)",
         |value| { value }
     );
     benchmark_test!(
         shape_remove_axis_0,
+        bench_shape_remove_axis_0,
         "(shape-remove-axis (shape 1 2 3) 0)",
         |value| {
             match value {
@@ -1638,6 +1661,7 @@ mod tests {
 
     benchmark_test!(
         shape_remove_axis_1,
+        bench_shape_remove_axis_1,
         "(shape-remove-axis (shape 1 2 3) 1)",
         |value| {
             match value {
@@ -1649,6 +1673,7 @@ mod tests {
 
     benchmark_test!(
         shape_remove_axis_2,
+        bench_shape_remove_axis_2,
         "(shape-remove-axis (shape 1 2 3) 2)",
         |value| {
             match value {
@@ -1660,12 +1685,14 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         shape_remove_axis_panic,
+        bench_shape_remove_axis_panic,
         "(shape-remove-axis (shape 1 2 3) 3)",
         |value| { value }
     );
 
     benchmark_test!(
         shape_of,
+        bench_shape_of,
         "(shape-of t)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1676,7 +1703,7 @@ mod tests {
         }
     );
 
-    benchmark_test!(usize, "23", |value| {
+    benchmark_test!(usize, bench_usize, "23", |value| {
         match value {
             Value::Usize(23) => (),
             _ => panic!(),
@@ -1684,6 +1711,7 @@ mod tests {
     });
     benchmark_test!(
         symbol,
+        bench_symbol,
         "t",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1696,6 +1724,7 @@ mod tests {
 
     benchmark_test!(
         access_tensor,
+        bench_access_tensor,
         "(access-tensor t)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1712,7 +1741,7 @@ mod tests {
         }
     );
 
-    benchmark_test!(pad_type, "zero-padding", |value| {
+    benchmark_test!(pad_type, bench_pad_type, "zero-padding", |value| {
         match value {
             Value::PadType(PadType::ZeroPadding) => (),
             _ => panic!(),
@@ -1721,6 +1750,7 @@ mod tests {
 
     benchmark_test!(
         access_pad,
+        bench_access_pad,
         "(access-pad (access-tensor t) zero-padding 0 2 4)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -1752,6 +1782,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_max_0,
+        bench_compute_reduce_max_0,
         "(compute reduce-max
             (access (access-tensor t) 0)
            )",
@@ -1774,6 +1805,7 @@ mod tests {
     );
     benchmark_test!(
         compute_reduce_max_1,
+        bench_compute_reduce_max_1,
         "(compute reduce-max
             (access (access-tensor t) 1)
            )",
@@ -1797,6 +1829,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_max_2,
+        bench_compute_reduce_max_2,
         "(compute reduce-max
             (access (access-tensor t) 2)
            )",
@@ -1820,6 +1853,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_max_3,
+        bench_compute_reduce_max_3,
         "(compute reduce-max
             (access (access-tensor t) 3)
             )",
@@ -1846,6 +1880,7 @@ mod tests {
     );
     benchmark_test!(
         access_squeeze_0,
+        bench_access_squeeze_0,
         "(access-squeeze (access-tensor t) 0)",
         vec![("t", array![[1., 2.]].into_dyn())],
         |value| {
@@ -1863,6 +1898,7 @@ mod tests {
     );
     benchmark_test!(
         access_squeeze_1,
+        bench_access_squeeze_1,
         "(access-squeeze (access (access-tensor t) 1) 0)",
         vec![("t", array![[1., 2.]].into_dyn())],
         |value| {
@@ -1881,6 +1917,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_squeeze_panic,
+        bench_access_squeeze_panic,
         "(access-squeeze (access (access-tensor t) 1) 1)",
         vec![("t", array![[1., 2.]].into_dyn())],
         |value| {
@@ -1899,6 +1936,7 @@ mod tests {
 
     benchmark_test!(
         max_pool2d,
+        bench_max_pool2d,
         "(compute reduce-max
             (access-windows (access (access-tensor t) 3) (shape 1 2 2) (shape 1 2 2))
            )",
@@ -1929,6 +1967,7 @@ mod tests {
 
     benchmark_test!(
         access_pair_0,
+        bench_access_pair_0,
         "(access-pair (access (access-tensor a) 0) (access (access-tensor b) 0))",
         vec![
             ("a", array![[1, 2], [3, 4]].into_dyn()),
@@ -1954,6 +1993,7 @@ mod tests {
 
     benchmark_test!(
         access_pair_1,
+        bench_access_pair_1,
         "(access-pair (access (access-tensor a) 1) (access (access-tensor b) 1))",
         vec![
             ("a", array![[1, 2], [3, 4]].into_dyn()),
@@ -1979,6 +2019,7 @@ mod tests {
 
     benchmark_test!(
         access_pair_2,
+        bench_access_pair_2,
         "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
         vec![
             ("a", array![[1, 2], [3, 4]].into_dyn()),
@@ -2005,6 +2046,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_pair_panic,
+        bench_access_pair_panic,
         "(access-pair (access (access-tensor a) 2) (access (access-tensor b) 2))",
         vec![
             ("a", array![[1], [3]].into_dyn()),
@@ -2030,6 +2072,7 @@ mod tests {
 
     benchmark_test!(
         access_insert_axis_0,
+        bench_access_insert_axis_0,
         "(access-insert-axis (access (access-tensor t) 0) 0)",
         vec![("t", array![1, 2].into_dyn())],
         |value| {
@@ -2048,6 +2091,7 @@ mod tests {
 
     benchmark_test!(
         access_insert_axis_1,
+        bench_access_insert_axis_1,
         "(access-insert-axis (access (access-tensor t) 0) 1)",
         vec![("t", array![1, 2].into_dyn())],
         |value| {
@@ -2066,6 +2110,7 @@ mod tests {
 
     benchmark_test!(
         access_broadcast,
+        bench_access_broadcast,
         "(access-broadcast (access (access-tensor t) 0) (access-shape (shape 2 2) (shape)))",
         vec![("t", array![[1, 2]].into_dyn())],
         |value| {
@@ -2085,6 +2130,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_broadcast_panic,
+        bench_access_broadcast_panic,
         "(access-broadcast (access (access-tensor t) 0) (shape 2 2 2))",
         vec![("t", array![[1, 2]].into_dyn())],
         |value| {
@@ -2102,6 +2148,7 @@ mod tests {
     );
     benchmark_test!(
         access_transpose_0,
+        bench_access_transpose_0,
         "(access-transpose (access (access-tensor t) 0) (list 1 0))",
         vec![("t", array![[1, 2]].into_dyn())],
         |value| {
@@ -2120,6 +2167,7 @@ mod tests {
 
     benchmark_test!(
         access_transpose_1,
+        bench_access_transpose_1,
         "(access-transpose (access (access-tensor t) 0) (list 1 0))",
         vec![("t", array![[1, 2]].into_dyn())],
         |value| {
@@ -2138,6 +2186,7 @@ mod tests {
 
     benchmark_test!(
         access_transpose_2,
+        bench_access_transpose_2,
         "(access-transpose (access (access-tensor t) 0) (list 1 0))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
         |value| {
@@ -2157,6 +2206,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_transpose_panic_0,
+        bench_access_transpose_panic_0,
         "(access-transpose (access (access-tensor t) 0) (list 1 0 2))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
         |value| { value }
@@ -2164,12 +2214,14 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_transpose_panic_1,
+        bench_access_transpose_panic_1,
         "(access-transpose (access (access-tensor t) 0) (list 1 1))",
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
         |value| { value }
     );
     benchmark_test!(
         compute_softmax,
+        bench_compute_softmax,
         "(compute softmax (access (access-tensor t) 1))",
         vec![(
             "t",
@@ -2193,6 +2245,7 @@ mod tests {
     );
     benchmark_test!(
         access_flatten_0,
+        bench_access_flatten_0,
         "(access-flatten (access (access-tensor t) 0))",
         vec![(
             "t",
@@ -2224,6 +2277,7 @@ mod tests {
 
     benchmark_test!(
         access_flatten_1,
+        bench_access_flatten_1,
         "(access-flatten (access (access-tensor t) 1))",
         vec![(
             "t",
@@ -2254,6 +2308,7 @@ mod tests {
     );
     benchmark_test!(
         access_flatten_2,
+        bench_access_flatten_2,
         "(access-flatten (access (access-tensor t) 2))",
         vec![(
             "t",
@@ -2284,6 +2339,7 @@ mod tests {
     );
     benchmark_test!(
         access_flatten_3,
+        bench_access_flatten_3,
         "(access-flatten (access (access-tensor t) 5))",
         vec![(
             "t",
@@ -2314,6 +2370,7 @@ mod tests {
     );
     benchmark_test!(
         compute_reduce_mean_0,
+        bench_compute_reduce_mean_0,
         "(compute reduce-mean (access (access-tensor t) 0))",
         vec![(
             "t",
@@ -2340,6 +2397,7 @@ mod tests {
     );
     benchmark_test!(
         compute_reduce_mean_1,
+        bench_compute_reduce_mean_1,
         "(compute reduce-mean (access (access-tensor t) 1))",
         vec![(
             "t",
@@ -2368,6 +2426,7 @@ mod tests {
 
     benchmark_test!(
         compute_reduce_mean_2,
+        bench_compute_reduce_mean_2,
         "(compute reduce-mean (access (access-tensor t) 2))",
         vec![(
             "t",
@@ -2395,6 +2454,7 @@ mod tests {
     );
     benchmark_test!(
         compute_reduce_mean_3,
+        bench_compute_reduce_mean_3,
         "(compute reduce-mean (access (access-tensor t) 3))",
         vec![(
             "t",
@@ -2420,6 +2480,7 @@ mod tests {
 
     benchmark_test!(
         access_pad_min_padding,
+        bench_access_pad_min_padding,
         "(access-pad (access-tensor t) min-padding 0 2 4)",
         vec![("t", array![[1., 2.], [3., 4.]].into_dyn())],
         |value| {
@@ -2451,6 +2512,7 @@ mod tests {
 
     benchmark_test!(
         compute_elementwise_div,
+        bench_compute_elementwise_div,
         "(compute elementwise-div
             (access (access-tensor t) 0)
            )",
@@ -2483,7 +2545,7 @@ mod tests {
             }
         }
     );
-    benchmark_test!(literal_0, "(literal 0.1234)", |value| {
+    benchmark_test!(literal_0, bench_literal_0, "(literal 0.1234)", |value| {
         match value {
             Value::Tensor(t) => {
                 assert_eq!(t, ndarray::arr0(0.1234).into_dyn());
@@ -2494,6 +2556,7 @@ mod tests {
 
     benchmark_test!(
         access_literal,
+        bench_access_literal,
         "(access-literal (literal 0.1234))",
         |value| {
             match value {
@@ -2511,6 +2574,7 @@ mod tests {
 
     benchmark_test!(
         compute_sqrt,
+        bench_compute_sqrt,
         "(compute sqrt
             (access (access-tensor t) 0)
            )",
@@ -2547,6 +2611,7 @@ mod tests {
 
     benchmark_test!(
         compute_negative,
+        bench_compute_negative,
         "(compute negative
             (access (access-tensor t) 0)
            )",
@@ -2582,6 +2647,7 @@ mod tests {
     );
     benchmark_test!(
         access_concatenate_0,
+        bench_access_concatenate_0,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
         vec![
             ("t", array![[1, 2]].into_dyn()),
@@ -2603,6 +2669,7 @@ mod tests {
 
     benchmark_test!(
         access_concatenate_1,
+        bench_access_concatenate_1,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 1)",
         vec![
             ("t", array![[1], [2]].into_dyn()),
@@ -2625,6 +2692,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_concatenate_panic_0,
+        bench_access_concatenate_panic_0,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 1) 1)",
         vec![
             ("t", array![[1], [2]].into_dyn()),
@@ -2635,6 +2703,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_concatenate_panic_1,
+        bench_access_concatenate_panic_1,
         "(access-concatenate (access (access-tensor t) 0) (access (access-tensor n) 0) 0)",
         vec![
             ("t", array![[1], [2]].into_dyn()),
@@ -2644,6 +2713,7 @@ mod tests {
     );
     benchmark_test!(
         access_slice_0,
+        bench_access_slice_0,
         "(access-slice (access (access-tensor t) 0) 0 0 1)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| {
@@ -2662,6 +2732,7 @@ mod tests {
 
     benchmark_test!(
         access_slice_1,
+        bench_access_slice_1,
         "(access-slice (access (access-tensor t) 0) 0 0 2)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| {
@@ -2680,6 +2751,7 @@ mod tests {
 
     benchmark_test!(
         access_slice_2,
+        bench_access_slice_2,
         "(access-slice (access (access-tensor t) 0) 1 1 2)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| {
@@ -2699,6 +2771,7 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_slice_panic_0,
+        bench_access_slice_panic_0,
         "(access-slice (access (access-tensor t) 0) 0 0 3)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| { value }
@@ -2706,12 +2779,14 @@ mod tests {
     benchmark_test!(
         #[should_panic]
         access_slice_panic_1,
+        bench_access_slice_panic_1,
         "(access-slice (access (access-tensor t) 0) 2 0 1)",
         vec![("t", array![[1, 2], [3, 4]].into_dyn())],
         |value| { value }
     );
     benchmark_test!(
         access_shape,
+        bench_access_shape,
         "(access-shape (shape 1 2) (shape 3 4))",
         |value| {
             match value {
