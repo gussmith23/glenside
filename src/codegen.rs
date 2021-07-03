@@ -1938,7 +1938,55 @@ mod tests {
         }
         relay_outputs
     }
-
+    macro_rules! codegen_test {
+        // pattern where shape/map is present
+        //assorted variables as tuple?
+        //code_expr is the glenside expression, (needs to be whole thing, not a format string, variable, etc.)
+        ($test_name: ident, $shape_vec: expr, $code_expr: expr, $code_tup: expr) => {
+            #[test]
+            fn $test_name() {
+                let mut map = HashMap::default();
+                let shape_vec = $shape_vec;
+                if (shape_vec.len() == 1) {
+                    map.insert("t".to_string(), shape_vec[0].0.clone());
+                } else {
+                    for n in 0..shape_vec.len() {
+                        map.insert(format!("t{}", n).to_string(), shape_vec[n].0.clone());
+                    }
+                }
+                let expr = RecExpr::from_str($code_expr.as_str()).unwrap();
+                let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+                let id = egraph.add_expr(&expr);
+                let code = codegen(
+                    &egraph,
+                    id,
+                    &$code_tup.0,
+                    $code_tup.1,
+                    "",
+                    &$code_tup.2,
+                    &generate_worklist_for_codegen(&egraph, id),
+                    true,
+                );
+            }
+        };
+    }
+    codegen_test!(
+        tranpose,
+        vec![(
+            vec![1, 20, 300, 3],
+            ndarray::ArrayD::from_shape_vec(
+                vec![1, 20, 300, 3].clone(),
+                (0..vec![1, 20, 300, 3].iter().product::<usize>()).collect(),
+            )
+            .unwrap()
+        )],
+        format!(
+            "
+(access-transpose (access-tensor t) (list {}))",
+            vec![3, 1, 0, 2].iter().map(|x| x.to_string()).join(" ")
+        ),
+        (HashMap::default(), "transpose", vec!["t"])
+    );
     #[test]
     fn transpose() {
         let shape = vec![1, 20, 300, 3];
@@ -2438,6 +2486,35 @@ int main() {{
 
     #[test]
     fn slice() {
+
+        // our_macro!(
+        //     {
+        // let slice_axis = 2;
+        // let low = 5;
+        // let high = 83;
+        // let mut slices = Vec::from_iter(
+        //     std::iter::repeat(SliceOrIndex::Slice {
+        //         start: 0,
+        //         end: None,
+        //         step: 1,
+        //     })
+        //     .take(shape.len()),
+        // );
+        // slices[slice_axis] = SliceOrIndex::Slice {
+        //     start: low,
+        //     end: Some(high),
+        //     step: 1,
+        // };
+        // let sliced = input.slice(
+        //     &SliceInfo::<std::vec::Vec<ndarray::SliceOrIndex>, ndarray::IxDyn>::new(slices)
+        //         .unwrap()
+        //         .as_ref(),
+        // );
+
+        // sliced
+        //     },
+        // )
+
         let shape = vec![32, 7, 100, 3];
         let slice_axis = 2;
         let low = 5;
