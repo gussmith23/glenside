@@ -1,3 +1,4 @@
+#![feature(is_sorted)]
 #![feature(test)]
 //! ## Glenside Feature Flags
 //!
