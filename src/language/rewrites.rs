@@ -874,6 +874,42 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
              if is_dot_product("?op".parse().unwrap()))
 }
 
+pub fn bubble_reshape_through_linear() -> RW {
+    fn same_op_expr(op1 : Var, op2 : Var, expr1 : Var, expr2 : Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| egraph.find(subst[op1]) == egraph.find(subst[op2]) && egraph.find(subst[expr1]) == egraph.find(subst[expr2])
+    }
+    rewrite!("bubble-reshape-through-linear";
+            "(compute elementwise-add
+                (access-pair
+                    (access 
+                        (access-reshape 
+                            (compute ?op1 ?expr1) 
+                            ?shape1) 
+                        0)
+                    (access 
+                        (access-broadcast
+                            (access-insert-axis
+                                (access-insert-axis (access-tensor ?bias) 0) 0)
+                            (get-access-shape
+                                (access-reshape
+                                    (compute ?op2 ?expr2)
+                                    ?shape2))) 0)))"
+            =>
+            "(access-reshape
+                (compute elementwise-add
+                    (access-pair
+                        (access
+                            (compute ?op1 ?expr1)
+                            0)
+                        (access
+                            (access-broadcast
+                                (access-insert-axis (access-tensor ?bias) 0)
+                                (get-access-shape
+                                    (compute ?op2 ?expr2))) 0)))
+                ?shape
+            )" if same_op_expr("?op1".parse().unwrap(), "?op2".parse().unwrap(), "?expr1".parse().unwrap(), "?expr2".parse().unwrap()))
+}
+
 /// Tensorizes a computation to an externally-blocked systolic array.
 ///
 /// `rows` and `cols` define the size of the systolic array to map to. This
