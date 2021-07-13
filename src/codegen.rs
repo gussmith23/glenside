@@ -1939,281 +1939,201 @@ mod tests {
         relay_outputs
     }
     macro_rules! codegen_test {
-        // pattern where shape/map is present
-        //assorted variables as tuple?
-        //code_expr is the glenside expression, (needs to be whole thing, not a format string, variable, etc.)
-        ($test_name: ident, $shape_vec: expr, $code_expr: expr, $code_tup: expr) => {
-            #[test]
-            fn $test_name() {
-                let mut map = HashMap::default();
-                let shape_vec = $shape_vec;
-                if (shape_vec.len() == 1) {
-                    map.insert("t".to_string(), shape_vec[0].0.clone());
-                } else {
-                    for n in 0..shape_vec.len() {
-                        map.insert(format!("t{}", n).to_string(), shape_vec[n].0.clone());
-                    }
+        ($input_vec: expr, $code_expr: expr, $code_tup: expr, $ground_truth : expr, $c_code : expr) => {
+            let mut map: HashMap<String, Vec<usize>> = HashMap::default();
+            let shape_vec = $input_vec;
+            let mut names = Vec::new();
+            let expr: RecExpr<Language> = RecExpr::from_str($code_expr.as_str()).unwrap();
+            if (shape_vec.len() == 1) {
+                let name = shape_vec[0].0;
+                map.insert(name.to_string(), shape_vec[0].1.shape().to_vec());
+                names.push(name);
+            } else {
+                for n in 0..(shape_vec.len()) {
+                    let name = shape_vec[n].0.clone();
+                    let shape = shape_vec[n].1.shape().to_vec().clone();
+
+                    map.insert(name.to_string(), shape);
+                    names.push(name);
                 }
-                let expr = RecExpr::from_str($code_expr.as_str()).unwrap();
-                let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-                let id = egraph.add_expr(&expr);
-                let code = codegen(
-                    &egraph,
-                    id,
-                    &$code_tup.0,
-                    $code_tup.1,
-                    "",
-                    &$code_tup.2,
-                    &generate_worklist_for_codegen(&egraph, id),
-                    true,
-                );
             }
+            let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+            let id = egraph.add_expr(&expr);
+            let code = codegen(
+                &egraph,
+                id,
+                &$code_tup.0,
+                $code_tup.1,
+                "",
+                &names,
+                &generate_worklist_for_codegen(&egraph, id),
+                true,
+            );
+            let ground_truth = $ground_truth;
+            let c_func = format!(
+                "
+                int main() {{
+                    {}(out{});
+                    for (int i = 0; i < {}; i++) {{
+                        assert(((float*)ground_truth)[i] == ((float*)out)[i]);
+                    }}
+                }}
+                ",
+                $code_tup.1,
+                names
+                    .iter()
+                    .fold(String::new(), |acc, &arg| acc + "," + arg),
+                ground_truth.iter().product::<usize>()
+            );
+            let declarations = format!(
+                "
+                #include <assert.h>
+                {}
+                {}
+                {}
+                {}
+                {}",
+                $c_code,
+                shape_vec.iter().fold(String::new(), |acc, arg| {
+                    format!(
+                        "{}{}{}",
+                        acc,
+                        c_assignment_string("", arg.0, DType::Fp32, &arg.1.view()),
+                        "\n"
+                    )
+                }),
+                c_assignment_string("", "ground_truth", DType::Fp32, &ground_truth.view()),
+                c_assignment_string(
+                    "",
+                    "out",
+                    DType::Fp32,
+                    &ndarray::ArrayD::<f32>::zeros(ground_truth.shape()).view()
+                ),
+                code
+            );
+
+            let main_code = format!(
+                "
+            {}
+            {}",
+                declarations, c_func
+            );
+            let main_c_filepath = std::env::temp_dir().with_file_name(format!(
+                "{}-test-{}.c",
+                $code_tup.1,
+                std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+            ));
+            let binary_filepath = std::env::temp_dir().with_file_name(format!(
+                "{}-test-{}",
+                $code_tup.1,
+                std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+            ));
+
+            File::create(&main_c_filepath)
+                .unwrap()
+                .write_all(main_code.as_bytes())
+                .unwrap();
+
+            let result = Command::new("gcc")
+                .arg("-Werror")
+                .arg("-g")
+                .arg("-o")
+                .arg(&binary_filepath)
+                .arg(&main_c_filepath)
+                .output()
+                .unwrap();
+
+            assert!(
+                result.status.success(),
+                "{}",
+                std::str::from_utf8(result.stderr.as_slice())
+                    .expect("Could not convert stderr to UTF8")
+            );
+
+            let result = Command::new(&binary_filepath).output().unwrap();
+
+            assert!(
+                result.status.success(),
+                "{}",
+                std::str::from_utf8(result.stderr.as_slice())
+                    .expect("Could not convert stderr to UTF8")
+            );
         };
     }
-    codegen_test!(
-        tranpose,
-        vec![(
-            vec![1, 20, 300, 3],
+    #[test]
+    fn tranpose() {
+        let permutation = vec![3, 1, 0, 2];
+        let input_list = vec![(
+            "t",
             ndarray::ArrayD::from_shape_vec(
                 vec![1, 20, 300, 3].clone(),
                 (0..vec![1, 20, 300, 3].iter().product::<usize>()).collect(),
             )
-            .unwrap()
-        )],
-        format!(
-            "
-(access-transpose (access-tensor t) (list {}))",
-            vec![3, 1, 0, 2].iter().map(|x| x.to_string()).join(" ")
-        ),
-        (HashMap::default(), "transpose", vec!["t"])
-    );
-    #[test]
-    fn transpose() {
-        let shape = vec![1, 20, 300, 3];
-        let permutation = vec![3, 1, 0, 2];
-        let input = ndarray::ArrayD::from_shape_vec(
-            shape.clone(),
-            (0..shape.iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-        let input_transposed = input.clone().permuted_axes(permutation.clone());
-
-        let expr = RecExpr::from_str(
+            .unwrap(),
+        )];
+        let input_transposed = input_list[0].1.clone().permuted_axes(permutation.clone());
+        codegen_test!(
+            input_list.clone(),
             format!(
-                "
-(access-transpose (access-tensor t) (list {}))",
+                "(access-transpose (access-tensor t) (list {}))",
                 permutation.iter().map(|x| x.to_string()).join(" ")
-            )
-            .as_str(),
-        )
-        .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t".to_string(), shape.clone());
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "transpose",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-
-{}
-{}
-{}
-{}
-
-int main() {{
-  transpose(out, a);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)a_t)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            c_assignment_string("", "a", DType::Fp32, &input.view()),
-            c_assignment_string("", "a_t", DType::Fp32, &input_transposed.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(input_transposed.shape()).view()
             ),
-            code,
-            shape.iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "transpose-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "transpose-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+            (
+                {
+                    let hw_map: HashMap<Id, usize> = HashMap::default();
+                    hw_map
+                },
+                "tranpose"
+            ),
+            input_transposed,
+            ""
         );
     }
 
     #[test]
     fn concat() {
-        let shape0 = vec![2, 10, 50, 3];
-        let shape1 = vec![2, 3, 50, 3];
-        let concat_axis = 1;
-
-        let input0 = ndarray::ArrayD::from_shape_vec(
-            shape0.clone(),
-            (0..shape0.iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-        let input1 = ndarray::ArrayD::from_shape_vec(
-            shape1.clone(),
-            (0..shape1.iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-        let concatted =
-            ndarray::stack(ndarray::Axis(concat_axis), &[input0.view(), input1.view()]).unwrap();
-
-        let expr = RecExpr::from_str(
-            format!(
-                "
-(access-concatenate (access-tensor t0) (access-tensor t1) {})",
-                concat_axis
-            )
-            .as_str(),
-        )
-        .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t0".to_string(), shape0.clone());
-        map.insert("t1".to_string(), shape1.clone());
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "concatenate",
-            "",
-            &vec!["t0", "t1"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-
-{}
-{}
-{}
-{}
-{}
-
-int main() {{
-  concatenate(out, t0, t1);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)a_t)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            c_assignment_string("", "t0", DType::Fp32, &input0.view()),
-            c_assignment_string("", "t1", DType::Fp32, &input1.view()),
-            c_assignment_string("", "a_t", DType::Fp32, &concatted.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(concatted.shape()).view()
+        let input_list = vec![
+            (
+                "t0",
+                ndarray::ArrayD::from_shape_vec(
+                    vec![2, 10, 50, 3].clone(),
+                    (0..vec![2, 10, 50, 3].iter().product::<usize>()).collect(),
+                )
+                .unwrap(),
             ),
-            code,
-            concatted.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "concatenate-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "concatenate-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+            (
+                "t1",
+                ndarray::ArrayD::from_shape_vec(
+                    vec![2, 3, 50, 3].clone(),
+                    (0..vec![2, 3, 50, 3].iter().product::<usize>()).collect(),
+                )
+                .unwrap(),
+            ),
+        ];
+        let concat_axis = 1;
+        let concatted = ndarray::stack(
+            ndarray::Axis(concat_axis),
+            &[
+                input_list[0].1.clone().view(),
+                input_list[1].1.clone().view(),
+            ],
+        )
+        .unwrap();
+        codegen_test!(
+            input_list.clone(),
+            format!(
+                "(access-concatenate (access-tensor t0) (access-tensor t1) {})",
+                concat_axis
+            ),
+            (
+                {
+                    let hw_map: HashMap<Id, usize> = HashMap::default();
+                    hw_map
+                },
+                "concatenate"
+            ),
+            concatted,
+            ""
         );
     }
 
@@ -2354,167 +2274,56 @@ int main() {{
                 .expect("Could not convert stderr to UTF8")
         );
     }
-
     #[test]
     fn pad() {
-        let shape = vec![10, 20, 3, 45];
+        let input_list = vec![(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![10, 20, 3, 45].clone(),
+                (0..vec![10, 20, 3, 45].iter().product::<usize>()).collect(),
+            )
+            .unwrap(),
+        )];
         let pad_axis = 2;
         let pad_before = 2;
         let pad_after = 3;
         let pad_type = PadType::ZeroPadding;
 
-        let mut pad_before_shape = shape.clone();
+        let mut pad_before_shape = input_list[0].1.shape().to_vec().clone();
         pad_before_shape[pad_axis] = pad_before;
-        let mut pad_after_shape = shape.clone();
+        let mut pad_after_shape = input_list[0].1.shape().to_vec().clone();
         pad_after_shape[pad_axis] = pad_after;
-
-        let input = ndarray::ArrayD::from_shape_vec(
-            shape.clone(),
-            (0..shape.iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-
         assert!(pad_type == PadType::ZeroPadding);
 
         let padded = ndarray::stack(
             ndarray::Axis(pad_axis),
             &[
                 ndarray::ArrayD::zeros(pad_before_shape).view(),
-                input.view(),
+                input_list[0].1.view(),
                 ndarray::ArrayD::zeros(pad_after_shape).view(),
             ],
         )
         .unwrap();
-
-        let expr = RecExpr::from_str(
+        codegen_test!(
+            input_list.clone(),
             format!(
-                "
-(access-pad (access-tensor t) {} {} {} {})",
+                "(access-pad (access-tensor t) {} {} {} {})",
                 pad_type, pad_axis, pad_before, pad_after
-            )
-            .as_str(),
-        )
-        .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t".to_string(), shape.clone());
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "pad",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-
-{}
-{}
-{}
-{}
-
-int main() {{
-  pad(out, a);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)a_pad)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            c_assignment_string("", "a", DType::Fp32, &input.view()),
-            c_assignment_string("", "a_pad", DType::Fp32, &padded.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(padded.shape()).view()
             ),
-            code,
-            shape.iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "pad-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "pad-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+            (
+                {
+                    let hw_map: HashMap<Id, usize> = HashMap::default();
+                    hw_map
+                },
+                "concatenate"
+            ),
+            padded,
+            ""
         );
     }
 
     #[test]
     fn slice() {
-
-        // our_macro!(
-        //     {
-        // let slice_axis = 2;
-        // let low = 5;
-        // let high = 83;
-        // let mut slices = Vec::from_iter(
-        //     std::iter::repeat(SliceOrIndex::Slice {
-        //         start: 0,
-        //         end: None,
-        //         step: 1,
-        //     })
-        //     .take(shape.len()),
-        // );
-        // slices[slice_axis] = SliceOrIndex::Slice {
-        //     start: low,
-        //     end: Some(high),
-        //     step: 1,
-        // };
-        // let sliced = input.slice(
-        //     &SliceInfo::<std::vec::Vec<ndarray::SliceOrIndex>, ndarray::IxDyn>::new(slices)
-        //         .unwrap()
-        //         .as_ref(),
-        // );
-
-        // sliced
-        //     },
-        // )
-
         let shape = vec![32, 7, 100, 3];
         let slice_axis = 2;
         let low = 5;
