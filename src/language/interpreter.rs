@@ -2222,7 +2222,7 @@ mod tests {
         vec![("t", array![[2, 3], [1, 2]].into_dyn())],
         |value| { value }
     );
-    
+
     benchmark_and_test!(
         #[should_panic]
         access_transpose_panic_1,
