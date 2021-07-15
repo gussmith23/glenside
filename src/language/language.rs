@@ -1456,7 +1456,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                             _ => panic!("Parameters do not type check"),
                         };
-                        
 
                         if !access.zero_regions.is_empty() {
                             debug!(
