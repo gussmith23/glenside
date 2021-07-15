@@ -95,6 +95,7 @@ fn item_axis(axis: Var, access: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -
 }
 
 // TODO(@gussmith23) I think I should make this a conditional applier, and fold in
+// checks to make sure it has a shape and that it's an input
 pub fn has_shape(var: &'static str) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     let var = var.parse().unwrap();
     move |egraph, _, subst| match &egraph[subst[var]].data {
