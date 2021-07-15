@@ -1939,19 +1939,19 @@ mod tests {
         relay_outputs
     }
     macro_rules! codegen_test {
-        ($input_vec: expr, $code_expr: expr, $code_tup: expr, $ground_truth : expr, $c_code : expr) => {
+        ($env: expr, $code_expr: expr, $code_tup: expr, $ground_truth : expr, $c_code : expr) => {
             let mut map: HashMap<String, Vec<usize>> = HashMap::default();
-            let shape_vec = $input_vec;
+            let env = $env;
             let mut names = Vec::new();
             let expr: RecExpr<Language> = RecExpr::from_str($code_expr.as_str()).unwrap();
-            if (shape_vec.len() == 1) {
-                let name = shape_vec[0].0;
-                map.insert(name.to_string(), shape_vec[0].1.shape().to_vec());
+            if (env.len() == 1) {
+                let name = env[0].0;
+                map.insert(name.to_string(), env[0].1.shape().to_vec());
                 names.push(name);
             } else {
-                for n in 0..(shape_vec.len()) {
-                    let name = shape_vec[n].0.clone();
-                    let shape = shape_vec[n].1.shape().to_vec().clone();
+                for n in 0..(env.len()) {
+                    let name = env[n].0.clone();
+                    let shape = env[n].1.shape().to_vec().clone();
 
                     map.insert(name.to_string(), shape);
                     names.push(name);
@@ -1963,7 +1963,7 @@ mod tests {
                 &egraph,
                 id,
                 &$code_tup.0,
-                $code_tup.1,
+                "compiled_function",
                 "",
                 &names,
                 &generate_worklist_for_codegen(&egraph, id),
@@ -1983,7 +1983,7 @@ mod tests {
                 names
                     .iter()
                     .fold(String::new(), |acc, &arg| acc + "," + arg),
-                ground_truth.iter().product::<usize>()
+                ground_truth.shape().iter().product::<usize>()
             );
             let declarations = format!(
                 "
@@ -1994,7 +1994,7 @@ mod tests {
                 {}
                 {}",
                 $c_code,
-                shape_vec.iter().fold(String::new(), |acc, arg| {
+                env.iter().fold(String::new(), |acc, arg| {
                     format!(
                         "{}{}{}",
                         acc,
@@ -2321,7 +2321,57 @@ int main() {{
             ""
         );
     }
-
+    #[test]
+    fn test() {
+        let input_list = vec![
+            (
+                "t",
+                ndarray::ArrayD::from_shape_vec(
+                    vec![32, 7, 100, 3].clone(),
+                    (0..vec![32, 7, 100, 3].iter().product::<usize>()).collect(),
+                )
+                .unwrap()
+            )
+        ];
+        let slice_axis = 2;
+        let low = 5;
+        let high = 83;
+        let mut slices = Vec::from_iter(
+            std::iter::repeat(SliceOrIndex::Slice {
+                start: 0,
+                end: None,
+                step: 1,
+            })
+            .take(input_list[0].1.shape().to_vec().len()),
+        );
+        slices[slice_axis] = SliceOrIndex::Slice {
+            start: low,
+            end: Some(high),
+            step: 1,
+        };
+        let sliced = input_list[0].1.slice(
+            &SliceInfo::<std::vec::Vec<ndarray::SliceOrIndex>, ndarray::IxDyn>::new(slices)
+                .unwrap()
+                .as_ref(),
+        );
+        codegen_test!(
+            input_list.clone(),
+            format!(
+                "
+(access-slice (access-tensor t) {} {} {})",
+                slice_axis, low, high
+            ),
+            (
+                {
+                    let hw_map: HashMap<Id, usize> = HashMap::default();
+                    hw_map
+                },
+                "slice"
+            ),
+            sliced,
+            ""
+        );
+    }
     #[test]
     fn slice() {
         let shape = vec![32, 7, 100, 3];
