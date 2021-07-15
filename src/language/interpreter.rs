@@ -1094,7 +1094,7 @@ mod tests {
     ///  2. Creates a new Environment from the vector of (key, value) pairs if
     ///     present
     ///  3. Calls the interpreter with the glenside expression and env, and
-    ///         passes the value to check_correct
+    ///     passes the value to check_correct
     /// $test_name: the name of the created benchmark test
     /// $glenside_str: A string containing the Glenside program
     /// $env: An optional vector of 2-tuples of key, value pairs to put
