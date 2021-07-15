@@ -1451,14 +1451,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Usize(_)] => {
-                                a.clone()
-                            }
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Shape(_)] => {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Usize(_) | MyAnalysisData::Shape(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
                         };
+                        
 
                         if !access.zero_regions.is_empty() {
                             debug!(
@@ -1673,10 +1671,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(_)] => {
-                                a.clone()
-                            }
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(_)] => {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(_) | MyAnalysisData::Shape(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
