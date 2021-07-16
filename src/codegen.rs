@@ -1939,7 +1939,7 @@ mod tests {
         relay_outputs
     }
     macro_rules! codegen_test {
-        ($env: expr, $code_expr: expr, $code_tup: expr, $ground_truth : expr, $c_code : expr) => {
+        ($env: expr, $code_expr: expr, $ground_truth : expr, $c_code : expr) => {
             let mut map: HashMap<String, Vec<usize>> = HashMap::default();
             let env = $env;
             let mut names = Vec::new();
@@ -1962,7 +1962,7 @@ mod tests {
             let code = codegen(
                 &egraph,
                 id,
-                &$code_tup.0,
+                &HashMap::default(),
                 "compiled_function",
                 "",
                 &names,
@@ -1979,7 +1979,7 @@ mod tests {
                     }}
                 }}
                 ",
-                $code_tup.1,
+                "compiled_function",
                 names
                     .iter()
                     .fold(String::new(), |acc, &arg| acc + "," + arg),
@@ -2020,12 +2020,12 @@ mod tests {
             );
             let main_c_filepath = std::env::temp_dir().with_file_name(format!(
                 "{}-test-{}.c",
-                $code_tup.1,
+                "compiled_function",
                 std::time::SystemTime::now().elapsed().unwrap().as_nanos()
             ));
             let binary_filepath = std::env::temp_dir().with_file_name(format!(
                 "{}-test-{}",
-                $code_tup.1,
+                "compiled_function",
                 std::time::SystemTime::now().elapsed().unwrap().as_nanos()
             ));
 
@@ -2078,13 +2078,6 @@ mod tests {
                 "(access-transpose (access-tensor t) (list {}))",
                 permutation.iter().map(|x| x.to_string()).join(" ")
             ),
-            (
-                {
-                    let hw_map: HashMap<Id, usize> = HashMap::default();
-                    hw_map
-                },
-                "tranpose"
-            ),
             input_transposed,
             ""
         );
@@ -2124,13 +2117,6 @@ mod tests {
             format!(
                 "(access-concatenate (access-tensor t0) (access-tensor t1) {})",
                 concat_axis
-            ),
-            (
-                {
-                    let hw_map: HashMap<Id, usize> = HashMap::default();
-                    hw_map
-                },
-                "concatenate"
             ),
             concatted,
             ""
@@ -2310,19 +2296,12 @@ int main() {{
                 "(access-pad (access-tensor t) {} {} {} {})",
                 pad_type, pad_axis, pad_before, pad_after
             ),
-            (
-                {
-                    let hw_map: HashMap<Id, usize> = HashMap::default();
-                    hw_map
-                },
-                "concatenate"
-            ),
             padded,
             ""
         );
     }
     #[test]
-    fn test() {
+    fn slice() {
         let input_list = vec![
             (
                 "t",
@@ -2361,146 +2340,11 @@ int main() {{
 (access-slice (access-tensor t) {} {} {})",
                 slice_axis, low, high
             ),
-            (
-                {
-                    let hw_map: HashMap<Id, usize> = HashMap::default();
-                    hw_map
-                },
-                "slice"
-            ),
             sliced,
             ""
         );
     }
-    #[test]
-    fn slice() {
-        let shape = vec![32, 7, 100, 3];
-        let slice_axis = 2;
-        let low = 5;
-        let high = 83;
-
-        let input = ndarray::ArrayD::from_shape_vec(
-            shape.clone(),
-            (0..shape.iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-
-        let mut slices = Vec::from_iter(
-            std::iter::repeat(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            })
-            .take(shape.len()),
-        );
-        slices[slice_axis] = SliceOrIndex::Slice {
-            start: low,
-            end: Some(high),
-            step: 1,
-        };
-        let sliced = input.slice(
-            &SliceInfo::<std::vec::Vec<ndarray::SliceOrIndex>, ndarray::IxDyn>::new(slices)
-                .unwrap()
-                .as_ref(),
-        );
-
-        let expr = RecExpr::from_str(
-            format!(
-                "
-(access-slice (access-tensor t) {} {} {})",
-                slice_axis, low, high
-            )
-            .as_str(),
-        )
-        .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t".to_string(), shape.clone());
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "slice",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-
-{}
-{}
-{}
-{}
-
-int main() {{
-  slice(out, a);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)a_sliced)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            c_assignment_string("", "a", DType::Fp32, &input.view()),
-            c_assignment_string("", "a_sliced", DType::Fp32, &sliced.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(sliced.shape()).view()
-            ),
-            code,
-            sliced.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "slice-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "slice-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-    }
+   
 
     #[test]
     fn access_windows() {
