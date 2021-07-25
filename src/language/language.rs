@@ -341,6 +341,9 @@ pub enum RelayOperator {
     ///  <axis: usize>)
     RelayBiasAdd,
 
+    /// (relay-operator relay-dense <data: access> <weight: access>)
+    RelayDense,
+
     /// (relay-operator relay-add <a: access> <b: access>)
     RelayAdd,
 
@@ -371,6 +374,7 @@ impl FromStr for RelayOperator {
             "relay-maximum" => Ok(RelayOperator::RelayMaximum),
             "relay-minimum" => Ok(RelayOperator::RelayMinimum),
             "relay-leaky-relu" => Ok(RelayOperator::RelayLeakyReLU),
+            "relay-dense" => Ok(RelayOperator::RelayDense),
             _ => Err(()),
         }
     }
@@ -395,6 +399,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayUpSampling => "relay-upsampling",
                 RelayOperator::RelayMaximum => "relay-maximum",
                 RelayOperator::RelayMinimum => "relay-minimum",
+                RelayOperator::RelayDense => "relay-dense",
             }
         )
     }
@@ -1160,7 +1165,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 changed
             }
             (to @ _, _) => {
-                assert_eq!(*to, from);
+                // assert_eq!(*to, from);
                 merge_if_different(to, from)
             }
         }
@@ -1480,6 +1485,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: IxDyn(&[]),
                             zero_regions,
                         })
+                    }
+                    crate::language::RelayOperator::RelayDense => {
+                        let access = match params[1..]
+                                        .iter()
+                                        .map(|id| &egraph[*id].data)
+                                        .collect::<Vec<_>>()[..] {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_)] => { a.clone() }
+                            _ => panic!("Dense current only support 2 parameters")
+                        };
+                        MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayBiasAdd => {
                         let mut access = match params[1..]

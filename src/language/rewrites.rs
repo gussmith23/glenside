@@ -212,6 +212,23 @@ impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApp
     }
 }
 
+pub fn relay_dense_rewrite() -> RW {
+    // struct RelayOperatorRewriteApplier(Var);
+    // impl Applier<Language, MyAnalysis> for RelayOperatorRewriteApplier {
+    //     fn apply_one(
+    //         &self,
+    //         egraph: &mut EG,
+    //         id: egg::Id,
+    //         subst: &egg::Subst,
+    //     ) -> std::vec::Vec<egg::Id> {
+            
+    //     }
+    // }
+    rewrite! ("dense-rewrites"; 
+                "(relay-operator-call relay-dense ?access-x ?access-w)" 
+                => "(compute dot-product (access-cartesian-product ?access-x ?access-w))")
+}
+
 struct SplitApplier {
     axis: usize,
 }
