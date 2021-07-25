@@ -511,7 +511,7 @@ pub fn from_relay(
     module: &IRModule,
     simplify_batch_norm_for_inference_hack: bool,
     use_opaque_operators_for: &Vec<RelayOperator>,
-) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>) {
+) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>, Vec<(Id, Id, Language, Language)>) {
     let main = module
         .lookup(module.get_global_var("main").unwrap())
         .unwrap();
@@ -527,25 +527,49 @@ pub fn from_relay(
     let mut visited = HashSet::new();
     create_worklist(func.body.clone(), &mut worklist, &mut visited);
     let mut map = HashMap::new();
+    let mut relay_op_equivs = Vec::new();
     for expr in worklist {
+        let (glenside_id, opaque_call, glenside_expr, relay_expr) = compile_expression(
+            expr.clone(),
+            &mut glenside_expr,
+            |expr| {
+                *map.get(&expr).unwrap_or_else(|| {
+                    panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
+                })
+            },
+            simplify_batch_norm_for_inference_hack,
+            use_opaque_operators_for,
+        );
         map.insert(
             expr.clone(),
-            compile_expression(
-                expr.clone(),
-                &mut glenside_expr,
-                |expr| {
-                    *map.get(&expr).unwrap_or_else(|| {
-                        panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
-                    })
-                },
-                simplify_batch_norm_for_inference_hack,
-                use_opaque_operators_for,
-            ),
+            glenside_id,
         );
+        if let (Some(call_id), Some(glenside_expr), Some(relay_expr)) = (opaque_call, glenside_expr, relay_expr) {
+            relay_op_equivs.push((glenside_id, call_id, glenside_expr, relay_expr));
+        }
     }
 
-    (glenside_expr, names_and_shapes)
+    (glenside_expr, names_and_shapes, relay_op_equivs)
 }
+
+// fn to_opaque_relay_call(expr: Expr) -> Option<RecExpr<Language>> {
+//     if let Ok(call) = expr.clone().downcast::<tvm::ir::relay::Call>() {
+//         if let Ok(primitive_op) = call
+//             .op
+//             .clone()
+//             .upcast::<tvm::ir::expr::BaseExpr>()
+//             .downcast::<tvm::ir::op::Op>()
+//         {
+//             match primitive_op.name.as_str().unwrap() {
+//                 "nn.dense" => {
+//                     RelayOperatorCall()
+//                 }
+//             }
+//         }
+//     } else {
+//         None
+//     }
+// }
 
 /// Generates an ordered list of Relay expressions to compile.
 ///
@@ -625,10 +649,11 @@ fn compile_expression(
     get_compiled_expression: impl Fn(Expr) -> Id,
     simplify_batch_norm_for_inference_hack: bool,
     use_opaque_operators_for: &Vec<RelayOperator>,
-) -> Id {
+) -> (Id, Option<Id>, Option<Language>, Option<Language>) {
     if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
-        let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
-        glenside_expr.add(Language::AccessTensor(symbol_id))
+        let symbol = Language::Symbol(var.name_hint().to_string());
+        let symbol_id = glenside_expr.add(symbol.clone());
+        (glenside_expr.add(Language::AccessTensor(symbol_id)), Some(symbol_id), Some(symbol.clone()), Some(symbol.clone()))
     } else if let Ok(constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
         let tuple_type = constant
             .clone()
@@ -671,7 +696,7 @@ fn compile_expression(
         ));
         let literal_id = glenside_expr.add(Language::Literal(literal_id));
         let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
-        access_literal_id
+        (access_literal_id, Some(literal_id), Some(Language::AccessLiteral(literal_id)), Some(Language::Literal(literal_id)))
     } else if let Ok(tuple_get_item) = relay_expr
         .clone()
         .downcast::<tvm::ir::relay::TupleGetItem>()
@@ -701,7 +726,7 @@ fn compile_expression(
                 && tuple_get_item.index == 0
             {
                 // special case: compile Relay batch norm to a single output
-                return get_compiled_expression(tuple_get_item.tuple.clone());
+                return (get_compiled_expression(tuple_get_item.tuple.clone()), None, None, None);
             }
         }
 
@@ -709,7 +734,7 @@ fn compile_expression(
         // handles if tuple is not a CallNode
         let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
         let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
-        glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
+        (glenside_expr.add(Language::TupleGetItem([data_id, index_id])), None, None, None)
     } else if let Ok(tuple) = relay_expr.clone().downcast::<tvm::ir::relay::Tuple>() {
         let mut fields = Vec::new();
 
@@ -719,7 +744,7 @@ fn compile_expression(
             ))
         }
 
-        glenside_expr.add(Language::ConstructTuple(Box::from(fields.as_slice())))
+        (glenside_expr.add(Language::ConstructTuple(Box::from(fields.as_slice()))), None, None, None)
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         if let Ok(primitive_op) = call
             .op
@@ -760,7 +785,7 @@ fn compile_expression(
                         crate::language::RelayOperator::RelayBatchNormInference,
                     ));
 
-                    glenside_expr.add(Language::RelayOperatorCall(
+                    (glenside_expr.add(Language::RelayOperatorCall(
                         vec![
                             batch_norm_op_id,
                             data_id,
@@ -772,7 +797,7 @@ fn compile_expression(
                             epsilon_id,
                         ]
                         .into_boxed_slice(),
-                    ))
+                    )), None, None, None)
                 }
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
@@ -783,33 +808,34 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
                         .unwrap();
 
+                    let softmax_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelaySoftmax,
+                    ));
+                    let ndims = call
+                        .args
+                        .get(0)
+                        .unwrap()
+                        .checked_type
+                        .clone()
+                        .downcast::<TensorType>()
+                        .unwrap()
+                        .shape
+                        .len();
+
+                    let axis: i64 = if attrs.axis < 0 {
+                        ndims + i64::from(attrs.axis)
+                    } else {
+                        attrs.axis.into()
+                    };
+                    assert!(axis >= 0 && i64::from(axis) < ndims);
+                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![softmax_id, data_id, axis_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelaySoftmax)
                     {
-                        let softmax_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelaySoftmax,
-                        ));
-                        let ndims = call
-                            .args
-                            .get(0)
-                            .unwrap()
-                            .checked_type
-                            .clone()
-                            .downcast::<TensorType>()
-                            .unwrap()
-                            .shape
-                            .len();
-
-                        let axis: i64 = if attrs.axis < 0 {
-                            ndims + i64::from(attrs.axis)
-                        } else {
-                            attrs.axis.into()
-                        };
-                        assert!(axis >= 0 && i64::from(axis) < ndims);
-                        let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![softmax_id, data_id, axis_id].into_boxed_slice(),
-                        ));
+                        return (opaque_call_id, None, None, None);
                     }
 
                     match attrs.axis {
@@ -831,7 +857,10 @@ fn compile_expression(
                                 .try_into()
                                 .unwrap(),
                             );
-                            compute(glenside_expr, ComputeType::Softmax, data_id)
+                            (compute(glenside_expr, ComputeType::Softmax, data_id),
+                                Some(opaque_call_id), Some(Language::Compute([glenside_expr.add(Language::ComputeType(ComputeType::Softmax)), data_id])),
+                                Some(Language::RelayOperatorCall(
+                                    vec![softmax_id, data_id, axis_id].into_boxed_slice())))
                         }
                         other @ _ => todo!("Softmax with axis value {} not yet supported", other),
                     }
@@ -839,16 +868,17 @@ fn compile_expression(
                 "nn.relu" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let relu_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayReLU,
+                    ));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![relu_id, data_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelayReLU)
                     {
-                        let relu_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayReLU,
-                        ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![relu_id, data_id].into_boxed_slice(),
-                        ))
+                        return (opaque_call_id, None, None, None)
                     } else {
-                        compute(glenside_expr, ComputeType::ReLU, data_id)
+                        (compute(glenside_expr, ComputeType::ReLU, data_id), Some(opaque_call_id), None, None)
                     }
                 }
                 "nn.leaky_relu" => {
@@ -861,15 +891,16 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let alpha_id = glenside_expr
                         .add(Language::NotNanFloat64(NotNan::new(attrs.alpha).unwrap()));
+                    let leaky_relu_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLeakyReLU,
+                    ));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![leaky_relu_id, data_id, alpha_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayLeakyReLU)
                     {
-                        let leaky_relu_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayLeakyReLU,
-                        ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![leaky_relu_id, data_id, alpha_id].into_boxed_slice(),
-                        ))
+                        return (opaque_call_id, None, None, None);
                     } else {
                         todo!();
                     }
@@ -877,7 +908,7 @@ fn compile_expression(
                 "sqrt" | "negative" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
-                    compute(
+                    (compute(
                         glenside_expr,
                         match primitive_op.name.as_str().unwrap() {
                             "nn.relu" => ComputeType::ReLU,
@@ -886,7 +917,7 @@ fn compile_expression(
                             _ => unreachable!(),
                         },
                         data_id,
-                    )
+                    ), None, None, None)
                 }
                 "nn.max_pool2d" => {
                     assert_eq!(call.args.len(), 1);
@@ -914,105 +945,106 @@ fn compile_expression(
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
+                    let layout_id = match attrs.layout.as_str().unwrap() {
+                        "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NCHW,
+                        )),
+                        "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NHWC,
+                        )),
+                        l @ _ => panic!("Unsupported layout: {}", l),
+                    };
+                    let pool_size_id = shape(
+                        glenside_expr,
+                        vec![
+                            attrs
+                                .pool_size
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .pool_size
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                    );
+                    let strides_id = shape(
+                        glenside_expr,
+                        vec![
+                            attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .strides
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                    );
+                    let padding_id = shape(
+                        glenside_expr,
+                        vec![
+                            attrs
+                                .padding
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(2)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(3)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                    );
+
+                    let max_pool_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayMaxPool2D,
+                    ));
+
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![
+                            max_pool_id,
+                            data_id,
+                            pool_size_id,
+                            strides_id,
+                            padding_id,
+                            layout_id,
+                        ]
+                        .into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayMaxPool2D)
                     {
-                        let layout_id = match attrs.layout.as_str().unwrap() {
-                            "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NCHW,
-                            )),
-                            "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NHWC,
-                            )),
-                            l @ _ => panic!("Unsupported layout: {}", l),
-                        };
-                        let pool_size_id = shape(
-                            glenside_expr,
-                            vec![
-                                attrs
-                                    .pool_size
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .pool_size
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                        );
-                        let strides_id = shape(
-                            glenside_expr,
-                            vec![
-                                attrs
-                                    .strides
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .strides
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                        );
-                        let padding_id = shape(
-                            glenside_expr,
-                            vec![
-                                attrs
-                                    .padding
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(2)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(3)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                        );
-
-                        let max_pool_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayMaxPool2D,
-                        ));
-
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![
-                                max_pool_id,
-                                data_id,
-                                pool_size_id,
-                                strides_id,
-                                padding_id,
-                                layout_id,
-                            ]
-                            .into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None, None, None);
                     }
 
                     match attrs.layout.as_str().unwrap() {
@@ -1106,7 +1138,7 @@ fn compile_expression(
 
                             let data_id = compute(glenside_expr, ComputeType::ReduceMax, data_id);
 
-                            data_id
+                            (data_id, Some(opaque_operator_call), None, None)
                         }
                         other @ _ => todo!("layout {} not supported", other),
                     }
@@ -1121,26 +1153,27 @@ fn compile_expression(
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
+                    let global_avg_pool2d_operator_id =
+                        glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayGlobalAvgPool2D,
+                        ));
+                    let layout_id = match attrs.layout.as_str().unwrap() {
+                        "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NCHW,
+                        )),
+                        "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NHWC,
+                        )),
+                        l @ _ => panic!("Unsupported layout: {}", l),
+                    };
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![global_avg_pool2d_operator_id, data_id, layout_id]
+                            .into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayGlobalAvgPool2D)
                     {
-                        let global_avg_pool2d_operator_id =
-                            glenside_expr.add(Language::RelayOperator(
-                                crate::language::RelayOperator::RelayGlobalAvgPool2D,
-                            ));
-                        let layout_id = match attrs.layout.as_str().unwrap() {
-                            "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NCHW,
-                            )),
-                            "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NHWC,
-                            )),
-                            l @ _ => panic!("Unsupported layout: {}", l),
-                        };
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![global_avg_pool2d_operator_id, data_id, layout_id]
-                                .into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None, None, None);
                     }
 
                     match attrs.layout.as_str().unwrap() {
@@ -1150,7 +1183,7 @@ fn compile_expression(
                             let data_id = access_insert_axis(glenside_expr, data_id, 2);
                             let data_id = access_insert_axis(glenside_expr, data_id, 3);
                             let data_id = access(glenside_expr, data_id, 2);
-                            data_id
+                            (data_id, Some(opaque_operator_call), None, None)
                         }
                         _ => todo!("layout not currently supported"),
                     }
@@ -1173,7 +1206,7 @@ fn compile_expression(
                         )
                     }
 
-                    data_id
+                    (data_id, None, None, None)
                 }
                 "nn.dense" => {
                     let attrs = call
@@ -1182,12 +1215,12 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
                         .unwrap();
                     assert_eq!(call.args.len(), 2);
-                    assert_eq!(
-                        attrs.out_dtype,
-                        // This datatype seems to indicate "null"?
-                        DataType::new(3, 0, 0),
-                        "Changing out_dtype not yet supported"
-                    );
+                    // assert_eq!(
+                    //     attrs.out_dtype,
+                    //     // This datatype seems to indicate "null"?
+                    //     DataType::new(3, 0, 0),
+                    //     "Changing out_dtype not yet supported"
+                    // );
                     assert_eq!(
                         call.args
                             .get(0)
@@ -1218,12 +1251,18 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
 
+                    let dense_op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayDense));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(vec![dense_op_id, data_id, weights_id].into_boxed_slice()));
+
                     let data_id = access(glenside_expr, data_id, 1);
                     let weights_id = access(glenside_expr, weights_id, 1);
 
                     let data_id =
                         glenside_expr.add(Language::AccessCartesianProduct([data_id, weights_id]));
-                    compute(glenside_expr, ComputeType::DotProduct, data_id)
+                    (compute(glenside_expr, ComputeType::DotProduct, data_id),
+                        Some(opaque_operator_call),
+                        Some(Language::AccessCartesianProduct([data_id, weights_id])),
+                        Some(Language::RelayOperatorCall(vec![dense_op_id, data_id, weights_id].into_boxed_slice())))
                 }
                 "add" | "multiply" | "divide" | "maximum" | "minimum" => {
                     assert_eq!(call.args.len(), 2);
@@ -1241,9 +1280,9 @@ fn compile_expression(
                         let add_operator_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayAdd,
                         ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
+                        return (glenside_expr.add(Language::RelayOperatorCall(
                             vec![add_operator_id, a_id, b_id].into_boxed_slice(),
-                        ));
+                        )), None, None, None);
                     }
                     if primitive_op.name.as_str().unwrap() == "maximum"
                         && use_opaque_operators_for
@@ -1252,9 +1291,9 @@ fn compile_expression(
                         let add_operator_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayMaximum,
                         ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
+                        return (glenside_expr.add(Language::RelayOperatorCall(
                             vec![add_operator_id, a_id, b_id].into_boxed_slice(),
-                        ));
+                        )), None, None, None);
                     }
                     if primitive_op.name.as_str().unwrap() == "minimum"
                         && use_opaque_operators_for
@@ -1263,9 +1302,9 @@ fn compile_expression(
                         let add_operator_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayMinimum,
                         ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
+                        return (glenside_expr.add(Language::RelayOperatorCall(
                             vec![add_operator_id, a_id, b_id].into_boxed_slice(),
-                        ));
+                        )), None, None, None);
                     }
 
                     while a_shape.len() < b_shape.len() {
@@ -1306,9 +1345,21 @@ fn compile_expression(
                     let pair_id = access_pair(glenside_expr, a_id, b_id, 0);
 
                     match primitive_op.name.as_str().unwrap() {
-                        "add" => compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id),
-                        "multiply" => compute(glenside_expr, ComputeType::ElementwiseMul, pair_id),
-                        "divide" => compute(glenside_expr, ComputeType::ElementwiseDiv, pair_id),
+                        "add" => {
+                            let add_operator_id = glenside_expr.add(Language::RelayOperator(
+                                crate::language::RelayOperator::RelayAdd,
+                            ));
+                            let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                            ));
+                            (compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id), Some(operator_call),
+                            Some(Language::ComputeType(ComputeType::ElementwiseAdd)),
+                            Some(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice())))
+                        },
+                        // TODO(mike): add operator support for these following
+                        "multiply" => (compute(glenside_expr, ComputeType::ElementwiseMul, pair_id), None, None, None),
+                        "divide" => (compute(glenside_expr, ComputeType::ElementwiseDiv, pair_id), None, None, None),
                         _ => unreachable!(),
                     }
                 }
@@ -1328,20 +1379,21 @@ fn compile_expression(
                     );
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let batch_flatten_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayBatchFlatten,
+                    ));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![batch_flatten_operator_id, data_id].into_boxed_slice(),
+                    ));
 
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayBatchFlatten)
                     {
-                        let batch_flatten_operator_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayBatchFlatten,
-                        ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![batch_flatten_operator_id, data_id].into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None, None, None);
                     }
 
                     let data_id = access(glenside_expr, data_id, 1);
-                    glenside_expr.add(Language::AccessFlatten(data_id))
+                    (glenside_expr.add(Language::AccessFlatten(data_id)), Some(opaque_operator_call), None, None)
                 }
                 "nn.bias_add" => {
                     assert_eq!(call.args.len(), 2);
@@ -1387,17 +1439,19 @@ fn compile_expression(
                     };
                     assert!(axis >= 0);
 
+                    let bias_add_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayBiasAdd,
+                    ));
+                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![bias_add_operator_id, data_id, bias_id, axis_id]
+                            .into_boxed_slice(),
+                    ));
+
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayBiasAdd)
                     {
-                        let bias_add_operator_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayBiasAdd,
-                        ));
-                        let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![bias_add_operator_id, data_id, bias_id, axis_id]
-                                .into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None, None, None);
                     }
 
                     // Insert axes before
@@ -1432,7 +1486,7 @@ fn compile_expression(
                     let data_id = access_pair(glenside_expr, data_id, bias_id, 0);
                     let data_id = compute(glenside_expr, ComputeType::ElementwiseAdd, data_id);
 
-                    data_id
+                    (data_id, Some(opaque_operator_call), None, None)
                 }
                 "nn.conv2d" => {
                     assert_eq!(call.args.len(), 2);
@@ -1479,7 +1533,7 @@ fn compile_expression(
                         tvm::DataType::new(3, 0, 0)
                     );
 
-                    conv2d(
+                    (conv2d(
                         glenside_expr,
                         data_id,
                         &data_shape,
@@ -1551,7 +1605,7 @@ fn compile_expression(
                         attrs.data_layout.as_str().unwrap(),
                         attrs.kernel_layout.as_str().unwrap(),
                         attrs.out_layout.as_str().unwrap(),
-                    )
+                    ), None, None, None)
                 }
                 "nn.upsampling" => {
                     assert_eq!(call.args.len(), 1);
@@ -1581,10 +1635,10 @@ fn compile_expression(
                         let upsampling_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayUpSampling,
                         ));
-                        glenside_expr.add(Language::RelayOperatorCall(
+                        (glenside_expr.add(Language::RelayOperatorCall(
                             vec![upsampling_id, data_id, scale_h_id, scale_w_id, layout_id]
                                 .into_boxed_slice(),
-                        ))
+                        )), None, None, None)
                     } else {
                         todo!()
                     }
@@ -1621,7 +1675,7 @@ fn compile_expression(
                         );
                     }
 
-                    concatted_id
+                    (concatted_id, None, None, None)
                 }
                 "reshape" => {
                     assert_eq!(call.args.len(), 1);
@@ -1632,7 +1686,7 @@ fn compile_expression(
                         shape_from_type(call.clone().upcast::<Expr>().checked_type.clone());
                     let new_shape_id = access_shape(glenside_expr, &new_shape, &[]);
 
-                    glenside_expr.add(Language::AccessReshape([data_id, new_shape_id]))
+                    (glenside_expr.add(Language::AccessReshape([data_id, new_shape_id])), None, None, None)
                 }
                 "split" => {
                     assert_eq!(call.args.len(), 1);
@@ -1713,7 +1767,7 @@ fn compile_expression(
                         last_id,
                     ])));
 
-                    glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice())))
+                    (glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice()))), None, None, None)
                 }
                 "sigmoid" => {
                     assert_eq!(call.args.len(), 1);
@@ -1725,9 +1779,9 @@ fn compile_expression(
                         let sigmoid_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelaySigmoid,
                         ));
-                        glenside_expr.add(Language::RelayOperatorCall(
+                        (glenside_expr.add(Language::RelayOperatorCall(
                             vec![sigmoid_id, data_id].into_boxed_slice(),
-                        ))
+                        )), None, None, None)
                     } else {
                         todo!()
                     }
@@ -1747,7 +1801,7 @@ fn compile_expression(
                         .into_iter()
                         .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
                         .collect::<Vec<usize>>();
-                    access_transpose(glenside_expr, data_id, &transpose_list)
+                    (access_transpose(glenside_expr, data_id, &transpose_list), None, None, None)
                 }
                 "nn.avg_pool2d" => {
                     assert_eq!(call.args.len(), 1);
@@ -1853,7 +1907,7 @@ fn compile_expression(
                         let avg_pool2d_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayAvgPool2D,
                         ));
-                        glenside_expr.add(Language::RelayOperatorCall(
+                        (glenside_expr.add(Language::RelayOperatorCall(
                             vec![
                                 avg_pool2d_id,
                                 data_id,
@@ -1863,7 +1917,7 @@ fn compile_expression(
                                 layout_id,
                             ]
                             .into_boxed_slice(),
-                        ))
+                        )), None, None, None)
                     } else {
                         todo!()
                     }
@@ -1893,7 +1947,7 @@ fn compile_expression(
                         data_id = glenside_expr.add(Language::AccessSqueeze([data_id, usize_id]));
                     }
 
-                    data_id
+                    (data_id, None, None, None)
                 }
                 _ => todo!(),
             }
@@ -1965,7 +2019,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
-                let (expr, shapes_vec) = super::from_relay(&module, false, &vec![]);
+                let (expr, shapes_vec, _) = super::from_relay(&module, false, &vec![]);
 
                 let mut env = HashMap::default();
                 for (k, v) in &shapes_vec {
