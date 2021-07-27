@@ -1998,7 +1998,12 @@ mod tests {
                     format!(
                         "{}{}{}",
                         acc,
-                        c_assignment_string("", arg.0, DType::Fp32, &arg.1.clone().into_dyn().view()),
+                        c_assignment_string(
+                            "",
+                            arg.0,
+                            DType::Fp32,
+                            &arg.1.clone().into_dyn().view()
+                        ),
                         "\n"
                     )
                 }),
@@ -2120,7 +2125,12 @@ mod tests {
                     format!(
                         "{}{}{}",
                         acc,
-                        c_assignment_string("", arg.0, DType::Fp32, &arg.1.clone().into_dyn().view()),
+                        c_assignment_string(
+                            "",
+                            arg.0,
+                            DType::Fp32,
+                            &arg.1.clone().into_dyn().view()
+                        ),
                         "\n"
                     )
                 }),
@@ -2184,7 +2194,6 @@ mod tests {
         ($env: expr, $code_expr: expr, $ground_truth : expr) => {
             codegen_test!($env, $code_expr, HashMap::default(), $ground_truth, "");
         };
-
     }
     #[test]
     fn tranpose() {
@@ -2250,14 +2259,14 @@ mod tests {
     fn systolic_array() {
         let input_list = vec![
             (
-                "t0", 
+                "t0",
                 ndarray::ArrayD::from_shape_vec(
                     vec![2, 10].clone(),
                     (0..vec![2, 10].iter().product::<usize>()).collect(),
                 )
                 .unwrap()
                 .into_dimensionality::<ndarray::Ix2>()
-                .unwrap()
+                .unwrap(),
             ),
             (
                 "t1",
@@ -2267,31 +2276,37 @@ mod tests {
                 )
                 .unwrap()
                 .into_dimensionality::<ndarray::Ix2>()
-                .unwrap()
-            )];
-            let multiplied = input_list[0].1.clone().dot(&input_list[1].1.clone()).into_dyn();
-            codegen_test!(
-                input_list.clone(),
-                format!("
+                .unwrap(),
+            ),
+        ];
+        let multiplied = input_list[0]
+            .1
+            .clone()
+            .dot(&input_list[1].1.clone())
+            .into_dyn();
+        codegen_test!(
+            input_list.clone(),
+            format!(
+                "
                 (systolic-array 10 15
                  (access (access-tensor t0) 1)
                  (access (access-tensor t1) 0)
                 )"
-                ),
-                multiplied,
-                PathBuf::from_str(
-                    format!(
-                        "{}/{}/{}/{}",
-                        env!("CARGO_MANIFEST_DIR"),
-                        "data",
-                        "codegen-mlp",
-                        "rtml_systolic_array_weight_stationary.c"
-                    )
-                    .as_str()
+            ),
+            multiplied,
+            PathBuf::from_str(
+                format!(
+                    "{}/{}/{}/{}",
+                    env!("CARGO_MANIFEST_DIR"),
+                    "data",
+                    "codegen-mlp",
+                    "rtml_systolic_array_weight_stationary.c"
                 )
-                .unwrap()
-                .to_string_lossy()
-            );
+                .as_str()
+            )
+            .unwrap()
+            .to_string_lossy()
+        );
     }
     #[test]
     fn pad() {
@@ -2334,16 +2349,14 @@ mod tests {
     }
     #[test]
     fn slice() {
-        let input_list = vec![
-            (
-                "t",
-                ndarray::ArrayD::from_shape_vec(
-                    vec![32, 7, 100, 3].clone(),
-                    (0..vec![32, 7, 100, 3].iter().product::<usize>()).collect(),
-                )
-                .unwrap()
+        let input_list = vec![(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                vec![32, 7, 100, 3].clone(),
+                (0..vec![32, 7, 100, 3].iter().product::<usize>()).collect(),
             )
-        ];
+            .unwrap(),
+        )];
         let slice_axis = 2;
         let low = 5;
         let high = 83;
@@ -2375,7 +2388,6 @@ mod tests {
             sliced
         );
     }
-   
 
     #[test]
     fn access_windows() {
