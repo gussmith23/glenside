@@ -55,6 +55,7 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
             | Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
             | Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
             | Language::AcceleratorCall(_)
+            | Language::AcceleratorFunc(_)
                     | Language::Literal(_)
                     | Language::RelayOperatorCall(_)
             | Language::RelayActivationLayout(_)
@@ -136,6 +137,7 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::RelayActivationLayout(_)
             | Language::RelayKernelLayout(_)
             | Language::AcceleratorCall(_)
+            | Language::AcceleratorFunc(_)
             | Language::SystolicArrayWithBlocking(_) => true,
 
             Language::Shape(_)

@@ -132,6 +132,8 @@ where
         &Language::RelayKernelLayout(_) => todo!(),
         &Language::ConstructTuple(_) => todo!(),
         &Language::TupleGetItem(_) => todo!(),
+        &Language::AcceleratorCall(_) => todo!(),
+        &Language::AcceleratorFunc(_) => todo!(),
         &Language::AccessShape([shape_id, item_shape_id]) => {
             let shape = match interpret(expr, shape_id.into(), env) {
                 Value::Shape(s) => s,
