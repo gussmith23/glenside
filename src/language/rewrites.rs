@@ -891,6 +891,43 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
              if is_dot_product("?op".parse().unwrap()))
 }
 
+pub fn bubble_reshape_through_linear_generalized() -> RW {
+    struct ApplierImpl(Var);
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let shape_data = match &egraph[subst[self.0]].data {
+                MyAnalysisData::Shape(s) => s,
+                _ => panic!("not a valid shape data")
+            };
+            assert!(shape_data.shape.slice().len() == 3);
+            format!("(access-reshape 
+                        (compute elementwise-add 
+                            (access-pair 
+                                (access (compute dot-product (access-cartesian-product (access (access-tensor ?x) 1) (access (access-tensor ?w) 1))) 0) 
+                                (access (access-broadcast (access-insert-axis (access-tensor ?bias) 0) 
+                                        (access-shape (shape {} {}) (shape))) 0)))
+                        (access-shape ?shape (shape)))", shape_data.shape[1], shape_data.shape[2])
+                        .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("bubble-reshape-through-linear";
+            "(compute elementwise-add 
+                (access-pair 
+                    (access 
+                        (access-reshape 
+                            (compute dot-product 
+                                (access-cartesian-product (access (access-tensor ?x) 1) 
+                                (access (access-tensor ?w) 1))) 
+                                (access-shape ?shape (shape)))
+                    0) 
+                    (access 
+                        (access-broadcast 
+                            (access-insert-axis (access-insert-axis (access-tensor ?bias) 0) 0)
+                            (access-shape ?shape (shape))) 0)))"
+            =>
+            { ApplierImpl("?shape".parse().unwrap()) })
+}
+
 pub fn bubble_reshape_through_linear() -> RW {
     // fn same_op_expr(op1 : Var, op2 : Var, expr1 : Var, expr2 : Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
     //     move |egraph, _, subst| egraph.find(subst[op1]) == egraph.find(subst[op2]) && egraph.find(subst[expr1]) == egraph.find(subst[expr2])
