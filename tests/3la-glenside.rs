@@ -16,6 +16,7 @@ fn test_3la_glenside_linear_rewrite() {
       }
     "#;
 
+    /*
     let rewritten_prog = r#"
     #[version = "0.0.5"]
         def @main(%x: Tensor[(10, 8), float32], %w: Tensor[(16, 8), float32], %bias: Tensor[(16), float32]) -> Tensor[(1, 10, 16), float32] {
@@ -31,7 +32,7 @@ fn test_3la_glenside_linear_rewrite() {
         %0 = nn.dense(%data, %weight, units=None) /* ty=Tensor[(10, 16), float32] */;
         nn.bias_add(%0, %bias) /* ty=Tensor[(10, 16), float32] */
       }
-    "#;
+    "#;*/
 
     let prog_frag_mod = tvm::ir::IRModule::parse("", prog_frag).unwrap();
     let (expr, shape_info, equiv_worklist) = glenside::language::from_relay::from_relay(&prog_frag_mod, false, &vec![]);
@@ -43,31 +44,19 @@ fn test_3la_glenside_linear_rewrite() {
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
     });
-    // let mut egraph = EGraph::new(MyAnalysis {name_to_shape: HashMap::default()});
     let rws = vec![
-        // glenside::language::rewrites::bubble_reshape_through_linear()
-        glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
-        glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
-        glenside::language::rewrites::bubble_access_slice_through_access_pad_inequal_axes(),
-        glenside::language::rewrites::bubble_reshape_through_linear(),
-        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
+    //   glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
+       glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
+       glenside::language::rewrites::bubble_access_slice_through_access_pad_inequal_axes(),
+    //    glenside::language::rewrites::bubble_reshape_through_linear(),
+       glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
+       glenside::language::rewrites::linear_layer_accelerator_rewrites(),
     ];
-    // let id_prog = egraph.add_expr(&expr);
-    // let expr = "(relay-operator-call 
-    //             relay-bias-add 
-    //             (relay-operator-call 
-    //                 relay-dense
-    //                 (access x 1)
-    //                 (access w 1))
-    //             (access bias 0))".parse().unwrap();
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
         if let (Some(&new_left), Some(&new_right)) = (id_map.get(&left), id_map.get(&right)) {
-            println!("new left: {} | new right {}", new_left, new_right);
-            println!("{} | {}", egraph[new_left].nodes[0], egraph[new_right].nodes[0]);
             egraph.union(new_left, new_right);
         } else {
-            println!("{} ({:?}) {}({:?})", left, id_map.get(&left), right, id_map.get(&right));
             let nodes = expr.as_ref();
             println!("{:?} v.s. {:?}", nodes[usize::from(left)], nodes[usize::from(right)]);
         }
@@ -79,11 +68,9 @@ fn test_3la_glenside_linear_rewrite() {
         .with_iter_limit(40)
         .run(&rws);
     println!("Finished");
-    // // runner.print_report();
-    // println!("egraph:\n");
-    // println!("{}", runner.egraph.dot());
-    runner.egraph.dot(&|_x, _y| true).to_png("/home/dh63/marlowe/smoke-test/glenside/render_egraph.png").unwrap();
+    runner.egraph.dot(&|_x, _y| true).to_svg("/home/dh63/marlowe/smoke-test/glenside/render_egraph.svg").unwrap();
+    println!("{}", runner.egraph.record().to_record_instructions(id));
     let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
-    let (cost, best) = extractor.find_best(id);
+    let (_cost, best) = extractor.find_best(id);
     println!("{}", best.pretty(80));
 }
