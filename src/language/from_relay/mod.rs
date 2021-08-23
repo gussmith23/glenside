@@ -1221,11 +1221,11 @@ fn compile_expression(
                     (data_id, None)
                 }
                 "nn.dense" => {
-                    let attrs = call
-                        .attrs
-                        .clone()
-                        .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
-                        .unwrap();
+                    // let attrs = call
+                    //     .attrs
+                    //     .clone()
+                    //     .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
+                    //     .unwrap();
                     assert_eq!(call.args.len(), 2);
                     // assert_eq!(
                     //     attrs.out_dtype,
