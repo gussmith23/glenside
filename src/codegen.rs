@@ -2428,10 +2428,10 @@ mod tests {
         let mut env = HashMap::default();
         env.insert("t", input_list[0].1.clone());
         let out =
-        match crate::language::interpreter::interpret(&expr, expr.as_ref().len() - 1, &env) {
-            crate::language::interpreter::Value::Access(a) => a,
-            _ => panic!(),
-        };
+            match crate::language::interpreter::interpret(&expr, expr.as_ref().len() - 1, &env) {
+                crate::language::interpreter::Value::Access(a) => a,
+                _ => panic!(),
+            };
         codegen_test!(
             input_list.clone(),
             format!(
@@ -2455,7 +2455,6 @@ mod tests {
             ),
             out.tensor
         );
-
     }
     #[test]
     fn access_flatten() {
@@ -2467,9 +2466,10 @@ mod tests {
                 shape.clone(),
                 (0..shape.iter().product::<usize>()).collect(),
             )
-            .unwrap()
+            .unwrap(),
         )];
-        let out = input_list[0].1
+        let out = input_list[0]
+            .1
             .view()
             .into_shape((
                 shape[0..access_axis].iter().product::<usize>(),
@@ -2489,8 +2489,6 @@ mod tests {
             out
         );
     }
-
-   
 
     #[test]
     #[should_panic]
