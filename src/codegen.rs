@@ -2388,19 +2388,20 @@ mod tests {
             sliced
         );
     }
-
     #[test]
     fn access_windows() {
         let shape = vec![3, 50, 27, 4];
         let filters_shape = vec![2, 9, 22, 3];
         let stride = vec![1, 10, 3, 1];
 
-        let input = ndarray::ArrayD::from_shape_vec(
-            shape.clone(),
-            (0i64..shape.iter().map(|v| *v as i64).product::<i64>()).collect(),
-        )
-        .unwrap();
-
+        let input_list = vec![(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                shape.clone(),
+                (0i64..shape.iter().map(|v| *v as i64).product::<i64>()).collect(),
+            )
+            .unwrap(),
+        )];
         let expr = RecExpr::from_str(
             format!(
                 "
@@ -2424,130 +2425,51 @@ mod tests {
             .as_str(),
         )
         .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t".to_string(), shape.clone());
-
         let mut env = HashMap::default();
-        env.insert("t", input.clone());
+        env.insert("t", input_list[0].1.clone());
         let out =
-            match crate::language::interpreter::interpret(&expr, expr.as_ref().len() - 1, &env) {
-                crate::language::interpreter::Value::Access(a) => a,
-                _ => panic!(),
-            };
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "access_windows",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-
-{}
-{}
-{}
-{}
-
-int main() {{
-  access_windows(out, a);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)a_windows)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            c_assignment_string("", "a", DType::Fp32, &input.view()),
-            c_assignment_string("", "a_windows", DType::Fp32, &out.tensor.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(out.tensor.shape()).view()
+        match crate::language::interpreter::interpret(&expr, expr.as_ref().len() - 1, &env) {
+            crate::language::interpreter::Value::Access(a) => a,
+            _ => panic!(),
+        };
+        codegen_test!(
+            input_list.clone(),
+            format!(
+                "
+(access-windows
+ (access (access-tensor t) {access_axis})
+ (shape {filter_shapes})
+ (shape {strides})
+)",
+                access_axis = shape.len(),
+                filter_shapes = filters_shape
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                strides = stride
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
             ),
-            code,
-            out.tensor.shape().iter().product::<usize>()
+            out.tensor
         );
 
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "access-windows-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "access-windows-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
     }
-
     #[test]
     fn access_flatten() {
         let shape = vec![3, 50, 27, 4];
         let access_axis = 2;
-
-        let input = ndarray::ArrayD::from_shape_vec(
-            shape.clone(),
-            (0..shape.iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-
-        let expr = RecExpr::from_str(
-            format!(
-                "
-(access-flatten
- (access (access-tensor t) {access_axis})
-)",
-                access_axis = access_axis
+        let input_list = vec![(
+            "t",
+            ndarray::ArrayD::from_shape_vec(
+                shape.clone(),
+                (0..shape.iter().product::<usize>()).collect(),
             )
-            .as_str(),
-        )
-        .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t".to_string(), shape.clone());
-
-        let out = input
+            .unwrap()
+        )];
+        let out = input_list[0].1
             .view()
             .into_shape((
                 shape[0..access_axis].iter().product::<usize>(),
@@ -2555,91 +2477,20 @@ int main() {{
             ))
             .unwrap()
             .into_dyn();
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "access_flatten",
-            "",
-            &vec!["t"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-
-{}
-{}
-{}
-{}
-
-int main() {{
-  access_flatten(out, a);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)a_flattened)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            c_assignment_string("", "a", DType::Fp32, &input.view()),
-            c_assignment_string("", "a_flattened", DType::Fp32, &out.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(out.shape()).view()
+        codegen_test!(
+            input_list.clone(),
+            format!(
+                "
+(access-flatten
+ (access (access-tensor t) {access_axis})
+)",
+                access_axis = access_axis
             ),
-            code,
-            out.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "access-flatten-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "access-flatten-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+            out
         );
     }
+
+   
 
     #[test]
     #[should_panic]
