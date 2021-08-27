@@ -891,6 +891,16 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
              if is_dot_product("?op".parse().unwrap()))
 }
 
+// pub fn elementwisemul_to_multiply() -> RW {
+//     rewrite!("elementwisemul_to_multiply";
+//             "(compute elementwise-mul ?lhs ?rhs)" => )
+// }
+
+pub fn access_reshape_to_relay() -> RW {
+    rewrite!("access-reshape-to-reshape";
+        "(access-reshape ?access (access-shape ?shape (shape)))" => "(relay-operator-call relay-reshape ?access ?shape)")
+}
+
 pub fn bubble_reshape_through_linear_generalized() -> RW {
     struct ApplierImpl(Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
@@ -899,12 +909,11 @@ pub fn bubble_reshape_through_linear_generalized() -> RW {
                 MyAnalysisData::Shape(s) => s,
                 _ => panic!("not a valid shape data")
             };
-            println!("Shape length: {}", shape_data.shape.slice().len());
             format!("(access-reshape 
                         (compute elementwise-add 
                             (access-pair 
-                                (access (compute dot-product (access-cartesian-product (access (access-tensor ?x) 1) (access (access-tensor ?w) 1))) 0) 
-                                (access (access-broadcast (access-insert-axis (access-tensor ?bias) 0) 
+                                (access (compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1))) 0) 
+                                (access (access-broadcast (access-insert-axis ?bias 0) 
                                         (access-shape (shape {} {}) (shape))) 0)))
                         (access-shape ?shape (shape)))", shape_data.shape[1], shape_data.shape[2])
                         .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
@@ -916,13 +925,13 @@ pub fn bubble_reshape_through_linear_generalized() -> RW {
                     (access 
                         (access-reshape 
                             (compute dot-product 
-                                (access-cartesian-product (access (access-tensor ?x) 1) 
-                                (access (access-tensor ?w) 1))) 
+                                (access-cartesian-product (access ?x 1) 
+                                (access ?w 1))) 
                                 (access-shape ?shape (shape)))
                     0) 
                     (access 
                         (access-broadcast 
-                            (access-insert-axis (access-insert-axis (access-tensor ?bias) 0) 0)
+                            (access-insert-axis (access-insert-axis ?bias 0) 0)
                             (access-shape ?shape (shape))) 0)))"
             =>
             { ApplierImpl("?shape".parse().unwrap()) })
@@ -938,13 +947,13 @@ pub fn bubble_reshape_through_linear() -> RW {
                     (access 
                         (access-reshape 
                             (compute dot-product 
-                                (access-cartesian-product (access (access-tensor ?x) 1) 
-                                (access (access-tensor ?w) 1))) 
+                                (access-cartesian-product (access ?x 1) 
+                                (access ?w 1))) 
                                 (access-shape ?shape (shape))) 
                     0) 
                     (access 
                         (access-broadcast 
-                            (access-insert-axis (access-insert-axis (access-tensor ?bias) 0) 0)
+                            (access-insert-axis (access-insert-axis ?bias 0) 0)
                             (access-shape ?shape (shape))) 0)))"
             =>
             "(access-reshape 
@@ -960,8 +969,8 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
     rewrite!("linear_to_flexnlp";
              "(compute elementwise-add 
                 (access-pair 
-                    (access (compute dot-product (access-cartesian-product (access (access-tensor ?x) 1) (access (access-tensor ?w) 1))) 0) 
-                    (access (access-broadcast (access-insert-axis (access-tensor ?bias) 0) 
+                    (access (compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1))) 0) 
+                    (access (access-broadcast (access-insert-axis ?bias 0) 
                             (access-shape ?shape (shape))) 0)))"
             =>
              "(accelerator-call flex-linear ?x ?w ?bias)")
