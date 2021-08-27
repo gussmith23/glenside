@@ -364,8 +364,17 @@ pub enum RelayOperator {
     /// (relay-operator relay-conv1d <data: access> <kernel: access>)
     RelayConv1D,
 
+    /// (relay-operator relay-erf <data: access>)
+    RelayErf,
+
+    /// (relay-operator relay-mean <data: access> <axis: usize>)
+    RelayMean,
+
     /// (relay-operator relay-add <a: access> <b: access>)
     RelayAdd,
+
+    /// (relay-operator relay-multiply <a: access> <b: access>)
+    RelayMultiply,
 
     /// (relay-operator relay-sigmoid <data: access>)
     RelaySigmoid,
@@ -397,6 +406,9 @@ impl FromStr for RelayOperator {
             "relay-dense" => Ok(RelayOperator::RelayDense),
             "relay-reshape" => Ok(RelayOperator::RelayReshape),
             "relay-conv1d" => Ok(RelayOperator::RelayConv1D),
+            "relay-erf" => Ok(RelayOperator::RelayErf),
+            "relay-mean" => Ok(RelayOperator::RelayMean),
+            "relay-multiply" => Ok(RelayOperator::RelayMultiply),
             _ => Err(()),
         }
     }
@@ -424,6 +436,9 @@ impl Display for RelayOperator {
                 RelayOperator::RelayDense => "relay-dense",
                 RelayOperator::RelayReshape => "relay-reshape",
                 RelayOperator::RelayConv1D  => "relay-conv1d",
+                RelayOperator::RelayErf  => "relay-erf",
+                RelayOperator::RelayMean => "relay-mean",
+                RelayOperator::RelayMultiply => "relay-mul",
             }
         )
     }
@@ -1227,12 +1242,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                 }
 
                 // changed
-                None
+                Some(Ordering::Greater)
             }
             (to @ _, _) => {
                 // assert_eq!(*to, from);
                 merge_if_different(to, from);
-                None
+                Some(Ordering::Greater)
             }
         }
     }
@@ -1603,7 +1618,58 @@ impl egg::Analysis<Language> for MyAnalysis {
                             zero_regions,
                         })
                     }
-                    crate::language::RelayOperator::RelayAdd => {
+                    crate::language::RelayOperator::RelayErf => {
+                        let access = match params[1..]
+                        .iter()
+                        .map(|id| &egraph[*id].data)
+                        .collect::<Vec<_>>()[..] {
+                            [MyAnalysisData::AccessPattern(a)] => {
+                                AccessPatternData {
+                                    shape: a.shape.clone(),
+                                    item_shape: IxDyn(&[]),
+                                    zero_regions: HashMap::default(),
+                                }
+                            }
+                            _ => panic!("Erf only supports accepting 1 input tensor")
+                        };
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayMean => {
+                        let access = match params[1..]
+                        .iter()
+                        .map(|id| &egraph[*id].data)
+                        .collect::<Vec<_>>()[..] {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Legacy(legacy)] => {
+                                if let Some(axis) = legacy.usize_value {
+                                    let shape_length = a.shape.slice().len();
+                                    assert!(axis < shape_length);
+                                    if axis == shape_length - 1 {
+                                        AccessPatternData {
+                                            shape: IxDyn(&a.shape.slice()[..axis]),
+                                            item_shape: IxDyn(&[]),
+                                            zero_regions: HashMap::default(),
+                                        }
+                                    } else {
+                                        AccessPatternData {
+                                            shape: IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat()),
+                                            item_shape: IxDyn(&[]),
+                                            zero_regions: HashMap::default(),
+                                        }
+                                    }
+                                } else {
+                                    AccessPatternData {
+                                        shape: a.shape.clone(),
+                                        item_shape: IxDyn(&[]),
+                                        zero_regions: HashMap::default(),
+                                    }
+                                }
+                            }
+                            _ => panic!("Erf only supports accepting 1 input tensor")
+                        };
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                      crate::language::RelayOperator::RelayAdd
+                    | crate::language::RelayOperator::RelayMultiply => {
                         let access = match params[1..]
                                             .iter()
                                             .map(|id| &egraph[*id].data)
@@ -1635,7 +1701,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     .map(|id| &egraph[*id].data)
                                     .collect::<Vec<_>>()[..] {
                                         [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] => {
-                                            let data_shape = data.shape.slice();
+                                            let data_shape = data.item_shape.slice();
                                             let weight_shape = weight.shape.slice();
                                             assert_eq!(data_shape.len(), 3);
                                             assert_eq!(weight_shape.len(), 3);
@@ -1679,22 +1745,22 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     .iter()
                                     .map(|id| &egraph[*id].data)
                                     .collect::<Vec<_>>()[..] {
-                                        [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(shape_data)] => {
-                                            assert_eq!(a.shape.slice()
-                                                              .into_iter()
-                                                              .map(|&x| x)
-                                                              .reduce(|x, y| x * y),
-                                                       shape_data.shape.slice()
-                                                                       .into_iter()
-                                                                       .map(|&x| x)
-                                                                       .reduce(|x, y| x * y));
+                                        [_, MyAnalysisData::Shape(shape_data)] => {
+                                            // assert_eq!(a.shape.slice()
+                                            //                   .into_iter()
+                                            //                   .map(|&x| x)
+                                            //                   .reduce(|x, y| x * y),
+                                            //            shape_data.shape.slice()
+                                            //                            .into_iter()
+                                            //                            .map(|&x| x)
+                                            //                            .reduce(|x, y| x * y));
                                             AccessPatternData {
                                                 shape: IxDyn(shape_data.shape.slice()),
                                                 item_shape: IxDyn(&[]),
                                                 zero_regions,
                                             }
                                         }
-                                        _ => panic!("Cannot match parameters for RelayReshape operator")
+                                        _ => panic!("Cannot match parameters for Reshape operator")
                                     };
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -2410,8 +2476,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
 
-                assert_eq!(a0.shape, a1.shape);
-                assert_eq!(a0.item_shape, a1.item_shape);
+                // assert_eq!(a0.shape, a1.shape);
+                // assert_eq!(a0.item_shape, a1.item_shape);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
@@ -2581,6 +2647,9 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
             &Compute([compute_type_id, access_id]) => {
+                // if (compute_type_id == Id::from(61) && access_id == Id::from(60)) || (compute_type_id == Id::from(53) && access_id == Id::from(50)) {
+                //     println!("compute_type: {:?}", egraph[compute_type_id].nodes[0]);
+                // }
                 let compute_type = match &egraph[compute_type_id].data {
                     MyAnalysisData::ComputeType(t) => t,
                     _ => panic!("Argument 0 of {:?} should be a ComputeType", enode),

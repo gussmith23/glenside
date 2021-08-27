@@ -252,7 +252,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::RelayActivationLayout(_)
             | Language::List(_)
             | Language::AccessShape(_)
-            | Language::AccessReshape(_)
+            // | Language::AccessReshape(_)
             | Language::AccessTensor(_)
             | Language::Access(_)
             | Language::AccessInsertAxis(_)
