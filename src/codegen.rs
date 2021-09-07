@@ -2525,77 +2525,45 @@ mod tests {
 
         let (_hw_map, _hw_design) = create_hardware_design_monolithic(&egraph, (32, 32));
     }
-
     #[test]
     fn systolic_array_with_blocking() {
-        let shape0 = vec![2, 10];
-        let shape1 = vec![10, 15];
-
-        let input0 = ndarray::ArrayD::from_shape_vec(
-            shape0.clone(),
-            (0..shape0.iter().product::<usize>()).collect(),
-        )
-        .unwrap()
-        .into_dimensionality::<ndarray::Ix2>()
-        .unwrap();
-        let input1 = ndarray::ArrayD::from_shape_vec(
-            shape1.clone(),
-            (0..shape1.iter().product::<usize>()).collect(),
-        )
-        .unwrap()
-        .into_dimensionality::<ndarray::Ix2>()
-        .unwrap();
-        let multiplied = input0.dot(&input1).into_dyn();
-
-        let expr = RecExpr::from_str(
-            "
-(systolic-array-with-blocking 2 5
- (access (access-tensor t0) 1)
- (access (access-tensor t1) 0)
-)",
-        )
-        .unwrap();
-
-        let mut map = HashMap::default();
-        map.insert("t0".to_string(), shape0.clone());
-        map.insert("t1".to_string(), shape1.clone());
-
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
-        let id = egraph.add_expr(&expr);
-
-        let mut hw_map = HashMap::default();
-        hw_map.insert(id, 0);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &hw_map,
-            "systolic_array_with_blocking",
-            "",
-            &vec!["t0", "t1"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-{}
-
-int main() {{
-  systolic_array_with_blocking(out, t0, t1);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)result)[i] == ((float*)out)[i]);
-  }}
-}}
-",
+        let input_list = vec![
+            (
+                "t0",
+                ndarray::ArrayD::from_shape_vec(
+                    vec![2, 10].clone(),
+                    (0..vec![2, 10].iter().product::<usize>()).collect(),
+                )
+                .unwrap()
+                .into_dimensionality::<ndarray::Ix2>()
+                .unwrap(),
+            ),
+            (
+                "t1",
+                ndarray::ArrayD::from_shape_vec(
+                    vec![10, 15].clone(),
+                    (0..vec![10, 15].iter().product::<usize>()).collect(),
+                )
+                .unwrap()
+                .into_dimensionality::<ndarray::Ix2>()
+                .unwrap(),
+            ),
+        ];
+        let multiplied = input_list[0]
+            .1
+            .clone()
+            .dot(&input_list[1].1.clone())
+            .into_dyn();
+        codegen_test!(
+            input_list.clone(),
+            format!(
+                "
+                (systolic-array-with-blocking 2 5
+                 (access (access-tensor t0) 1)
+                 (access (access-tensor t1) 0)
+                )"
+            ),
+            multiplied,
             PathBuf::from_str(
                 format!(
                     "{}/{}/{}/{}",
@@ -2607,60 +2575,7 @@ int main() {{
                 .as_str()
             )
             .unwrap()
-            .to_string_lossy(),
-            c_assignment_string("", "t0", DType::Fp32, &input0.into_dyn().view()),
-            c_assignment_string("", "t1", DType::Fp32, &input1.into_dyn().view()),
-            c_assignment_string("", "result", DType::Fp32, &multiplied.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(multiplied.shape()).view()
-            ),
-            code,
-            multiplied.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "systolic-array-with-blocking-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "systolic-array-with-blocking-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+            .to_string_lossy()
         );
     }
 
