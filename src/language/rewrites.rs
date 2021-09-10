@@ -856,6 +856,10 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
                                          "?right-access".parse().unwrap()))
 }
 
+/// More general rewrite
+/// because it's using the properties of Glenside expressions
+/// 
+
 pub fn bubble_reshape_through_compute_dot_product() -> RW {
     fn is_dot_product(op: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, _, subst| match &egraph[subst[op]].data {
@@ -900,6 +904,16 @@ pub fn access_reshape_to_relay() -> RW {
     rewrite!("access-reshape-to-reshape";
         "(access-reshape ?access (access-shape ?shape (shape)))" => "(relay-operator-call relay-reshape ?access ?shape)")
 }
+
+/// Model rewrite
+/// If we know how to implement them (a computation) in relay
+/// 1. To have two equivalent implementations for a computation
+///    the example below is linear layer 
+///         (reshape (bias_add (dense ?x ?w) ?bias) ?shape)
+///     <=> (add (reshape (dense ?x ?w) ?shape) ?bias)
+/// 2. Call the Glenside compiler to compile both implementation
+///    This will give us two Glenside patterns
+/// 3. Rewrite from lhs to rhs
 
 pub fn bubble_reshape_through_linear_generalized() -> RW {
     struct ApplierImpl(Var);
@@ -965,7 +979,43 @@ pub fn bubble_reshape_through_linear() -> RW {
             (access-shape ?shape (shape)))")
 }
 
+/// 1. the user of the accelerator will give us a pattern written in Relay
+///    (bias_add (dense ?x ?w) ?bias)
+/// 2. Compile this pattern to a Glenside version pattern
+/// 3. Add the following rewrite: from the Glenside version of the pattern to an accelerator call
+
 pub fn linear_layer_accelerator_rewrites() -> RW {
+    struct ApplierImpl;
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let shape = match &egraph[eclass].data {
+                MyAnalysisData::Shape(shape_data) => shape_data.shape.clone(),
+                MyAnalysisData::AccessPattern(access) => {
+                    if let Some(output_shape) = &access.relay_shape {
+                        output_shape.clone()
+                    } else {
+                        IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat())
+                    }
+                }
+                MyAnalysisData::Legacy(data) => {
+                    if let Some(shape) = &data.shape {
+                        shape.clone()
+                    } else {
+                        panic!("Cannot type infer type for linear accelerator call")
+                    }
+                }
+                x => panic!("Not a valid pattern match {:?}", x)
+            };
+            format!("(accelerator-call flex-linear ?x ?w ?bias (shape {}))",
+                shape
+                .slice()
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(" "))
+                .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
+        }
+    }
     rewrite!("linear_to_flexnlp";
              "(compute elementwise-add 
                 (access-pair 
@@ -973,7 +1023,7 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
                     (access (access-broadcast (access-insert-axis ?bias 0) 
                             (access-shape ?shape (shape))) 0)))"
             =>
-             "(accelerator-call flex-linear ?x ?w ?bias)")
+             { ApplierImpl {} })
 }
 
 /// Tensorizes a computation to an externally-blocked systolic array.
