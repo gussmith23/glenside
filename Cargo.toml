@@ -57,6 +57,7 @@ optional = true
 # rev = "39415f19acdacd6dde62f40cb2bb08f8669acc85"
 git = "https://github.com/AD1024/egg"
 branch = "3la-mod"
+features = ["serde-json"]
 
 [dependencies.ndarray]
 version = "0.13.0"
