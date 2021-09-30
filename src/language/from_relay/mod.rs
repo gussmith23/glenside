@@ -31,7 +31,117 @@ pub fn access_transpose(expr: &mut RecExpr<Language>, data_id: Id, transpose_lis
 
     expr.add(Language::AccessTranspose([data_id, transpose_list_id]))
 }
+pub fn conv1d(
+    expr: &mut RecExpr<Language>,
+    data_id: Id,
+    data_shape: &[usize],
+    weights_id: Id, 
+    weights_shape: &[usize],
+    strides: &[usize],
+    padding: &[usize],
+    dilation: &[usize],
+    groups: usize,
+    data_layout: &str,
+    kernel_layout: &str,
+    out_layout: &str,
+) -> Id {
+    assert_eq!(data_shape.len(), 3);
+    assert_eq!(weights_shape.len(), 3);
+    assert_eq!(strides.len(), 1);
+    assert_eq!(padding.len(), 2);
+    assert_eq!(dilation.len(), 1);
 
+    assert!(
+        &["NCW"].contains(&data_layout)
+    );
+    assert!(
+        &["OIW"].contains(&data_layout)
+    );
+    // check if alternative layouts are correct 
+    assert_eq!(dilation, [1]);
+    assert_eq!(out_layout, ""); 
+    /*VISHAL: not sure what this is; are we saying that we always want the output
+    layout to be the same as data_layout */
+
+    //TODO: Make syre data layout is corect (look at Conv2d shuffling for inspiration, or ask Mike which data layout
+    // we need for the minimum and just only assert for that :)
+
+
+    // let (data_id, data_shape) = match data_layout {
+    //     "NCHW" => (data_id, Vec::from(data_shape)),
+    //     "NHWC" => (
+    //         access_transpose(expr, data_id, &[0, 3, 1, 2]),
+    //         vec![data_shape[0], data_shape[3], data_shape[1], data_shape[2]],
+    //     ),
+    //     _ => unreachable!(),
+    // };
+
+    // // Transpose to OIHW
+    // let (weights_id, weights_shape) = match kernel_layout {
+    //     "OIHW" => (weights_id, Vec::from(weights_shape)),
+    //     "HWIO" => (
+    //         access_transpose(expr, weights_id, &[3, 2, 0, 1]),
+    //         vec![
+    //             weights_shape[3],
+    //             weights_shape[2],
+    //             weights_shape[0],
+    //             weights_shape[1],
+    //         ],
+    //     ),
+    //     _ => unreachable!(),
+    // };
+
+
+    let pad_axis_id = expr.add(Language::Usize(2));
+    let pad_before_id = expr.add(Language::Usize(padding[0]));
+    let pad_after_id = expr.add(Language::Usize(padding[1]));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_before_id,
+        pad_after_id,
+    ]));
+    //gets the inner access-pad (or in the case of conv1d, the singular access-pad)
+
+    //SKIP SECOND ACCESS-PAD (Conv1d is simpler)
+
+
+
+    // SKIP ACCESS (Conv1d is easier; double check if we can do this)
+
+    //TODO: Figure out how stride_list changes 
+    let mut stride_list = Vec::default();
+    stride_list.push(expr.add(Language::Usize(1)));
+    stride_list.push(expr.add(Language::Usize(strides[0])));
+    let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+    let in_channels = data_shape[1];
+    
+    let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
+    let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
+    let weights_shape_id = expr.add(Language::Shape(Box::new([
+        usize_c_id,
+        usize_kw_id,
+    ])));
+    let data_id = expr.add(Language::AccessWindows([
+        data_id,
+        weights_shape_id,
+        stride_shape_id,
+    ]));
+    // data_id = cartProd (data_id, (access weights 1))
+    let access_dim_id = expr.add(Language::Usize(1));
+    let weights_id = expr.add(Language::Access([weights_id, access_dim_id]));
+    let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+
+    let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
+    let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
+
+    let data_id = access_transpose(expr, data_id, &[0, 2, 1]);
+
+    data_id
+
+}
 pub fn conv2d(
     expr: &mut RecExpr<Language>,
     data_id: Id,
@@ -1501,6 +1611,19 @@ fn compile_expression(
                     let data_id = compute(glenside_expr, ComputeType::ElementwiseAdd, data_id);
 
                     (data_id, Some(opaque_operator_call))
+                }
+                "nn.conv1d" => {
+                    assert_eq!(call.args.len(), 2);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::Conv1DAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let data_shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    let weights_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let weights_shape = shape_from_type(call.args.get(1).unwrap().checked_typed.clone());
+                    
                 }
                 "nn.conv2d" => {
                     assert_eq!(call.args.len(), 2);
