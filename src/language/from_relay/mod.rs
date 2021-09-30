@@ -1621,7 +1621,72 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
-                    let weights_shape = shape_from_type(call.args.get(1).unwrap().checked_typed.clone());
+                    let weights_shape = shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+                    assert_eq!(attrs.padding.len(), 2);
+                    assert_eq!(attrs.dilation.len(), 1);
+
+                    assert_eq!(
+                        attrs
+                            .dilation
+                            .get(0)
+                            .unwrap()
+                            .downcast::<tvm::ir::tir::IntImm>()
+                            .unwrap()
+                            .value,
+                        1
+                    );
+                    //Might need some more asserts for dilation, output layout (see Conv2d)
+                    assert_eq!(attrs.out_layout, "");
+                    assert_eq!(
+                        attrs.out_dtype,
+                        // TODO(@gussmith23) How to actually constrain this?
+                        tvm::DataType::new(3, 0, 0)
+                    );
+                    (conv1d(
+                        glenside_expr,
+                        data_id,
+                        &data_shape,
+                        weights_id,
+                        &weights_shape,
+                        &[
+                            attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        &[
+                            attrs
+                                .padding
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        &[
+                            attrs
+                                .dilation
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize
+                        ],
+                        attrs.groups.try_into().unwrap(),
+                        attrs.data_layout.as_str().unwrap(),
+                        attrs.kernel_layout.as_str().unwrap(),
+                        attrs.out_layout.as_str().unwrap(),
+                    ), None)
                     
                 }
                 "nn.conv2d" => {
