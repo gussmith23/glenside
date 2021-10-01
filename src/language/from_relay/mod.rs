@@ -50,12 +50,13 @@ pub fn conv1d(
     assert_eq!(strides.len(), 1);
     assert_eq!(padding.len(), 2);
     assert_eq!(dilation.len(), 1);
+    assert_eq!(groups, 1);
 
     assert!(
         &["NCW"].contains(&data_layout)
     );
     assert!(
-        &["OIW"].contains(&data_layout)
+        &["OIW"].contains(&kernel_layout)
     );
     // check if alternative layouts are correct 
     assert_eq!(dilation, [1]);
@@ -1619,12 +1620,15 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::Conv1DAttrs>()
                         .unwrap();
+                    println!("Parsed attrs");
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
                     let weights_shape = shape_from_type(call.args.get(1).unwrap().checked_type.clone());
                     assert_eq!(attrs.padding.len(), 2);
                     assert_eq!(attrs.dilation.len(), 1);
+
+                    println!("checked padding dilation");
 
                     assert_eq!(
                         attrs
@@ -1636,13 +1640,17 @@ fn compile_expression(
                             .value,
                         1
                     );
+                    println!("Checked dilation");
                     //Might need some more asserts for dilation, output layout (see Conv2d)
-                    assert_eq!(attrs.out_layout, "");
-                    assert_eq!(
-                        attrs.out_dtype,
-                        // TODO(@gussmith23) How to actually constrain this?
-                        tvm::DataType::new(3, 0, 0)
-                    );
+                    // assert_eq!(attrs.out_layout, "");
+                    // println!("Checked layout");
+                    // println!("{:?}", attrs.out_dtype);
+                    // assert_eq!(
+                    //     attrs.out_dtype,
+                    //     // TODO(@gussmith23) How to actually constrain this?
+                    //     tvm::DataType::new(3, 0, 0)
+                    // );
+                    // println!("Attr checked");
                     (conv1d(
                         glenside_expr,
                         data_id,
@@ -1684,9 +1692,9 @@ fn compile_expression(
                                 .value as usize
                         ],
                         attrs.groups.try_into().unwrap(),
-                        attrs.data_layout.as_str().unwrap(),
-                        attrs.kernel_layout.as_str().unwrap(),
-                        attrs.out_layout.as_str().unwrap(),
+                        "NCW",
+                        "OIW",
+                        "",
                     ), None)
                     
                 }
@@ -1845,15 +1853,15 @@ fn compile_expression(
                         todo!()
                     }
                 }
-                "nn.conv1d" => {
-                    let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
-                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
-                    let weight_id = get_compiled_expression(call.args.get(1).unwrap());
-                    let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
-                        vec![op_id, data_id, weight_id].into_boxed_slice()
-                    ));
-                    (conv1d_opcall, None)
-                }
+                // "nn.conv1d" => {
+                //     let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
+                //     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                //     let weight_id = get_compiled_expression(call.args.get(1).unwrap());
+                //     let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
+                //         vec![op_id, data_id, weight_id].into_boxed_slice()
+                //     ));
+                //     (conv1d_opcall, None)
+                // }
                 "erf" => {
                     let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayErf));
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
