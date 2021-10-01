@@ -1646,10 +1646,8 @@ fn compile_expression(
                         1
                     );
                     let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
-                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
-                    let weight_id = get_compiled_expression(call.args.get(1).unwrap());
                     let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
-                        vec![op_id, data_id, weight_id].into_boxed_slice()
+                        vec![op_id, data_id, weights_id].into_boxed_slice()
                     ));
                     //Might need some more asserts for dilation, output layout (see Conv2d)
                     // assert_eq!(attrs.out_layout, "");
