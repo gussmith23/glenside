@@ -636,6 +636,7 @@ pub fn from_relay(
         .unwrap();
     let func = main.downcast::<tvm::ir::relay::Function>().unwrap();
     let mut names_and_shapes = Vec::default();
+    //problem line
     for i in 0..func.params.len() {
         let var = func.params.get(i as isize).unwrap();
         let t = shape_from_type(var.type_annotation.clone());
@@ -1637,7 +1638,7 @@ fn compile_expression(
                         1
                     );
                     //Might need some more asserts for dilation, output layout (see Conv2d)
-                    assert_eq!(attrs.out_layout, "");
+                    //assert_eq!(attrs.out_layout, "");
                     assert_eq!(
                         attrs.out_dtype,
                         // TODO(@gussmith23) How to actually constrain this?
@@ -2268,6 +2269,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
+                // problem line
                 let (expr, shapes_vec, _) = super::from_relay(&module, false, &vec![]);
 
                 let mut env = HashMap::default();
@@ -2491,12 +2493,10 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
         1e-60,
         r#"
     #[version = "0.0.5"]
-    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 17), float32] {
-        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 17), float32] */
+    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 19), float32] {
+        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4])
     }
 "#,
-
-
         r#"
 (access-transpose
  (compute dot-product
