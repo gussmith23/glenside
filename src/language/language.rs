@@ -8,6 +8,7 @@ use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::cmp::Ordering;
+use std::mem;
 
 pub fn merge_if_different<D: PartialEq>(to: &mut D, new: D) -> bool {
     if *to == new {
@@ -2168,7 +2169,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::List(l) => l,
                     _ => panic!(),
                 };
-
                 assert_eq!(
                     access.shape.ndim() + access.item_shape.ndim(),
                     list.len(),
@@ -2609,7 +2609,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     MyAnalysisData::Legacy(p) => match &p.shape {
-                        Some(s) => AccessPatternData {shape: s.clone(), item_shape: s.clone(), zero_regions: HashMap::default(),
+                        Some(s) => AccessPatternData {shape: s.clone(), item_shape: IxDyn(&[]), zero_regions: HashMap::default(),
                                                       relay_shape: None},
                         None => panic!("No shape information before")
                     }
@@ -2732,6 +2732,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     | self::ComputeType::ElementwiseMul
                     | self::ComputeType::ElementwiseDiv => {
                         assert!(a0.item_shape.ndim() >= 1);
+                        // println!("Add shape {:?} {:?}", a0.shape, a0.item_shape);
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             // TODO(@gussmith23) Implement zero regions
                             // It's harmless (I think) if `zero_regions` defaults to
@@ -3228,6 +3229,11 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 // TODO(@gussmith23) Generalize AccessWindows to other accesses
                 // Right now we expect item shape to be a scalar.
+                // println!("{:?} {:?} {:?}", access.shape, access.item_shape, filters_shape);
+                // let mut shape = access.shape.clone();
+                // if shape.ndim() == 0 {
+                //     shape = access.item_shape.clone();
+                // }
                 assert_eq!(access.item_shape.ndim(), 0);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
