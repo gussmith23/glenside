@@ -11,7 +11,6 @@ use tvm::ir::relay::*;
 use tvm::ir::tir::*;
 use tvm::ir::ty::*;
 use tvm::runtime::IsObjectRef;
-use tvm::DataType;
 
 use super::ComputeType;
 use super::PadType;
@@ -1886,7 +1885,7 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::reduce::ReduceAttrs>()
                         .unwrap();
-                    /// TODO(mike): support reducing on multiple axis?
+                    // TODO(mike): support reducing on multiple axis?
                     assert_eq!(attrs.axis.len(), 1);
                     let axis_id;
                     if let Ok(axis) = attrs.axis.get(0) {
