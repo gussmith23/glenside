@@ -2886,7 +2886,8 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 // TODO(@gussmith23) Generalize AccessWindows to other accesses
                 // Right now we expect item shape to be a scalar.
-                assert_eq!(access.item_shape.ndim(), 0);
+                // I don't think we need this to be true.
+                //assert_eq!(access.item_shape.ndim(), 0);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
@@ -2903,12 +2904,23 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     shape: IxDyn(
-                        access_windows_resulting_shape(
-                            &access.shape,
-                            &filters_shape,
-                            &stride_shape,
-                        )
-                        .as_slice(),
+                        access
+                            .shape
+                            .slice()
+                            .iter()
+                            .cloned()
+                            .chain(
+                                access_windows_resulting_shape(
+                                    &access.item_shape,
+                                    &filters_shape,
+                                    &stride_shape,
+                                )
+                                .as_slice()
+                                .iter()
+                                .cloned(),
+                            )
+                            .collect::<Vec<_>>()
+                            .as_slice(),
                     ),
                     item_shape: filters_shape.clone(),
                 })
