@@ -3,11 +3,11 @@ use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::debug;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::cmp::Ordering;
 
 pub fn merge_if_different<D: PartialEq>(to: &mut D, new: D) -> bool {
     if *to == new {
@@ -435,8 +435,8 @@ impl Display for RelayOperator {
                 RelayOperator::RelayMinimum => "relay-minimum",
                 RelayOperator::RelayDense => "relay-dense",
                 RelayOperator::RelayReshape => "relay-reshape",
-                RelayOperator::RelayConv1D  => "relay-conv1d",
-                RelayOperator::RelayErf  => "relay-erf",
+                RelayOperator::RelayConv1D => "relay-conv1d",
+                RelayOperator::RelayErf => "relay-erf",
                 RelayOperator::RelayMean => "relay-mean",
                 RelayOperator::RelayMultiply => "relay-mul",
             }
@@ -615,22 +615,26 @@ impl FromStr for AcceleratorFunc {
     fn from_str(s: &str) -> Result<AcceleratorFunc, Self::Err> {
         match s {
             "flex-linear" => Ok(AcceleratorFunc::FlexLinear),
-            "flex-lstm"   => Ok(AcceleratorFunc::FlexLSTM),
-            "vta-dense"   => Ok(AcceleratorFunc::VTADense),
-            "vta-conv1d"  => Ok(AcceleratorFunc::VTAConv1D),
-            _             => Err(()),
+            "flex-lstm" => Ok(AcceleratorFunc::FlexLSTM),
+            "vta-dense" => Ok(AcceleratorFunc::VTADense),
+            "vta-conv1d" => Ok(AcceleratorFunc::VTAConv1D),
+            _ => Err(()),
         }
     }
 }
 
 impl Display for AcceleratorFunc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            AcceleratorFunc::FlexLinear => "flex-linear",
-            AcceleratorFunc::FlexLSTM   => "flex-lstm",
-            AcceleratorFunc::VTADense   => "vta-dense",
-            AcceleratorFunc::VTAConv1D  => "vta-conv1d",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                AcceleratorFunc::FlexLinear => "flex-linear",
+                AcceleratorFunc::FlexLSTM => "flex-lstm",
+                AcceleratorFunc::VTADense => "vta-dense",
+                AcceleratorFunc::VTAConv1D => "vta-conv1d",
+            }
+        )
     }
 }
 
@@ -1248,9 +1252,13 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 // changed
                 // Some(Ordering::Greater)
-                if let (Some(left_shape), Some(right_shape)) = (to_relay_shape.clone(), from_relay_shape.clone()) {
+                if let (Some(left_shape), Some(right_shape)) =
+                    (to_relay_shape.clone(), from_relay_shape.clone())
+                {
                     assert_eq!(left_shape, right_shape);
-                    if to_shape.slice().len() >= from_shape.slice().len() && to_item_shape.slice().len() >= from_item_shape.slice().len() {
+                    if to_shape.slice().len() >= from_shape.slice().len()
+                        && to_item_shape.slice().len() >= from_item_shape.slice().len()
+                    {
                         Some(Ordering::Greater)
                     } else {
                         Some(Ordering::Less)
@@ -1481,52 +1489,46 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let accelerator_call = &egraph[ids[0]].data;
                 let accelerator_func_data = match accelerator_call {
                     MyAnalysisData::AcceleratorFunc(data) => data,
-                    _ => panic!("Invalid data for accelerator function: {:?}", accelerator_call)
+                    _ => panic!(
+                        "Invalid data for accelerator function: {:?}",
+                        accelerator_call
+                    ),
                 };
                 match accelerator_func_data.pattern {
-                      crate::language::AcceleratorFunc::FlexLinear
+                    crate::language::AcceleratorFunc::FlexLinear
                     | crate::language::AcceleratorFunc::VTADense => {
                         let inp_data = &egraph[ids[1]].data;
                         let wgt_data = &egraph[ids[2]].data;
                         let inp_shape = match inp_data {
-                            MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
-                            MyAnalysisData::Legacy(p)        => p.shape.clone(),
-                            _ => panic!("Data for input should have shape info")
+                            MyAnalysisData::AccessPattern(p) => p.shape.clone(),
+                            MyAnalysisData::Shape(s) => s.shape.clone(),
+                            _ => panic!("Data for input should have shape info"),
                         };
                         let wgt_shape = match wgt_data {
-                            MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
-                            MyAnalysisData::Legacy(p)        => p.shape.clone(),
-                            _ => panic!("Data for weight should have shape info")
+                            MyAnalysisData::AccessPattern(p) => p.shape.clone(),
+                            MyAnalysisData::Shape(s) => s.shape.clone(),
+                            _ => panic!("Data for weight should have shape info"),
                         };
-                        let out_shape = match (inp_shape, wgt_shape) {
-                            (Some(inp_shape), Some(wgt_shape)) => Some(IxDyn(&[inp_shape[0], wgt_shape[0]])),
-                            (_, _) => None,
-                        };
-                        MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                            shape: out_shape,
-                            usize_value: None
-                        })
-                    },
-                      crate::language::AcceleratorFunc::VTAConv1D
+                        let out_shape = IxDyn(&[inp_shape[0], wgt_shape[0]]);
+                        MyAnalysisData::Shape(ShapeData { shape: out_shape })
+                    }
+                    crate::language::AcceleratorFunc::VTAConv1D
                     | crate::language::AcceleratorFunc::FlexLSTM => {
                         // TODO: add shape here
-                        MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                            shape: None,
-                            usize_value: None,
-                        })
+                        MyAnalysisData::Shape(ShapeData { shape: IxDyn(&[]) })
                     }
                 }
             }
             AcceleratorFunc(name) => {
                 let accelerator = match &name {
-                      crate::language::AcceleratorFunc::FlexLinear
+                    crate::language::AcceleratorFunc::FlexLinear
                     | crate::language::AcceleratorFunc::FlexLSTM => "flexnlp",
-                      crate::language::AcceleratorFunc::VTAConv1D
-                    | crate::language::AcceleratorFunc::VTADense => "vta", 
+                    crate::language::AcceleratorFunc::VTAConv1D
+                    | crate::language::AcceleratorFunc::VTADense => "vta",
                 };
                 MyAnalysisData::AcceleratorFunc(AcceleratorFuncData {
                     pattern: name.clone(),
-                    accelerator: String::from(accelerator)
+                    accelerator: String::from(accelerator),
                 })
             }
             RelayActivationLayout(l) => MyAnalysisData::RelayActivationLayout(l.clone()),
@@ -1556,7 +1558,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                      crate::language::RelayOperator::RelayMaximum
+                    crate::language::RelayOperator::RelayMaximum
                     | crate::language::RelayOperator::RelayMinimum => {
                         let (a, b) = match params[1..]
                             .iter()
@@ -1609,117 +1611,124 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                     crate::language::RelayOperator::RelayErf => {
                         let access = match params[1..]
-                        .iter()
-                        .map(|id| &egraph[*id].data)
-                        .collect::<Vec<_>>()[..] {
-                            [MyAnalysisData::AccessPattern(a)] => {
-                                AccessPatternData {
-                                    shape: a.shape.clone(),
-                                    item_shape: a.item_shape.clone(),
-                                    zero_regions: HashMap::default(),
-                                    relay_shape: a.relay_shape.clone(),
-                                }
-                            }
-                            _ => panic!("Erf only supports accepting 1 input tensor")
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a)] => AccessPatternData {
+                                shape: a.shape.clone(),
+                                item_shape: a.item_shape.clone(),
+                                zero_regions: HashMap::default(),
+                                relay_shape: a.relay_shape.clone(),
+                            },
+                            _ => panic!("Erf only supports accepting 1 input tensor"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayMean => {
                         let access = match params[1..]
-                        .iter()
-                        .map(|id| &egraph[*id].data)
-                        .collect::<Vec<_>>()[..] {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Legacy(legacy)] => {
-                                if let Some(axis) = legacy.usize_value {
-                                    let shape_length = a.shape.slice().len();
-                                    assert!(axis < shape_length);
-                                    if axis == shape_length - 1 {
-                                        AccessPatternData {
-                                            shape: IxDyn(&[]),
-                                            item_shape: IxDyn(&a.shape.slice()[..axis]),
-                                            zero_regions: HashMap::default(),
-                                            relay_shape: Some(IxDyn(&a.shape.slice()[..axis])),
-                                        }
-                                    } else {
-                                        AccessPatternData {
-                                            shape: IxDyn(&[]),
-                                            item_shape: IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat()),
-                                            zero_regions: HashMap::default(),
-                                            relay_shape: Some(IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat())),
-                                        }
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), &MyAnalysisData::Usize(axis)] => {
+                                let shape_length = a.shape.slice().len();
+                                assert!(axis < shape_length);
+                                if axis == shape_length - 1 {
+                                    AccessPatternData {
+                                        shape: IxDyn(&[]),
+                                        item_shape: IxDyn(&a.shape.slice()[..axis]),
+                                        zero_regions: HashMap::default(),
+                                        relay_shape: Some(IxDyn(&a.shape.slice()[..axis])),
                                     }
                                 } else {
                                     AccessPatternData {
                                         shape: IxDyn(&[]),
-                                        item_shape: IxDyn(&[]),
+                                        item_shape: IxDyn(
+                                            &[
+                                                &a.shape.slice()[..axis],
+                                                &a.shape.slice()[axis + 1..],
+                                            ]
+                                            .concat(),
+                                        ),
                                         zero_regions: HashMap::default(),
-                                        relay_shape: Some(IxDyn(&[])),
+                                        relay_shape: Some(IxDyn(
+                                            &[
+                                                &a.shape.slice()[..axis],
+                                                &a.shape.slice()[axis + 1..],
+                                            ]
+                                            .concat(),
+                                        )),
                                     }
                                 }
                             }
-                            _ => panic!("Erf only supports accepting 1 input tensor")
+                            _ => panic!("Erf only supports accepting 1 input tensor"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
-                      crate::language::RelayOperator::RelayAdd
+                    crate::language::RelayOperator::RelayAdd
                     | crate::language::RelayOperator::RelayMultiply => {
                         let mut access = match params[1..]
-                                            .iter()
-                                            .map(|id| &egraph[*id].data)
-                                            .collect::<Vec<_>>()[..] {
-                                    [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
-                                        let size_a = a.shape
-                                                    .slice()
-                                                    .into_iter()
-                                                    .map(|&x| x)
-                                                    .reduce(|x, y| x * y);
-                                        let size_b = b.shape
-                                                    .slice()
-                                                    .into_iter()
-                                                    .map(|&x| x)
-                                                    .reduce(|x, y| x * y);
-                                        if size_a > size_b {
-                                            a.clone()
-                                        } else {
-                                            b.clone()
-                                        }
-                                    }
-                                    _ => panic!("Relay Add only supports 2 params currently")
-                                };
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
+                                let size_a =
+                                    a.shape.slice().into_iter().map(|&x| x).reduce(|x, y| x * y);
+                                let size_b =
+                                    b.shape.slice().into_iter().map(|&x| x).reduce(|x, y| x * y);
+                                if size_a > size_b {
+                                    a.clone()
+                                } else {
+                                    b.clone()
+                                }
+                            }
+                            _ => panic!("Relay Add only supports 2 params currently"),
+                        };
                         if access.relay_shape == None {
-                            access.relay_shape = Some(IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat()));
+                            access.relay_shape = Some(IxDyn(
+                                &[access.shape.slice(), access.item_shape.slice()].concat(),
+                            ));
                         }
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayConv1D => {
                         let access = match params[1..]
-                                    .iter()
-                                    .map(|id| &egraph[*id].data)
-                                    .collect::<Vec<_>>()[..] {
-                                        [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] => {
-                                            let data_shape = data.item_shape.slice();
-                                            let weight_shape = weight.shape.slice();
-                                            assert_eq!(data_shape.len(), 3);
-                                            assert_eq!(weight_shape.len(), 3);
-                                            assert_eq!(data_shape[1], weight_shape[1]);
-                                            let output_shape = IxDyn(&[data_shape[0], weight_shape[0], data_shape[2] - weight_shape[2] + 1]);
-                                            AccessPatternData {
-                                                shape: IxDyn(&[]),
-                                                item_shape: IxDyn(output_shape.slice()),
-                                                zero_regions: HashMap::default(),
-                                                relay_shape: Some(output_shape),
-                                            }
-                                        }
-                                        _ => panic!("Conv1D can only accept 2 params")
-                                    };
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] =>
+                            {
+                                let data_shape = data.item_shape.slice();
+                                let weight_shape = weight.shape.slice();
+                                assert_eq!(data_shape.len(), 3);
+                                assert_eq!(weight_shape.len(), 3);
+                                assert_eq!(data_shape[1], weight_shape[1]);
+                                let output_shape = IxDyn(&[
+                                    data_shape[0],
+                                    weight_shape[0],
+                                    data_shape[2] - weight_shape[2] + 1,
+                                ]);
+                                AccessPatternData {
+                                    shape: IxDyn(&[]),
+                                    item_shape: IxDyn(output_shape.slice()),
+                                    zero_regions: HashMap::default(),
+                                    relay_shape: Some(output_shape),
+                                }
+                            }
+                            _ => panic!("Conv1D can only accept 2 params"),
+                        };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayDense => {
                         let zero_regions = HashMap::default();
                         let access = match params[1..]
-                                        .iter()
-                                        .map(|id| &egraph[*id].data)
-                                        .collect::<Vec<_>>()[..] {
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
                             [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
                                 let batch = a.shape[0];
                                 let in_feat = a.shape[1];
@@ -1733,34 +1742,35 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     zero_regions,
                                 }
                             }
-                            _ => panic!("Dense current only support 2 parameters")
+                            _ => panic!("Dense current only support 2 parameters"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayReshape => {
                         let zero_regions = HashMap::default();
                         let access = match params[1..]
-                                    .iter()
-                                    .map(|id| &egraph[*id].data)
-                                    .collect::<Vec<_>>()[..] {
-                                        [_, MyAnalysisData::Shape(shape_data)] => {
-                                            // assert_eq!(a.shape.slice()
-                                            //                   .into_iter()
-                                            //                   .map(|&x| x)
-                                            //                   .reduce(|x, y| x * y),
-                                            //            shape_data.shape.slice()
-                                            //                            .into_iter()
-                                            //                            .map(|&x| x)
-                                            //                            .reduce(|x, y| x * y));
-                                            AccessPatternData {
-                                                shape: IxDyn(&[]),
-                                                item_shape: IxDyn(&[]),
-                                                relay_shape: Some(IxDyn(shape_data.shape.slice())),
-                                                zero_regions,
-                                            }
-                                        }
-                                        _ => panic!("Cannot match parameters for Reshape operator")
-                                    };
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [_, MyAnalysisData::Shape(shape_data)] => {
+                                // assert_eq!(a.shape.slice()
+                                //                   .into_iter()
+                                //                   .map(|&x| x)
+                                //                   .reduce(|x, y| x * y),
+                                //            shape_data.shape.slice()
+                                //                            .into_iter()
+                                //                            .map(|&x| x)
+                                //                            .reduce(|x, y| x * y));
+                                AccessPatternData {
+                                    shape: IxDyn(&[]),
+                                    item_shape: IxDyn(&[]),
+                                    relay_shape: Some(IxDyn(shape_data.shape.slice())),
+                                    zero_regions,
+                                }
+                            }
+                            _ => panic!("Cannot match parameters for Reshape operator"),
+                        };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayBiasAdd => {
@@ -2608,11 +2618,12 @@ impl egg::Analysis<Language> for MyAnalysis {
             &AccessReshape([access_id, access_shape_id]) => {
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
-                    MyAnalysisData::Legacy(p) => match &p.shape {
-                        Some(s) => AccessPatternData {shape: s.clone(), item_shape: s.clone(), zero_regions: HashMap::default(),
-                                                      relay_shape: None},
-                        None => panic!("No shape information before")
-                    }
+                    MyAnalysisData::Shape(s) => AccessPatternData {
+                        shape: s.shape.clone(),
+                        item_shape: s.shape.clone(),
+                        zero_regions: HashMap::default(),
+                        relay_shape: None,
+                    },
                     _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
                 let mut new_shape = match &egraph[access_shape_id].data {
@@ -2640,7 +2651,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 let mut flatten_relay_shape = None;
                 if let Some(relay_shape) = &a.relay_shape {
-                    flatten_relay_shape = Some(IxDyn(&[relay_shape.as_array_view().iter().product()]));
+                    flatten_relay_shape =
+                        Some(IxDyn(&[relay_shape.as_array_view().iter().product()]));
                 }
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions

@@ -997,13 +997,6 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
                         IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat())
                     }
                 }
-                MyAnalysisData::Legacy(data) => {
-                    if let Some(shape) = &data.shape {
-                        shape.clone()
-                    } else {
-                        panic!("Cannot type infer type for linear accelerator call")
-                    }
-                }
                 x => panic!("Not a valid pattern match {:?}", x)
             };
             format!("(accelerator-call flex-linear ?x ?w ?bias (shape {}))",
