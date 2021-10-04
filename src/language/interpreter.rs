@@ -789,15 +789,15 @@ where
                 _ => panic!(),
             };
 
+            // assert_eq!(
+            //     access.access_axis,
+            //     access.tensor.ndim(),
+            //     "access-windows access should be accessed at its last dimension"
+            // );
             assert_eq!(
-                access.access_axis,
-                access.tensor.ndim(),
-                "access-windows access should be accessed at its last dimension"
-            );
-            assert_eq!(
-                access.tensor.ndim(),
+                access.tensor.ndim() - access.access_axis,
                 stride_shape.ndim(),
-                "access-windows access ndims should match stride ndims"
+                "access-windows item shape ndims should match stride ndims"
             );
             assert_eq!(
                 filters_shape.ndim(),
@@ -806,7 +806,7 @@ where
             );
 
             let out_shape = super::access_windows_resulting_shape(
-                &IxDyn(access.tensor.shape()),
+                &IxDyn(&access.tensor.shape()[access.access_axis..]),
                 &filters_shape,
                 // Ignore striding for now; we will stride after we get the result
                 // TODO(@gussmith23) More efficient striding?
