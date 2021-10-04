@@ -1077,8 +1077,6 @@ impl Sqrt for i64 {
     }
 }
 
-extern crate test;
-
 #[cfg(test)]
 mod tests {
 
@@ -1086,7 +1084,6 @@ mod tests {
     use approx::AbsDiffEq;
     use ndarray::array;
     use std::str::FromStr;
-    use test::Bencher;
 
     /// Creates a benchmark and a test for the interpreter
     /// The test does the following:
@@ -1105,24 +1102,29 @@ mod tests {
     /// $(#[$meta:meta]): Optional: Attributes to add to test.
     macro_rules! benchmark_and_test {
         ($(#[$meta:meta])* $test_name: ident, $bench_name:ident, $glenside_str: expr, $env: expr, $check_correct: expr) => {
-            $(#[$meta])*
-            #[bench]
-            fn $bench_name(b: &mut Bencher) {
-                let mut env = Environment::new();
-                for (key, value) in $env.into_iter() {
-                    env.insert(key, value);
-                }
 
-                let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
+            // TODO(@gussmith23) Re-enable benchmarks using Criterion or the
+            // Bencher crate for stable Rust. I didn't want to take the time to
+            // figure out how to get Criterion or Bencher working with this
+            // macro.
+            // $(#[$meta])*
+            // #[bench]
+            // fn $bench_name(b: &mut Bencher) {
+            //     let mut env = Environment::new();
+            //     for (key, value) in $env.into_iter() {
+            //         env.insert(key, value);
+            //     }
 
-                b.iter(|| {
-                    // use black box to prevent compiler optimizations
-                    let expr = test::black_box(&expr);
-                    let env = test::black_box(&env);
+            //     let expr = RecExpr::<Language>::from_str($glenside_str).unwrap();
 
-                    interpret(&expr, expr.as_ref().len() - 1, &env);
-                });
-            }
+            //     b.iter(|| {
+            //         // use black box to prevent compiler optimizations
+            //         let expr = test::black_box(&expr);
+            //         let env = test::black_box(&env);
+
+            //         interpret(&expr, expr.as_ref().len() - 1, &env);
+            //     });
+            // }
 
             $(#[$meta])*
             #[test]
