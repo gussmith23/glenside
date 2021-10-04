@@ -2184,40 +2184,6 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 "#
     );
 
-    test!(
-        avg_pool2d,
-        1e-60,
-        r#"
-#[version = "0.0.5"]
-def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), float32] {
-  nn.avg_pool2d(%data, pool_size=[3, 4], strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 3, 17, 12), float32] */
-}
-"#,
-        r#"
-(compute reduce-max
- (access
-  (access-windows
-   (access
-    (access-pad
-     (access-pad
-      (access-tensor data)
-      min-padding
-      2 1 3
-     )
-     min-padding
-     3 2 4
-    )
-    4
-   )
-   (shape 1 1 3 4)
-   (shape 1 1 2 3)
-  )
-  4
- )
-)
-"#
-    );
-
     // The first part of a separable convolution, as seen in Mobilenet.
     test!(
         conv2d_depthwise_separable_stage1,
