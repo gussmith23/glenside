@@ -2,7 +2,7 @@
 
 use egg::{EGraph, Runner, Extractor};
 use glenside::language::MyAnalysis;
-use glenside::extraction::AcceleratorCostFunction;
+use glenside::extraction::{AcceleratorCostFunction};
 use std::collections::HashMap;
 
 #[test]
