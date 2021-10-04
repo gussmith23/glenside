@@ -64,6 +64,7 @@ fn test_3la_glenside_linear_rewrite() {
     for (left, right) in equiv_worklist {
         if let (Some(&new_left), Some(&new_right)) = (id_map.get(&left), id_map.get(&right)) {
             println!("new left: {} | new right {}", new_left, new_right);
+            println!("{} | {}", egraph[new_left].nodes[0], egraph[new_right].nodes[0]);
             egraph.union(new_left, new_right);
         } else {
             println!("{} ({:?}) {}({:?})", left, id_map.get(&left), right, id_map.get(&right));
