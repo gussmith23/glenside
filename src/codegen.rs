@@ -2586,7 +2586,7 @@ int main() {{
  (shape {filter_shapes})
  (shape {strides})
 )",
-                access_axis = shape.len(),
+                access_axis = 0,
                 filter_shapes = filters_shape
                     .iter()
                     .map(|i| i.to_string())
