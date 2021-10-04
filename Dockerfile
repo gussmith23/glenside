@@ -14,7 +14,8 @@ RUN apt install -y git libgtest-dev cmake wget unzip libtinfo-dev libz-dev libcu
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
-RUN rustup default nightly
+# PR __ enables us to use stable (by removing usage of Bencher)
+# RUN rustup default nightly
 
 # Install LLVM
 RUN wget https://apt.llvm.org/llvm.sh

@@ -1,4 +1,3 @@
-#![feature(test)]
 //! ## Glenside Feature Flags
 //!
 //! Glenside generally leans towards *enabling* all features by default, purely
