@@ -1950,7 +1950,7 @@ mod tests {
         max_pool2d,
         bench_max_pool2d,
         "(compute reduce-max
-            (access-windows (access (access-tensor t) 3) (shape 1 2 2) (shape 1 2 2))
+            (access-windows (access (access-tensor t) 0) (shape 1 2 2) (shape 1 2 2))
            )",
         vec![(
             "t",

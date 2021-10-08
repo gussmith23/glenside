@@ -1052,7 +1052,7 @@ fn compile_expression(
                                     .unwrap()
                                     .value as usize,
                             );
-                            let data_id = access(glenside_expr, data_id, 4);
+                            let data_id = access(glenside_expr, data_id, 0);
 
                             let stride_shape_id = shape(
                                 glenside_expr,
@@ -1918,6 +1918,7 @@ mod tests {
     use std::collections::HashMap;
     use std::io::Write;
     use std::process::Command;
+    use std::path::PathBuf;
 
     /// Creates a Relay-to-Glenside test
     /// The test does the following:
@@ -2026,13 +2027,13 @@ mod tests {
                             &mut tensor_rng,
                         );
                         env.insert(name.as_str(), value.clone());
-                        let filepath = std::env::temp_dir().with_file_name(format!(
+                        let filepath = PathBuf::from(format!("{}/{}", std::env::temp_dir().display(), format!(
                             "arg-{}.npy",
                             rand::thread_rng()
                                 .sample_iter(&rand::distributions::Alphanumeric)
                                 .take(30)
                                 .collect::<String>()
-                        ));
+                        )));
                         write_npy(&filepath, &value).unwrap();
                         cmd.arg(filepath);
                     }
@@ -2173,7 +2174,7 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
      min-padding
      3 2 4
     )
-    4
+    0
    )
    (shape 1 1 3 4)
    (shape 1 1 2 3)
