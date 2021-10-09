@@ -1068,20 +1068,25 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
             let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, expr);
             let stride_shape = MyAnalysis::get_shape_of_value(stride_shape_id, expr);
 
-            // TODO(@gussmith23) Generalize AccessWindows to other accesses
-            // Right now we expect item shape to be a scalar.
-            assert_eq!(access.item_shape.ndim(), 0);
-
-            let access_windows_shape = crate::language::access_windows_resulting_shape(
-                &access.shape,
-                &filters_shape,
-                &stride_shape,
-            );
+            // The new shape is the existing shape concatenated with the shape
+            // that occurs when you pass the requested window size over the
+            // compute dimensions using the specified strides.
+            let access_windows_shape = access
+                .shape
+                .slice()
+                .iter()
+                .chain(
+                    crate::language::access_windows_resulting_shape(
+                        &access.item_shape,
+                        &filters_shape,
+                        &stride_shape,
+                    )
+                    .iter(),
+                )
+                .cloned()
+                .collect::<Vec<_>>();
 
             let access_windows_item_shape = filters_shape.clone();
-
-            assert_eq!(access_windows_shape.len(), access_windows_item_shape.ndim());
-            assert_eq!(stride_shape.ndim(), access_windows_shape.len());
 
             let access_windows_out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
