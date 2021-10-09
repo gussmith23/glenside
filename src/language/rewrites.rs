@@ -2136,14 +2136,11 @@ pub fn systolic_array_conv2d_nchw_oihw_with_blocking(
                 (access ?weights 1)
                 (access
                  (access-squeeze
-                  (access-squeeze
                    (access-windows
-                    (access ?data 4)
-                    (shape 1 ?c ?kh ?kw)
-                    (shape 1 1 ?stride-h ?stride-w)
+                    (access ?data 1)
+                    (shape ?c ?kh ?kw)
+                    (shape 1 ?stride-h ?stride-w)
                    )
-                   4
-                  )
                   1
                  )
                  3
@@ -2243,14 +2240,11 @@ pub fn systolic_array_conv2d_im2col_nchw_oihw_with_blocking(
                 (access-flatten
                  (access
                   (access-squeeze
-                   (access-squeeze
                     (access-windows
-                     (access ?data 4)
-                     (shape 1 ?c ?kh ?kw)
-                     (shape 1 1 ?stride-h ?stride-w)
+                     (access ?data 1)
+                     (shape ?c ?kh ?kw)
+                     (shape 1 ?stride-h ?stride-w)
                     )
-                    4
-                   )
                    1
                   )
                   3
