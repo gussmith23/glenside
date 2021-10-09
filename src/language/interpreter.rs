@@ -2927,11 +2927,11 @@ mod tests {
         vec![("data", ArrayD::<f64>::zeros(IxDyn(&[1, 3, 32, 32])))],
         |value| {
             match value {
-                Value::Access(a) =>{
+                Value::Access(a) => {
                     assert_eq!(a.tensor.shape(), &[1, 3, 17, 12, 3, 4]);
                     assert_eq!(a.access_axis, 4);
                 }
-                _ => panic!()
+                _ => panic!(),
             }
         }
     );
