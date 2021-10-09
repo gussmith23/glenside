@@ -3401,8 +3401,8 @@ mod tests {
            (access (access-tensor t-8-3-3-3) 1)
            (access-squeeze
             (access-windows
-             (access (access-tensor t-3-32-32) 3)
-             (slice-shape (shape-of t-8-3-3-3) 1)
+             (access (access-tensor t-3-32-32) 0)
+             (shape 3 3 3)
              (shape 1 1 1)
             )
             0
@@ -3429,8 +3429,8 @@ mod tests {
            (access (access-tensor t-8-3-3-3) 1)
            (access-squeeze
             (access-windows
-             (access (access-tensor t-3-32-32) 3)
-             (slice-shape (shape-of t-8-3-3-3) 1)
+             (access (access-tensor t-3-32-32) 0)
+             (shape 3 3 3)
              (shape 1 1 2)
             )
             0

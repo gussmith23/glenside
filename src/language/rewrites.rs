@@ -2495,8 +2495,8 @@ mod tests {
           (access (access-tensor t-8-3-3-3) 1)
           (access-squeeze
            (access-windows
-            (access (access-tensor t-3-32-32) 3)
-            (slice-shape (shape-of t-8-3-3-3) 1)
+            (access (access-tensor t-3-32-32) 0)
+            (shape 3 3 3)
             (shape 1 1 1)
            )
            0
@@ -2524,8 +2524,8 @@ mod tests {
               (access-flatten
                (access-squeeze
                 (access-windows
-                 (access (access-tensor t-3-32-32) 3)
-                 (slice-shape (shape-of t-8-3-3-3) 1)
+                 (access (access-tensor t-3-32-32) 0)
+                 (shape 3 3 3)
                  (shape 1 1 1)
                 )
                 0
@@ -2604,8 +2604,8 @@ mod tests {
            (access (access-tensor t-8-3-3-3) 1)
            (access-squeeze
             (access-windows
-             (access (access-tensor t-3-32-32) 3)
-             (slice-shape (shape-of t-8-3-3-3) 1)
+             (access (access-tensor t-3-32-32) 0)
+             (shape 3 3 3)
              (shape 1 1 1)
             )
             0
@@ -2638,8 +2638,8 @@ mod tests {
                 (access-flatten
                  (access-squeeze
                   (access-windows
-                   (access (access-tensor t-3-32-32) 3)
-                   (slice-shape (shape-of t-8-3-3-3) 1)
+                   (access (access-tensor t-3-32-32) 0)
+                   (shape 3 3 3)
                    (shape 1 1 1)
                   )
                   0
@@ -3667,7 +3667,6 @@ mod tests {
     )
     (access
      (access-squeeze
-      (access-squeeze
        (access-windows
         (access
          (access-pad
@@ -3679,13 +3678,11 @@ mod tests {
           zero-padding
           3 1 1
          )
-         4
+         1
         )
-        (shape 1 3 3 3)
-        (shape 1 1 1 1)
+        (shape 3 3 3)
+        (shape 1 1 1)
        )
-       4
-      )
       1
      )
      3
@@ -3722,7 +3719,6 @@ mod tests {
      (access-flatten
       (access
        (access-squeeze
-        (access-squeeze
          (access-windows
           (access
            (access-pad
@@ -3734,13 +3730,11 @@ mod tests {
             zero-padding
             3 1 1
            )
-           4
+           1
           )
-          (shape 1 3 3 3)
-          (shape 1 1 1 1)
+          (shape 3 3 3)
+          (shape 1 1 1)
          )
-         4
-        )
         1
        )
        3
@@ -3777,7 +3771,6 @@ mod tests {
       (access-flatten
        (access
         (access-squeeze
-         (access-squeeze
           (access-windows
            (access
             (access-pad
@@ -3789,13 +3782,11 @@ mod tests {
              zero-padding
              3 1 1
             )
-            4
+            1
            )
-           (shape 1 3 3 3)
-           (shape 1 1 1 1)
+           (shape 3 3 3)
+           (shape 1 1 1)
           )
-          4
-         )
          1
         )
         3
