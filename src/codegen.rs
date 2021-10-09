@@ -1163,13 +1163,18 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                         .collect::<Vec<_>>()
                         .join(""),
                     in_name = access_var_name,
-                    in_index = (0..access_windows_shape.len())
-                        .map(|i| format!(
-                            "[{shape_index}*{stride} + {item_shape_index}]",
-                            shape_index = format!("shape_index_{}", i),
-                            item_shape_index = format!("item_shape_index_{}", i),
-                            stride = stride_shape[i],
-                        ))
+                    in_index = (0..access.shape.ndim())
+                        .map(|i| { format!("[shape_index_{}]", i) })
+                        .chain(
+                            (access.shape.ndim()..(access.shape.ndim() + access.item_shape.ndim()))
+                                .map(|i| format!(
+                                    "[{shape_index}*{stride} + {item_shape_index}]",
+                                    shape_index = format!("shape_index_{}", i),
+                                    item_shape_index =
+                                        format!("item_shape_index_{}", i - access.shape.ndim()),
+                                    stride = stride_shape[i - access.shape.ndim()],
+                                ))
+                        )
                         .collect::<Vec<_>>()
                         .join("")
                 )
