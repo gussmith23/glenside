@@ -2982,7 +2982,7 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 1 1))
+         (access-windows (access (access-tensor t-3-32-32) 0) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 1 1))
          "
         .parse()
         .unwrap();
@@ -2997,7 +2997,7 @@ mod tests {
         }
 
         let program = "
-         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 2 1))
+         (access-windows (access (access-tensor t-3-32-32) 0) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 2 1))
          "
         .parse()
         .unwrap();
