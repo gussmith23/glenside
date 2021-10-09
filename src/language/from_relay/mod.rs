@@ -233,27 +233,23 @@ pub fn conv2d(
         pad_after_id,
     ]));
 
-    let access_axis_id = expr.add(Language::Usize(4));
-    let data_id = expr.add(Language::Access([data_id, access_axis_id]));
-
-    let mut stride_list = Vec::default();
-    stride_list.push(expr.add(Language::Usize(1)));
-    stride_list.push(expr.add(Language::Usize(1)));
-    stride_list.push(expr.add(Language::Usize(strides[0])));
-    stride_list.push(expr.add(Language::Usize(strides[1])));
-    let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
-
     let in_channels = data_shape[1];
 
     let data_id = match groups as usize {
         1 => {
+            let data_id = access(expr, data_id, 1);
+
+            let mut stride_list = Vec::default();
+            stride_list.push(expr.add(Language::Usize(1)));
+            stride_list.push(expr.add(Language::Usize(strides[0])));
+            stride_list.push(expr.add(Language::Usize(strides[1])));
+            let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
             // Create the (shape ...) representing the kernel shapes
-            let usize_1_id = expr.add(Language::Usize(1));
             let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
             let usize_kh_id = expr.add(Language::Usize(weights_shape[2]));
             let usize_kw_id = expr.add(Language::Usize(weights_shape[3]));
             let weights_shape_id = expr.add(Language::Shape(Box::new([
-                usize_1_id,
                 usize_c_id,
                 usize_kh_id,
                 usize_kw_id,
@@ -264,11 +260,8 @@ pub fn conv2d(
                 weights_shape_id,
                 stride_shape_id,
             ]));
-            // Result is [batch 1 new_h new_w] [1 in_channel kw kh]
+            // Result is [batch 1 new_h new_w] [in_channel kw kh]
 
-            // Squeeze the 4th dimension so it matches kernel shapes
-            let squeeze_axis_id = expr.add(Language::Usize(4));
-            let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
             // Squeeze extraneous 1st dimension
             let squeeze_axis_id = expr.add(Language::Usize(1));
             let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
@@ -290,6 +283,18 @@ pub fn conv2d(
         // If groups = num input channels (ie in depthwise separable mobilenet convs)
         // TODO(@gussmith23) Layout assumption
         n if n == in_channels => {
+            // TODO(@gussmith23) Make grouped conv take advantage of new
+            // access-windows semantics
+
+            let data_id = access(expr, data_id, 0);
+
+            let mut stride_list = Vec::default();
+            stride_list.push(expr.add(Language::Usize(1)));
+            stride_list.push(expr.add(Language::Usize(1)));
+            stride_list.push(expr.add(Language::Usize(strides[0])));
+            stride_list.push(expr.add(Language::Usize(strides[1])));
+            let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
             // Kernel size is the same for each group. Each
             // kernel's shape is (1,1,kH,kW) where the first 1
             // lines up with batch and the second lines up with
@@ -1212,13 +1217,11 @@ fn compile_expression(
                                     .unwrap()
                                     .value as usize,
                             );
-                            let data_id = access(glenside_expr, data_id, 4);
+                            let data_id = access(glenside_expr, data_id, 2);
 
                             let stride_shape_id = shape(
                                 glenside_expr,
                                 vec![
-                                    1,
-                                    1,
                                     attrs
                                         .strides
                                         .get(0)
@@ -1238,8 +1241,6 @@ fn compile_expression(
                             let pool_window_shape_id = shape(
                                 glenside_expr,
                                 vec![
-                                    1,
-                                    1,
                                     attrs
                                         .pool_size
                                         .get(0)
@@ -1262,8 +1263,6 @@ fn compile_expression(
                                 pool_window_shape_id,
                                 stride_shape_id,
                             ]));
-
-                            let data_id = access(glenside_expr, data_id, 4);
 
                             let data_id = compute(glenside_expr, ComputeType::ReduceMax, data_id);
 
@@ -2234,6 +2233,7 @@ mod tests {
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::collections::HashMap;
     use std::io::Write;
+    use std::path::PathBuf;
     use std::process::Command;
 
     /// Creates a Relay-to-Glenside test
@@ -2343,12 +2343,16 @@ mod tests {
                             &mut tensor_rng,
                         );
                         env.insert(name.as_str(), value.clone());
-                        let filepath = std::env::temp_dir().with_file_name(format!(
-                            "arg-{}.npy",
-                            rand::thread_rng()
-                                .sample_iter(&rand::distributions::Alphanumeric)
-                                .take(30)
-                                .collect::<String>()
+                        let filepath = PathBuf::from(format!(
+                            "{}/{}",
+                            std::env::temp_dir().display(),
+                            format!(
+                                "arg-{}.npy",
+                                rand::thread_rng()
+                                    .sample_iter(&rand::distributions::Alphanumeric)
+                                    .take(30)
+                                    .collect::<String>()
+                            )
                         ));
                         write_npy(&filepath, &value).unwrap();
                         cmd.arg(filepath);
@@ -2478,24 +2482,21 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 "#,
         r#"
 (compute reduce-max
- (access
-  (access-windows
-   (access
+ (access-windows
+  (access
+   (access-pad
     (access-pad
-     (access-pad
-      (access-tensor data)
-      min-padding
-      2 1 3
-     )
+     (access-tensor data)
      min-padding
-     3 2 4
+     2 1 3
     )
-    4
+    min-padding
+    3 2 4
    )
-   (shape 1 1 3 4)
-   (shape 1 1 2 3)
+   2
   )
-  4
+  (shape 3 4)
+  (shape 2 3)
  )
 )
 "#
@@ -2588,24 +2589,21 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
    (access (access-tensor weights) 1)
    (access
     (access-squeeze
-     (access-squeeze
-      (access-windows
-       (access
+     (access-windows
+      (access
+       (access-pad
         (access-pad
-         (access-pad
-          (access-tensor data)
-          zero-padding
-          2 1 3
-         )
+         (access-tensor data)
          zero-padding
-         3 2 4
+         2 1 3
         )
-        4
+        zero-padding
+        3 2 4
        )
-       (shape 1 3 3 3)
-       (shape 1 1 2 3)
+       1
       )
-      4
+      (shape 3 3 3)
+      (shape 1 2 3)
      )
      1
     )
@@ -2638,24 +2636,21 @@ def @main(%data: Tensor[(1, 32, 32, 3), float32], %weights: Tensor[(3, 3, 3, 8),
     )
     (access
      (access-squeeze
-      (access-squeeze
-       (access-windows
-        (access
+      (access-windows
+       (access
+        (access-pad
          (access-pad
-          (access-pad
-           (access-transpose (access-tensor data) (list 0 3 1 2))
-           zero-padding
-           2 1 3
-          )
+          (access-transpose (access-tensor data) (list 0 3 1 2))
           zero-padding
-          3 2 4
+          2 1 3
          )
-         4
+         zero-padding
+         3 2 4
         )
-        (shape 1 3 3 3)
-        (shape 1 1 2 3)
+        1
        )
-       4
+       (shape 3 3 3)
+       (shape 1 2 3)
       )
       1
      )

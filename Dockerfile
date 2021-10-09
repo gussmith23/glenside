@@ -1,6 +1,6 @@
 # Glenside Dockerfile
 #
-# Uses `nproc+1` cores when running make.
+# the build_arg tvm_build_threads controls how many threads are used to build TVM.
 
 FROM ubuntu:18.04
 
@@ -42,11 +42,12 @@ RUN echo 'set(CMAKE_CXX_STANDARD 14)' >> config.cmake
 RUN echo 'set(CMAKE_CXX_STANDARD_REQUIRED ON)' >> config.cmake
 RUN echo 'set(CMAKE_CXX_EXTENSIONS OFF)' >> config.cmake
 #RUN echo 'set(CMAKE_BUILD_TYPE Debug)' >> config.cmake
+ENV tvm_build_threads=2
 RUN bash -c \
      "mkdir -p build && \
      cd build && \
      cmake .. && \
-     make -j`nproc`"
+     make -j${tvm_build_threads}"
 
 # Help the system find the libtvm library and TVM Python library
 ENV TVM_HOME=/root/tvm

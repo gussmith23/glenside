@@ -2281,14 +2281,11 @@ pub fn systolic_array_conv2d_nchw_oihw_with_blocking(
                 (access ?weights 1)
                 (access
                  (access-squeeze
-                  (access-squeeze
                    (access-windows
-                    (access ?data 4)
-                    (shape 1 ?c ?kh ?kw)
-                    (shape 1 1 ?stride-h ?stride-w)
+                    (access ?data 1)
+                    (shape ?c ?kh ?kw)
+                    (shape 1 ?stride-h ?stride-w)
                    )
-                   4
-                  )
                   1
                  )
                  3
@@ -2388,14 +2385,11 @@ pub fn systolic_array_conv2d_im2col_nchw_oihw_with_blocking(
                 (access-flatten
                  (access
                   (access-squeeze
-                   (access-squeeze
                     (access-windows
-                     (access ?data 4)
-                     (shape 1 ?c ?kh ?kw)
-                     (shape 1 1 ?stride-h ?stride-w)
+                     (access ?data 1)
+                     (shape ?c ?kh ?kw)
+                     (shape 1 ?stride-h ?stride-w)
                     )
-                    4
-                   )
                    1
                   )
                   3
@@ -2592,8 +2586,8 @@ mod tests {
 
         let program = "
          (access-windows
-          (access (access-tensor t-3-32-32) 3)
-          (slice-shape (shape-of t-8-3-3-3) 1)
+          (access (access-tensor t-3-32-32) 0)
+          (shape 3 3 3)
           (shape 1 1 2)
          )
          "
@@ -2612,8 +2606,8 @@ mod tests {
             (access-reshape
              (access-flatten
               (access-windows
-               (access (access-tensor t-3-32-32) 3)
-               (slice-shape (shape-of t-8-3-3-3) 1)
+               (access (access-tensor t-3-32-32) 0)
+               (shape 3 3 3)
                (shape 1 1 2)
               )
              )
@@ -2640,8 +2634,8 @@ mod tests {
           (access (access-tensor t-8-3-3-3) 1)
           (access-squeeze
            (access-windows
-            (access (access-tensor t-3-32-32) 3)
-            (slice-shape (shape-of t-8-3-3-3) 1)
+            (access (access-tensor t-3-32-32) 0)
+            (shape 3 3 3)
             (shape 1 1 1)
            )
            0
@@ -2669,8 +2663,8 @@ mod tests {
               (access-flatten
                (access-squeeze
                 (access-windows
-                 (access (access-tensor t-3-32-32) 3)
-                 (slice-shape (shape-of t-8-3-3-3) 1)
+                 (access (access-tensor t-3-32-32) 0)
+                 (shape 3 3 3)
                  (shape 1 1 1)
                 )
                 0
@@ -2749,8 +2743,8 @@ mod tests {
            (access (access-tensor t-8-3-3-3) 1)
            (access-squeeze
             (access-windows
-             (access (access-tensor t-3-32-32) 3)
-             (slice-shape (shape-of t-8-3-3-3) 1)
+             (access (access-tensor t-3-32-32) 0)
+             (shape 3 3 3)
              (shape 1 1 1)
             )
             0
@@ -2783,8 +2777,8 @@ mod tests {
                 (access-flatten
                  (access-squeeze
                   (access-windows
-                   (access (access-tensor t-3-32-32) 3)
-                   (slice-shape (shape-of t-8-3-3-3) 1)
+                   (access (access-tensor t-3-32-32) 0)
+                   (shape 3 3 3)
                    (shape 1 1 1)
                   )
                   0
@@ -3812,7 +3806,6 @@ mod tests {
     )
     (access
      (access-squeeze
-      (access-squeeze
        (access-windows
         (access
          (access-pad
@@ -3824,13 +3817,11 @@ mod tests {
           zero-padding
           3 1 1
          )
-         4
+         1
         )
-        (shape 1 3 3 3)
-        (shape 1 1 1 1)
+        (shape 3 3 3)
+        (shape 1 1 1)
        )
-       4
-      )
       1
      )
      3
@@ -3867,7 +3858,6 @@ mod tests {
      (access-flatten
       (access
        (access-squeeze
-        (access-squeeze
          (access-windows
           (access
            (access-pad
@@ -3879,13 +3869,11 @@ mod tests {
             zero-padding
             3 1 1
            )
-           4
+           1
           )
-          (shape 1 3 3 3)
-          (shape 1 1 1 1)
+          (shape 3 3 3)
+          (shape 1 1 1)
          )
-         4
-        )
         1
        )
        3
@@ -3922,7 +3910,6 @@ mod tests {
       (access-flatten
        (access
         (access-squeeze
-         (access-squeeze
           (access-windows
            (access
             (access-pad
@@ -3934,13 +3921,11 @@ mod tests {
              zero-padding
              3 1 1
             )
-            4
+            1
            )
-           (shape 1 3 3 3)
-           (shape 1 1 1 1)
+           (shape 3 3 3)
+           (shape 1 1 1)
           )
-          4
-         )
          1
         )
         3

@@ -1081,20 +1081,25 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
             let filters_shape = MyAnalysis::get_shape_of_value(filters_shape_id, expr);
             let stride_shape = MyAnalysis::get_shape_of_value(stride_shape_id, expr);
 
-            // TODO(@gussmith23) Generalize AccessWindows to other accesses
-            // Right now we expect item shape to be a scalar.
-            assert_eq!(access.item_shape.ndim(), 0);
-
-            let access_windows_shape = crate::language::access_windows_resulting_shape(
-                &access.shape,
-                &filters_shape,
-                &stride_shape,
-            );
+            // The new shape is the existing shape concatenated with the shape
+            // that occurs when you pass the requested window size over the
+            // compute dimensions using the specified strides.
+            let access_windows_shape = access
+                .shape
+                .slice()
+                .iter()
+                .chain(
+                    crate::language::access_windows_resulting_shape(
+                        &access.item_shape,
+                        &filters_shape,
+                        &stride_shape,
+                    )
+                    .iter(),
+                )
+                .cloned()
+                .collect::<Vec<_>>();
 
             let access_windows_item_shape = filters_shape.clone();
-
-            assert_eq!(access_windows_shape.len(), access_windows_item_shape.ndim());
-            assert_eq!(stride_shape.ndim(), access_windows_shape.len());
 
             let access_windows_out_var_name: String = {
                 // TODO(@gussmith23) Find a different way to name intermediates
@@ -1171,13 +1176,18 @@ for (int {index_var_name} = 0; {index_var_name} < {dim_len}; {index_var_name}++)
                         .collect::<Vec<_>>()
                         .join(""),
                     in_name = access_var_name,
-                    in_index = (0..access_windows_shape.len())
-                        .map(|i| format!(
-                            "[{shape_index}*{stride} + {item_shape_index}]",
-                            shape_index = format!("shape_index_{}", i),
-                            item_shape_index = format!("item_shape_index_{}", i),
-                            stride = stride_shape[i],
-                        ))
+                    in_index = (0..access.shape.ndim())
+                        .map(|i| { format!("[shape_index_{}]", i) })
+                        .chain(
+                            (access.shape.ndim()..(access.shape.ndim() + access.item_shape.ndim()))
+                                .map(|i| format!(
+                                    "[{shape_index}*{stride} + {item_shape_index}]",
+                                    shape_index = format!("shape_index_{}", i),
+                                    item_shape_index =
+                                        format!("item_shape_index_{}", i - access.shape.ndim()),
+                                    stride = stride_shape[i - access.shape.ndim()],
+                                ))
+                        )
                         .collect::<Vec<_>>()
                         .join("")
                 )
@@ -2599,7 +2609,7 @@ int main() {{
  (shape {filter_shapes})
  (shape {strides})
 )",
-                access_axis = shape.len(),
+                access_axis = 0,
                 filter_shapes = filters_shape
                     .iter()
                     .map(|i| i.to_string())

@@ -3220,12 +3220,8 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 // TODO(@gussmith23) Generalize AccessWindows to other accesses
                 // Right now we expect item shape to be a scalar.
-                // println!("{:?} {:?} {:?}", access.shape, access.item_shape, filters_shape);
-                // let mut shape = access.shape.clone();
-                // if shape.ndim() == 0 {
-                //     shape = access.item_shape.clone();
-                // }
-                assert_eq!(access.item_shape.ndim(), 0);
+                // I don't think we need this to be true.
+                //assert_eq!(access.item_shape.ndim(), 0);
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
@@ -3242,12 +3238,23 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     shape: IxDyn(
-                        access_windows_resulting_shape(
-                            &access.shape,
-                            &filters_shape,
-                            &stride_shape,
-                        )
-                        .as_slice(),
+                        access
+                            .shape
+                            .slice()
+                            .iter()
+                            .cloned()
+                            .chain(
+                                access_windows_resulting_shape(
+                                    &access.item_shape,
+                                    &filters_shape,
+                                    &stride_shape,
+                                )
+                                .as_slice()
+                                .iter()
+                                .cloned(),
+                            )
+                            .collect::<Vec<_>>()
+                            .as_slice(),
                     ),
                     item_shape: filters_shape.clone(),
                     relay_shape: None,
@@ -3310,7 +3317,7 @@ mod tests {
         // Would make it easier to add more tests.
 
         let program = "
-         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 1 1))
+         (access-windows (access (access-tensor t-3-32-32) 0) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 1 1))
          "
         .parse()
         .unwrap();
@@ -3325,7 +3332,7 @@ mod tests {
         }
 
         let program = "
-         (access-windows (access (access-tensor t-3-32-32) 3) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 2 1))
+         (access-windows (access (access-tensor t-3-32-32) 0) (slice-shape (shape-of t-8-3-3-3) 1) (shape 1 2 1))
          "
         .parse()
         .unwrap();
@@ -3729,8 +3736,8 @@ mod tests {
            (access (access-tensor t-8-3-3-3) 1)
            (access-squeeze
             (access-windows
-             (access (access-tensor t-3-32-32) 3)
-             (slice-shape (shape-of t-8-3-3-3) 1)
+             (access (access-tensor t-3-32-32) 0)
+             (shape 3 3 3)
              (shape 1 1 1)
             )
             0
@@ -3757,8 +3764,8 @@ mod tests {
            (access (access-tensor t-8-3-3-3) 1)
            (access-squeeze
             (access-windows
-             (access (access-tensor t-3-32-32) 3)
-             (slice-shape (shape-of t-8-3-3-3) 1)
+             (access (access-tensor t-3-32-32) 0)
+             (shape 3 3 3)
              (shape 1 1 2)
             )
             0
