@@ -805,18 +805,25 @@ where
                 "access-windows filters ndims should match stride ndims"
             );
 
-            let out_shape = super::access_windows_resulting_shape(
-                &IxDyn(&access.tensor.shape()[access.access_axis..]),
-                &filters_shape,
-                // Ignore striding for now; we will stride after we get the result
-                // TODO(@gussmith23) More efficient striding?
-                &IxDyn(
-                    std::iter::repeat(1)
-                        .take(filters_shape.ndim())
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                ),
-            );
+            let out_shape = access.tensor.shape()[..access.access_axis]
+                .iter()
+                .chain(
+                    super::access_windows_resulting_shape(
+                        &IxDyn(&access.tensor.shape()[access.access_axis..]),
+                        &filters_shape,
+                        // Ignore striding for now; we will stride after we get the result
+                        // TODO(@gussmith23) More efficient striding?
+                        &IxDyn(
+                            std::iter::repeat(1)
+                                .take(filters_shape.ndim())
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        ),
+                    )
+                    .iter(),
+                )
+                .cloned()
+                .collect::<Vec<_>>();
 
             let mut result = ArrayD::<DataType>::zeros(
                 out_shape
@@ -827,7 +834,15 @@ where
             );
 
             Zip::from(result.genrows_mut())
-                .and(access.tensor.windows(filters_shape.clone()))
+                .and(
+                    access.tensor.windows(
+                        std::iter::repeat(&1)
+                            .take(access.access_axis)
+                            .chain(filters_shape.slice().iter())
+                            .cloned()
+                            .collect::<Vec<_>>(),
+                    ),
+                )
                 .apply(|mut result, windows| {
                     result.assign(&Array::from_iter(windows.iter().cloned()))
                 });
@@ -842,7 +857,9 @@ where
                 )
                 .unwrap();
 
-            for (axis, &stride) in (0..stride_shape.ndim()).zip(stride_shape.slice().iter()) {
+            for (axis, &stride) in (access.access_axis..(access.access_axis + stride_shape.ndim()))
+                .zip(stride_shape.slice().iter())
+            {
                 // TODO(@gussmith23) Interpreter window striding is inefficient
                 // I wish we could do this in the windows() method of ndarray,
                 // but they don't seem to support it.
@@ -1523,7 +1540,7 @@ mod tests {
         access_windows,
         bench_access_windows,
         "(access-windows
-            (access (access-tensor t) 3)
+            (access (access-tensor t) 0)
             (shape 3 2 2)
             (shape 1 1 1)
         )",
@@ -1557,6 +1574,72 @@ mod tests {
                             [[22., 23.], [25., 26.]],
                         ]
                     );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_and_test!(
+        access_windows_1,
+        bench_access_windows_1,
+        "(access-windows
+            (access (access-tensor t) 1)
+            (shape 2 2)
+            (shape 1 1)
+        )",
+        vec![(
+            "t",
+            array![
+                [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+                [[10., 11., 12.], [13., 14., 15.], [16., 17., 18.]],
+                [[19., 20., 21.], [22., 23., 24.], [25., 26., 27.]],
+            ]
+            .into_dyn()
+        )],
+        |value| {
+            match value {
+                Value::Access(a) => {
+                    assert_eq!(a.access_axis, 3);
+                    assert_eq!(a.tensor.shape(), &[3, 2, 2, 2, 2]);
+                    assert_eq!(
+                        a.tensor.slice(s![0, 0, 0, .., ..]),
+                        array![[1., 2.], [4., 5.]]
+                    );
+                    assert_eq!(
+                        a.tensor.slice(s![0, 1, 0, .., ..]),
+                        array![[4., 5.], [7., 8.]]
+                    );
+                }
+                _ => panic!(),
+            }
+        }
+    );
+
+    benchmark_and_test!(
+        access_windows_2,
+        bench_access_windows_2,
+        "(access-windows
+            (access (access-tensor t) 2)
+            (shape 2)
+            (shape 1)
+        )",
+        vec![(
+            "t",
+            array![
+                [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+                [[10., 11., 12.], [13., 14., 15.], [16., 17., 18.]],
+                [[19., 20., 21.], [22., 23., 24.], [25., 26., 27.]],
+            ]
+            .into_dyn()
+        )],
+        |value| {
+            match value {
+                Value::Access(a) => {
+                    assert_eq!(a.access_axis, 3);
+                    assert_eq!(a.tensor.shape(), &[3, 3, 2, 2]);
+                    assert_eq!(a.tensor.slice(s![0, 0, 0, ..]), array![1., 2.]);
+                    assert_eq!(a.tensor.slice(s![0, 1, 0, ..]), array![4., 5.]);
                 }
                 _ => panic!(),
             }
