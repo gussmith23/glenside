@@ -2246,24 +2246,21 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
    (access (access-tensor weights) 1)
    (access
     (access-squeeze
-     (access-squeeze
-      (access-windows
-       (access
+     (access-windows
+      (access
+       (access-pad
         (access-pad
-         (access-pad
-          (access-tensor data)
-          zero-padding
-          2 1 3
-         )
+         (access-tensor data)
          zero-padding
-         3 2 4
+         2 1 3
         )
-        4
+        zero-padding
+        3 2 4
        )
-       (shape 1 3 3 3)
-       (shape 1 1 2 3)
+       1
       )
-      4
+      (shape 3 3 3)
+      (shape 1 2 3)
      )
      1
     )
@@ -2296,24 +2293,21 @@ def @main(%data: Tensor[(1, 32, 32, 3), float32], %weights: Tensor[(3, 3, 3, 8),
     )
     (access
      (access-squeeze
-      (access-squeeze
-       (access-windows
-        (access
+      (access-windows
+       (access
+        (access-pad
          (access-pad
-          (access-pad
-           (access-transpose (access-tensor data) (list 0 3 1 2))
-           zero-padding
-           2 1 3
-          )
+          (access-transpose (access-tensor data) (list 0 3 1 2))
           zero-padding
-          3 2 4
+          2 1 3
          )
-         4
+         zero-padding
+         3 2 4
         )
-        (shape 1 3 3 3)
-        (shape 1 1 2 3)
+        1
        )
-       4
+       (shape 3 3 3)
+       (shape 1 2 3)
       )
       1
      )
