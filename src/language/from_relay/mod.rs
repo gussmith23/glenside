@@ -116,27 +116,23 @@ pub fn conv2d(
         pad_after_id,
     ]));
 
-    let access_axis_id = expr.add(Language::Usize(4));
-    let data_id = expr.add(Language::Access([data_id, access_axis_id]));
-
-    let mut stride_list = Vec::default();
-    stride_list.push(expr.add(Language::Usize(1)));
-    stride_list.push(expr.add(Language::Usize(1)));
-    stride_list.push(expr.add(Language::Usize(strides[0])));
-    stride_list.push(expr.add(Language::Usize(strides[1])));
-    let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
-
     let in_channels = data_shape[1];
 
     let data_id = match groups as usize {
         1 => {
+            let data_id = access(expr, data_id, 1);
+
+            let mut stride_list = Vec::default();
+            stride_list.push(expr.add(Language::Usize(1)));
+            stride_list.push(expr.add(Language::Usize(strides[0])));
+            stride_list.push(expr.add(Language::Usize(strides[1])));
+            let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
             // Create the (shape ...) representing the kernel shapes
-            let usize_1_id = expr.add(Language::Usize(1));
             let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
             let usize_kh_id = expr.add(Language::Usize(weights_shape[2]));
             let usize_kw_id = expr.add(Language::Usize(weights_shape[3]));
             let weights_shape_id = expr.add(Language::Shape(Box::new([
-                usize_1_id,
                 usize_c_id,
                 usize_kh_id,
                 usize_kw_id,
@@ -147,11 +143,8 @@ pub fn conv2d(
                 weights_shape_id,
                 stride_shape_id,
             ]));
-            // Result is [batch 1 new_h new_w] [1 in_channel kw kh]
+            // Result is [batch 1 new_h new_w] [in_channel kw kh]
 
-            // Squeeze the 4th dimension so it matches kernel shapes
-            let squeeze_axis_id = expr.add(Language::Usize(4));
-            let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
             // Squeeze extraneous 1st dimension
             let squeeze_axis_id = expr.add(Language::Usize(1));
             let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
@@ -173,6 +166,18 @@ pub fn conv2d(
         // If groups = num input channels (ie in depthwise separable mobilenet convs)
         // TODO(@gussmith23) Layout assumption
         n if n == in_channels => {
+            // TODO(@gussmith23) Make grouped conv take advantage of new
+            // access-windows semantics
+
+            let data_id = access(expr, data_id, 0);
+
+            let mut stride_list = Vec::default();
+            stride_list.push(expr.add(Language::Usize(1)));
+            stride_list.push(expr.add(Language::Usize(1)));
+            stride_list.push(expr.add(Language::Usize(strides[0])));
+            stride_list.push(expr.add(Language::Usize(strides[1])));
+            let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
             // Kernel size is the same for each group. Each
             // kernel's shape is (1,1,kH,kW) where the first 1
             // lines up with batch and the second lines up with
