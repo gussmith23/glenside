@@ -879,12 +879,7 @@ where
 
             Value::Access(Access {
                 tensor: result,
-                // TODO(@gussmith23) Hardcoded
-                // This already bit me. I forgot to update it when I changed the
-                // access-windows semantics, and it took me a bit to find the
-                // bug.
-                // Actually, at this point, I'm pretty sure this is just wrong.
-                access_axis: 3,
+                access_axis: access.access_axis + stride_shape.ndim(),
             })
         }
         Language::Shape(list) => Value::Shape(IxDyn(
