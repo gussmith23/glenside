@@ -1057,13 +1057,11 @@ fn compile_expression(
                                     .unwrap()
                                     .value as usize,
                             );
-                            let data_id = access(glenside_expr, data_id, 0);
+                            let data_id = access(glenside_expr, data_id, 2);
 
                             let stride_shape_id = shape(
                                 glenside_expr,
                                 vec![
-                                    1,
-                                    1,
                                     attrs
                                         .strides
                                         .get(0)
@@ -1083,8 +1081,6 @@ fn compile_expression(
                             let pool_window_shape_id = shape(
                                 glenside_expr,
                                 vec![
-                                    1,
-                                    1,
                                     attrs
                                         .pool_size
                                         .get(0)
@@ -1107,8 +1103,6 @@ fn compile_expression(
                                 pool_window_shape_id,
                                 stride_shape_id,
                             ]));
-
-                            let data_id = access(glenside_expr, data_id, 4);
 
                             let data_id = compute(glenside_expr, ComputeType::ReduceMax, data_id);
 
@@ -2171,24 +2165,21 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 "#,
         r#"
 (compute reduce-max
- (access
-  (access-windows
-   (access
+ (access-windows
+  (access
+   (access-pad
     (access-pad
-     (access-pad
-      (access-tensor data)
-      min-padding
-      2 1 3
-     )
+     (access-tensor data)
      min-padding
-     3 2 4
+     2 1 3
     )
-    0
+    min-padding
+    3 2 4
    )
-   (shape 1 1 3 4)
-   (shape 1 1 2 3)
+   2
   )
-  4
+  (shape 3 4)
+  (shape 2 3)
  )
 )
 "#
