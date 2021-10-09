@@ -2903,4 +2903,36 @@ mod tests {
             }
         }
     );
+
+    benchmark_and_test!(
+        access_windows_from_max_pool,
+        bench_access_windows_from_max_pool,
+        "(access-windows
+            (access
+             (access-pad
+              (access-pad
+               (access-tensor data)
+               min-padding
+               2 1 3
+              )
+              min-padding
+              3 2 4
+             )
+             2
+            )
+            (shape 3 4)
+            (shape 2 3)
+           )
+          ",
+        vec![("data", ArrayD::<f64>::zeros(IxDyn(&[1, 3, 32, 32])))],
+        |value| {
+            match value {
+                Value::Access(a) =>{
+                    assert_eq!(a.tensor.shape(), &[1, 3, 17, 12, 3, 4]);
+                    assert_eq!(a.access_axis, 4);
+                }
+                _ => panic!()
+            }
+        }
+    );
 }
