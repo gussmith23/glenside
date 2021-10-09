@@ -129,7 +129,6 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
      (access-flatten
       (access
        (access-squeeze
-        (access-squeeze
          (access-windows
           (access
            (access-pad
@@ -138,10 +137,9 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
             3
             1
             1)
-           4)
-          (shape 1 3 3 3)
-          (shape 1 1 1 1))
-         4)
+           1)
+          (shape 3 3 3)
+          (shape 1 1 1))
         1)
        3))
      (access-shape (shape 1 32 32) (shape 3 3 3)))))
