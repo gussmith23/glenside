@@ -116,7 +116,6 @@ pub fn conv1d(
     //TODO: Figure out how stride_list changes 
     let mut stride_list = Vec::default();
     stride_list.push(expr.add(Language::Usize(1)));
-    stride_list.push(expr.add(Language::Usize(1)));
     stride_list.push(expr.add(Language::Usize(strides[0])));
     let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
     
@@ -124,27 +123,26 @@ pub fn conv1d(
     let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
     let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
     let weights_shape_id = expr.add(Language::Shape(Box::new([
-        usize_o_id,
         usize_c_id,
         usize_kw_id,
     ])));
+    let data_id = access(expr, data_id, 1);
     // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessWindows([
         data_id,
         weights_shape_id,
         stride_shape_id,
     ]));
-    let dim_id_3 = expr.add(Language::Usize(3));
-    let data_id = expr.add(Language::AccessSqueeze([data_id, dim_id_3]));
+    let dim_id_2 = expr.add(Language::Usize(2));
     // data_id = cartProd (data_id, (access weights 1))
-    let weights_id = expr.add(Language::Access([weights_id, access_dim_id]));
+    let weights_id = access(expr, weights_id, 1);
     let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
-    let data_id = expr.add(Language::AccessSqueeze([data_id, access_dim_id]));
+    let data_id = expr.add(Language::AccessSqueeze([data_id, dim_id_2]));
 
     let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
     let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
 
-    let data_id = access_transpose(expr, data_id, &[0, 2, 1]);
+    let data_id = access_transpose(expr, data_id, &[1, 0, 2]);
 
     data_id
 
@@ -2500,7 +2498,7 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 
     test!(
         conv1d,
-        1e-60,
+        1e-6,
         r#"
     #[version = "0.0.5"]
     def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 19), float32] {
@@ -2512,20 +2510,23 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
         r#"
 (access-transpose
  (compute dot-product
-  (access-cartesian-product
-   (access (access-tensor weights) 1)
-   (access-squeeze
+  (access-squeeze
+   (access-cartesian-product
+    (access (access-tensor weights) 1)
     (access-windows
-     (access-pad
-      (access-tensor data)
-      zero-padding
-      2 3 4
+     (access
+      (access-pad
+       (access-tensor data)
+       zero-padding
+       2 3 4
+      )
+      1
      )
      (shape 3 3)
      (shape 1 2)
     )
-    1
    )
+   2
   )
  )
  (list 1 0 2)
