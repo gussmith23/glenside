@@ -1052,7 +1052,8 @@ impl AccessPatternData {
     ///     glenside::language::AccessPatternData {
     ///         shape: ndarray::IxDyn(&[1, 2, 3]),
     ///         item_shape: ndarray::IxDyn(&[4, 5]),
-    ///         zero_regions: std::collections::HashMap::default()
+    ///         zero_regions: std::collections::HashMap::default(),
+    ///         relay_shape: None
     ///     }
     ///     .as_vec(),
     ///     vec![1, 2, 3, 4, 5]
