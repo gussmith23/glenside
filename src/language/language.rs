@@ -1152,6 +1152,14 @@ impl egg::Analysis<Language> for MyAnalysis {
     type Data = MyAnalysisData;
 
     fn merge(&self, to: &mut Self::Data, from: Self::Data) -> Option<Ordering> {
+        if let MyAnalysisData::AccessPattern(
+            AccessPatternData { shape, item_shape, zero_regions, relay_shape }) = to {
+                if let None = relay_shape {
+                    if  shape.ndim() > 0 || item_shape.ndim() > 0 {
+                        *relay_shape = Some(IxDyn(&[shape.slice(), item_shape.slice()].concat()));
+                    }
+                }
+        }
         match (to, &from) {
             (
                 MyAnalysisData::AccessPattern(AccessPatternData {
@@ -1175,7 +1183,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let mut calculated = false;
                 if to_shape.ndim() > 0 || to_item_shape.ndim() > 0 {
                     calculated = true;
-                    *to_relay_shape = Some(IxDyn(&[to_shape.slice(), to_item_shape.slice()].concat()));
                 }
 
                 // Merge zero regions.
@@ -1274,6 +1281,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                 }
             }
+            (MyAnalysisData::AccessPattern(_), _) => Some(Ordering::Greater),
             (to @ _, _) => {
                 assert_eq!(*to, from);
                 merge_if_different(to, from);
@@ -1696,10 +1704,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         .map(|id| &egraph[*id].data)
                                         .collect::<Vec<_>>()[..] {
                             [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
-                                let batch = a.shape[0];
-                                let in_feat = a.shape[1];
-                                let out_feat = b.shape[0];
-                                assert_eq!(b.shape[1], in_feat);
+                                let lhs_relay_shape = a.shape.slice()
+                                                                        .iter()
+                                                                        .chain(a.item_shape.slice().iter())
+                                                                        .map(|&x| x)
+                                                                        .collect::<Vec<_>>();
+                                let rhs_relay_shape = b.shape.slice()
+                                                                      .iter()
+                                                                      .chain(b.item_shape.slice().iter())
+                                                                      .map(|&x| x)
+                                                                      .collect::<Vec<_>>();
+                                let batch = lhs_relay_shape[0];
+                                let in_feat = lhs_relay_shape[1];
+                                let out_feat = rhs_relay_shape[0];
+                                assert_eq!(rhs_relay_shape[1], in_feat);
                                 let new_shape = [batch, out_feat];
                                 AccessPatternData {
                                     shape: IxDyn(&[]),
@@ -2620,10 +2638,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
                 };
-                let mut flatten_relay_shape = None;
-                if let Some(relay_shape) = &a.relay_shape {
-                    flatten_relay_shape = Some(IxDyn(&[relay_shape.as_array_view().iter().product()]));
-                }
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
                     // It's harmless (I think) if `zero_regions` defaults to
@@ -2640,7 +2654,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                     shape: IxDyn(&[a.shape.as_array_view().iter().product()]),
                     item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
-                    relay_shape: flatten_relay_shape,
+                    relay_shape: None,
                 })
             }
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
