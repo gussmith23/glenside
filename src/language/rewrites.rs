@@ -2309,6 +2309,38 @@ pub fn systolic_array_conv2d_im2col_fc_with_blocking(
     todo!()
 }
 
+pub fn simplify_access_flattens() -> Rewrite<Language, MyAnalysis> {
+    rewrite!(
+        "simplify-access-flattens";
+        "(access-flatten (access-flatten ?a))" =>
+        "(access-flatten ?a)"
+    )
+}
+
+pub fn simplify_access_reshapes() -> Rewrite<Language, MyAnalysis> {
+    rewrite!(
+        "simplify-access-reshapes";
+        "(access-reshape (access-reshape ?a ?unused) ?shape)" =>
+        "(access-reshape ?a ?shape)"
+    )
+}
+
+pub fn simplify_access_flatten_access_reshape() -> Rewrite<Language, MyAnalysis> {
+    rewrite!(
+        "simplify-access-flatten-access-reshape";
+        "(access-flatten (access-reshape ?a ?unused))" =>
+        "(access-flatten ?a)"
+    )
+}
+
+pub fn simplify_access_reshape_access_flatten() -> Rewrite<Language, MyAnalysis> {
+    rewrite!(
+        "simplify-access-reshape-access-flatten";
+        "(access-reshape (access-flatten ?a) ?shape)" =>
+        "(access-reshape ?a ?shape)"
+    )
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -4840,6 +4872,161 @@ mod tests {
            3 3
            1 1
           )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn simplify_access_flattens() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64, 3, 2]);
+        let program = "
+         (access-flatten (access-flatten (access-tensor a)))
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::simplify_access_flattens()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+          (access-flatten (access-tensor a))
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn simplify_access_reshapes() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64, 3, 2]);
+        let program = "
+         (access-reshape
+          (access-reshape
+           (access (access-tensor a) 2)
+           (access-shape (shape 16 2 64) (shape 3 2))
+          )
+          (access-shape (shape 8 2 2 64) (shape 3 2))
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::simplify_access_reshapes()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+         (access-reshape
+          (access (access-tensor a) 2)
+          (access-shape (shape 8 2 2 64) (shape 3 2))
+         )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn simplify_access_reshape_access_flatten() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64, 3, 2]);
+        let program = "
+         (access-reshape
+          (access-flatten
+           (access (access-tensor a) 2)
+          )
+          (access-shape (shape 8 2 2 64) (shape 3 2))
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::simplify_access_reshape_access_flatten()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+         (access-reshape
+          (access (access-tensor a) 2)
+          (access-shape (shape 8 2 2 64) (shape 3 2))
+         )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+    #[test]
+    fn simplify_access_flatten_access_reshape() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 64, 3, 2]);
+        let program = "
+         (access-flatten
+          (access-reshape
+           (access (access-tensor a) 2)
+           (access-shape (shape 16 2 64) (shape 3 2))
+          )
+         )
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::simplify_access_flatten_access_reshape()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+         (access-flatten
+          (access (access-tensor a) 2)
+         )
             "
         .parse::<Pattern<_>>()
         .unwrap()
