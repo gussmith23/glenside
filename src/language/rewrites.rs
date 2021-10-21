@@ -2458,6 +2458,7 @@ pub fn systolic_array_conv2d_im2col_fc_with_blocking(
     todo!()
 }
 
+/// Rewrite mapping maxpools to the FlexASR accelerator.
 pub fn flexasr_maxpool() -> Rewrite<Language, MyAnalysis> {
     rewrite!("flexasr-maxpool";
              "(compute reduce-max ?a)" => "(flexasr-maxpool ?a)"
@@ -2465,6 +2466,52 @@ pub fn flexasr_maxpool() -> Rewrite<Language, MyAnalysis> {
                                  move |a| a.shape.ndim() <= 1 && a.item_shape.slice() == &[2]))
 }
 
+/// Breaks a large reduce-max into smaller reduce-maxes which are then reduced
+/// by the original reduce-max.
+pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
+    struct ApplierImpl {
+        a: Var,
+        window_len: usize,
+        strides: usize,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            // The dimension to re-access at, after we compute the new reduce-max.
+            let reaccess_dim = match &egraph[subst[self.a]].data {
+                MyAnalysisData::AccessPattern(a) => a.shape.ndim(),
+                _ => panic!(),
+            };
+            format!(
+                "(compute reduce-max 
+                      (access
+                       (compute reduce-max
+                        (access-windows 
+                         ?a
+                         (shape {window_len})
+                         (shape {strides})))
+                       {reaccess_dim}))",
+                window_len = self.window_len,
+                strides = self.strides,
+                reaccess_dim = reaccess_dim
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+
+    rewrite!("reassociate-max";
+     "(compute reduce-max ?a)" =>
+     { ApplierImpl {
+         a: "?a".parse().unwrap(),
+         window_len,
+         strides
+        } }
+     if constrain_access("?a".parse().unwrap(),
+                         move |a| a.item_shape.ndim() == 1
+                                    && a.item_shape[0] % window_len == 0)
+    )
+}
 #[cfg(test)]
 mod tests {
 
@@ -2499,10 +2546,10 @@ mod tests {
 
         let matches = "
           (flexasr-maxpool (access (access-tensor a) 1))"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
-        .unwrap();
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
