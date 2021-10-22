@@ -21,6 +21,16 @@ fn constrain_vars(
     }
 }
 
+fn match_shape_data(data: &MyAnalysisData) -> Vec<usize> {
+    match data {
+        MyAnalysisData::Shape(x) => x.shape.slice().to_vec(),
+        MyAnalysisData::AccessPattern(access) => {
+            access.shape.slice().to_vec()
+        }
+        _ => panic!("not enough info for rewriting")
+    }
+}
+
 fn constrain_access(
     access: Var,
     constraint: impl Fn(&super::language::AccessPatternData) -> bool,
@@ -211,6 +221,14 @@ impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApp
 
         vec![]
     }
+}
+
+pub fn flatten_dot_product_to_dense() -> RW {
+    rewrite!("flatten-dot-product-to-dense";
+        "(compute dot-product (access-cartesian-product 
+                                (access-flatten ?x) 
+                                (access-flatten ?w)))"
+        => "(relay-operator-call relay-dense (access-flatten ?x) (access-flatten ?w))")
 }
 
 pub fn relay_dense_rewrite() -> RW {
@@ -904,6 +922,60 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
 pub fn access_reshape_to_relay() -> RW {
     rewrite!("access-reshape-to-reshape";
         "(access-reshape ?access (access-shape ?shape (shape)))" => "(relay-operator-call relay-reshape ?access ?shape)")
+}
+
+pub fn dot_product_with_vta() -> RW {
+    fn no_access_dim(x: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match &egraph[subst[x]].data {
+            MyAnalysisData::AccessPattern(access) => access.shape.ndim() == 1,
+            _ => false
+        }
+    }
+    struct ApplierImpl(Var, Var);
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let data_shape = match_shape_data(&egraph[subst[self.0]].data);
+            let weight_shape = match_shape_data(&egraph[subst[self.1]].data);
+            let output_shape = data_shape.into_iter()
+                                                    .chain(weight_shape.into_iter())
+                                                    .collect::<Vec<usize>>();
+            format!("(accelerator-call vta-dense ?x ?w (shape {}))",
+                    output_shape.into_iter()
+                                .map(|x| x.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" "))
+                                .parse::<Pattern<_>>()
+                                .unwrap().apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("dot-product-on-vta";
+        "(compute dot-product (access-cartesian-product ?x ?w))"
+        => { ApplierImpl("?x".parse().unwrap(), "?w".parse().unwrap()) }
+            if no_access_dim("?x".parse().unwrap())
+            if no_access_dim("?w".parse().unwrap()))
+}
+
+pub fn dot_product_to_linear() -> RW {
+    struct ApplierImpl(Var, Var);
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+            let x_shape = match_shape_data(&egraph[subst[self.0]].data);
+            let w_shape = match_shape_data(&egraph[subst[self.1]].data);
+            format!("(compute elementwise-add 
+                        (access-pair 
+                            (access (compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1))) 0) 
+                            (access 
+                                (access-broadcast 
+                                    (access-insert-axis (access-tensor (constant-tensor 0 (shape {} {}))) 0) 
+                                    (access-shape (shape {} {}) (shape))) 0)))", x_shape[0], w_shape[1], x_shape[0], w_shape[1])
+                                    .parse::<Pattern<_>>()
+                                    .unwrap()
+                                    .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("dot-product-to-linear";
+        "(compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1)))"
+        => {ApplierImpl("?x".parse().unwrap(), "?w".parse().unwrap())})
 }
 
 /// Model rewrite
