@@ -135,6 +135,7 @@ where
         &Language::TupleGetItem(_) => todo!(),
         &Language::AcceleratorCall(_) => todo!(),
         &Language::AcceleratorFunc(_) => todo!(),
+        &Language::ConstantTensor(_) => todo!(),
         &Language::AccessShape([shape_id, item_shape_id]) => {
             let shape = match interpret(expr, shape_id.into(), env) {
                 Value::Shape(s) => s,
@@ -778,7 +779,7 @@ where
                 access_axis: dim,
             })
         }
-        &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
+        &Language::AccessWindows([access_id, _data_shape_id, filters_shape_id, stride_shape_id]) => {
             let access = match interpret(expr, access_id.into(), env) {
                 Value::Access(a) => a,
                 _ => panic!(),
