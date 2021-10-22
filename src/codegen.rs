@@ -297,6 +297,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
         } {
             Language::FlexASRMaxPool(_) => todo!(),
             Language::RelayOperator(_) => {}
+            Language::ConstantTensor(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
             Language::AcceleratorFunc(_) => {}
@@ -337,13 +338,14 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 3]
-            &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
+            &Language::AccessConcatenate(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 4]
             &Language::SystolicArray(ids)
+            | &Language::AccessWindows(ids)
             | &Language::SystolicArrayWithBlocking(ids)
             | &Language::AccessSlice(ids) => {
                 for id in ids.iter() {
@@ -433,6 +435,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             &Language::Access(ids)
             | &Language::AccessTranspose(ids)
             | &Language::AccessShape(ids)
+            | &Language::ConstantTensor(ids)
             | &Language::AccessReshape(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
@@ -443,13 +446,14 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
                 }
             }
             // [Id; 3]
-            &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
+            &Language::AccessConcatenate(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
             }
             // [Id; 4]
             &Language::SystolicArray(ids)
+            | &Language::AccessWindows(ids)
             | &Language::SystolicArrayWithBlocking(ids)
             | &Language::AccessSlice(ids) => {
                 for id in ids.iter() {
@@ -680,7 +684,8 @@ fn codegen_helper(
 
         // TODO(mike): we probably could make codegen happen here
         Language::AcceleratorCall(_ids) => None,
-        Language::AcceleratorFunc(_) => None,
+        Language::ConstantTensor(_ids) => None,
+        Language::AcceleratorFunc(_)    => None,
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
@@ -1078,7 +1083,7 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                 RelayOperator::RelayMinimum => todo!(),
             }
         }
-        &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
+        &Language::AccessWindows([access_id, _data_shape_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),

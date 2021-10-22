@@ -87,6 +87,7 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
                     | Language::AccessSqueeze(_)
                     | Language::AccessInsertAxis(_)
                     | Language::AccessBroadcast(_)
+                    | Language::ConstantTensor(_)
                     | Language::AccessLiteral(_) => true,
 
                 // Things that should never pass through.
@@ -168,6 +169,7 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::ComputeType(_)
             | Language::AccessCartesianProduct(_)
             | Language::AccessPair(_)
+            | Language::ConstantTensor(_)
             | Language::AccessShiftRight(_) => false,
         }
     }

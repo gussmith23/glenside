@@ -64,6 +64,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             }
 
             Language::Symbol(_)
+            | Language::ConstantTensor(_)
             | Language::AccessLiteral(_)
             | Language::Literal(_)
             | Language::NotNanFloat64(_)
@@ -186,6 +187,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             Compute(_) => std::usize::MAX,
             AcceleratorFunc(_) => 1,
             AcceleratorCall(_) => 1,
+            ConstantTensor(_) => 1,
             // Extracting hardware atoms is encouraged
             SystolicArray(_) => {
                 if !self.prefer_systolic_arrays_with_blocking {
@@ -239,29 +241,73 @@ impl CostFunction<Language> for AcceleratorCostFunction {
     where
         C: FnMut(Id) -> Self::Cost,
     {
+        let mut factor = 1;
+        if let Language::AcceleratorCall(_) = &enode {
+            factor = 0;
+        }
         let base_cost = match enode {
             // We only consider accelerator calls and relay operators for now when
             // extracting a model
-            Language::AcceleratorCall(_)
-            | Language::AcceleratorFunc(_)
-            | Language::Literal(_) => 1,
-            Language::RelayOperatorCall(_)
-            | Language::RelayOperator(_)
+            Language::AcceleratorCall(_) => 0,
+            Language::Access(_)
+            | Language::List(_)
             | Language::Shape(_)
-            | Language::NotNanFloat64(_)
+            | Language::Usize(_)
+            | Language::AccessShape(_)
+            | Language::AcceleratorFunc(_)
+            | Language::Symbol(_)
+            | Language::PadType(_)
+            | Language::AccessTensor(_) => 0,
+            Language::RelayOperatorCall(_) => 0,
+            Language::RelayOperator(op) => {
+                match op {
+                    crate::language::RelayOperator::RelayReshape
+                    | crate::language::RelayOperator::RelayBatchFlatten => 1,
+                    crate::language::RelayOperator::RelayAdd
+                    | crate::language::RelayOperator::RelayMaximum
+                    | crate::language::RelayOperator::RelayMinimum
+                    | crate::language::RelayOperator::RelayMean
+                    | crate::language::RelayOperator::RelayMultiply
+                    | crate::language::RelayOperator::RelayErf
+                    | crate::language::RelayOperator::RelayReLU
+                    | crate::language::RelayOperator::RelaySoftmax
+                    | crate::language::RelayOperator::RelayBiasAdd
+                    | crate::language::RelayOperator::RelaySigmoid
+                    | crate::language::RelayOperator::RelayLeakyReLU => 2,
+                    crate::language::RelayOperator::RelayDense => 3,
+                    crate::language::RelayOperator::RelayConv1D
+                    | crate::language::RelayOperator::RelayUpSampling
+                    | crate::language::RelayOperator::RelayBatchNormInference
+                    | crate::language::RelayOperator::RelayAvgPool2D
+                    | crate::language::RelayOperator::RelayGlobalAvgPool2D
+                    | crate::language::RelayOperator::RelayMaxPool2D => 4,
+                }
+            },
+            Language::AccessTranspose(_)
+            | Language::Literal(_)
             | Language::RelayKernelLayout(_)
             | Language::RelayActivationLayout(_)
-            | Language::List(_)
-            | Language::AccessShape(_)
-            // | Language::AccessReshape(_)
-            | Language::AccessTensor(_)
-            | Language::Access(_)
-            | Language::AccessInsertAxis(_)
-            | Language::AccessBroadcast(_)
-            | Language::Symbol(_) => 2,
-            _ => 100
+            | Language::NotNanFloat64(_)
+            | Language::AccessPad(_)
+            | Language::AccessFlatten(_)
+            | Language::AccessWindows(_)
+            | Language::AccessSqueeze(_) => 2,
+            
+            Language::AccessInsertAxis(_)
+            | Language::AccessCartesianProduct(_) => 5,
+
+            Language::Compute(_)
+            | Language::AccessReshape(_)
+            | Language::AccessBroadcast(_) => usize::MAX,
+            Language::ComputeType(compute_type) => {
+                match compute_type {
+                    crate::language::ComputeType::DotProduct => usize::MAX,
+                    _ => 1,
+                }
+            }
+            _ => usize::MAX,
         };
-        enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
+        enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id) * factor))
     }
 }
 
