@@ -26,12 +26,13 @@ RUN sudo ./llvm.sh 10
 ENV LLVM_CONFIG_PATH=/usr/lib/llvm-10/bin/llvm-config
 
 # Build TVM with Rust bindings
-# TODO(@gussmith23) Switch this to TVM mainline
-# once https://github.com/apache/incubator-tvm/pull/6563 is merged
-RUN cd /root && git clone https://github.com/hypercubestart/incubator-tvm tvm --recursive
+WORKDIR /root/.ssh
+RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
+WORKDIR /root
+RUN --mount=type=ssh git clone --recursive git@github.com:uwsampl/3la-tvm.git tvm
 WORKDIR /root/tvm
-RUN git fetch
-RUN git checkout 4ed759f6b6cafbab707f95b57762913a1f57c021
+RUN --mount=type=ssh git fetch
+RUN git checkout bb6c378e5440899083af253c3466db087157acb6
 RUN git submodule sync && git submodule update
 RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
@@ -59,9 +60,5 @@ RUN pip3 install --upgrade pip
 COPY ./requirements.txt ./requirements.txt
 RUN pip3 install -r requirements.txt
 
-# Build Glenside with all features
 WORKDIR /root/glenside
 COPY . .
-
-# At this point, you should be able to build Glenside with whatever features you
-# want!
