@@ -221,7 +221,7 @@ pub fn relay_dense_rewrite() -> RW {
     //         id: egg::Id,
     //         subst: &egg::Subst,
     //     ) -> std::vec::Vec<egg::Id> {
-            
+
     //     }
     // }
     rewrite! ("dense-rewrites"; 
@@ -858,7 +858,7 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
 
 /// More general rewrite
 /// because it's using the properties of Glenside expressions
-/// 
+///
 
 pub fn bubble_reshape_through_compute_dot_product() -> RW {
     fn is_dot_product(op: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
@@ -908,7 +908,7 @@ pub fn access_reshape_to_relay() -> RW {
 /// Model rewrite
 /// If we know how to implement them (a computation) in relay
 /// 1. To have two equivalent implementations for a computation
-///    the example below is linear layer 
+///    the example below is linear layer
 ///         (reshape (bias_add (dense ?x ?w) ?bias) ?shape)
 ///     <=> (add (reshape (dense ?x ?w) ?shape) ?bias)
 /// 2. Call the Glenside compiler to compile both implementation
@@ -921,7 +921,7 @@ pub fn bubble_reshape_through_linear_generalized() -> RW {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let shape_data = match &egraph[subst[self.0]].data {
                 MyAnalysisData::Shape(s) => s,
-                _ => panic!("not a valid shape data")
+                _ => panic!("not a valid shape data"),
             };
             format!("(access-reshape 
                         (compute elementwise-add 
@@ -997,16 +997,20 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
                         IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat())
                     }
                 }
-                x => panic!("Not a valid pattern match {:?}", x)
+                x => panic!("Not a valid pattern match {:?}", x),
             };
-            format!("(accelerator-call flex-linear ?x ?w ?bias (shape {}))",
+            format!(
+                "(accelerator-call flex-linear ?x ?w ?bias (shape {}))",
                 shape
-                .slice()
-                .iter()
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>()
-                .join(" "))
-                .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
+                    .slice()
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+            .parse::<Pattern<Language>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
         }
     }
     rewrite!("linear_to_flexnlp";
@@ -2767,9 +2771,8 @@ mod tests {
         let mut map = HashMap::new();
         map.insert("data".to_string(), vec![1, 3, 32]);
         map.insert("weights".to_string(), vec![8, 3, 3]);
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
-            name_to_shape: map
-        });
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&program);
 
         let rws = vec![
@@ -2797,7 +2800,8 @@ mod tests {
             "
         .parse::<Pattern<_>>()
         .unwrap()
-        .search_eclass(&runner.egraph, id).unwrap();
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
