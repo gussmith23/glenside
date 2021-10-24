@@ -675,7 +675,7 @@ fn codegen_helper(
     } {
         // TODO(mike): we probably could make codegen happen here
         Language::AcceleratorCall(_ids) => None,
-        Language::AcceleratorFunc(_)    => None,
+        Language::AcceleratorFunc(_) => None,
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
@@ -806,8 +806,8 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
 
                     Some(softmax_out)
                 }
-                RelayOperator::RelayDense => { Some(format!("")) }
-                RelayOperator::RelayReshape => { None }
+                RelayOperator::RelayDense => Some(format!("")),
+                RelayOperator::RelayReshape => None,
                 RelayOperator::RelayReLU => {
                     let data = get_c_variable_for_id(expr, ids[1]);
 
@@ -2035,12 +2035,18 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "transpose-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "transpose-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2155,13 +2161,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "concatenate-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "concatenate-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2293,13 +2305,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "systolic-array-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "systolic-array-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2423,12 +2441,18 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "pad-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "pad-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2553,12 +2577,18 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "slice-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "slice-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2685,12 +2715,18 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "access-windows-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "access-windows-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2805,12 +2841,18 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "access-flatten-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "access-flatten-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -2978,13 +3020,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "systolic-array-with-blocking-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "systolic-array-with-blocking-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3115,13 +3163,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-add-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-add-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3253,13 +3307,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-biasadd-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-biasadd-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3438,13 +3498,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-batchnorm-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-batchnorm-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3578,13 +3644,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-softmax-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-softmax-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3717,13 +3789,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-relu-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-relu-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3855,13 +3933,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-maxpool-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-maxpool-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -3993,13 +4077,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-maxpool-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-maxpool-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4131,13 +4221,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-globalavgpool2d-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-globalavgpool2d-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4272,13 +4368,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-leakyrelu-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-leakyrelu-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4413,13 +4515,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-sigmoid-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-sigmoid-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4554,13 +4662,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-avgpool2d-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-avgpool2d-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4695,13 +4809,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-upsampling-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-upsampling-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4833,13 +4953,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-maximum-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-maximum-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
@@ -4971,13 +5097,19 @@ int main() {{
 
         let main_c_filepath = std::env::temp_dir().join(format!(
             "relay-op-minimum-test-{}.c",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", main_c_filepath.to_string_lossy());
 
         let binary_filepath = std::env::temp_dir().join(format!(
             "relay-op-minimum-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         println!("{}", binary_filepath.to_string_lossy());
 
