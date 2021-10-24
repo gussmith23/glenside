@@ -19,4 +19,8 @@ jobs:
       # TODO(@gussmith23) Keep the list of features up to date
       # TODO(@gussmith23) Can't test CPLEX in Github Actions
       # TODO(@gussmith23) Can we optionally build the Docker w/ access to CPLEX?
-      - run: docker run glenside cargo test --no-default-features --features "run-on-github-actions tvm"
+      # For 3la pldi push, we don't need GH actions flag, as we disabled the
+      # tests which use it.
+      # TODO(@gussmith23) The GH actions flag can be removed entirely; just
+      # count egg iterations, not time
+      - run: docker run glenside cargo test --no-default-features --features "tvm"
