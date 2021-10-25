@@ -1,3 +1,5 @@
+use crate::language::PadType;
+
 use super::super::codegen::generate_worklist_for_codegen;
 use super::Language;
 use super::MyAnalysis;
@@ -122,7 +124,66 @@ fn to_relay_impl(
         Language::AccessTensor(child_id) => {
             hashmap.insert(id, hashmap[child_id].clone());
         }
-        Language::AccessPad(_) => todo!(),
+        Language::AccessPad(
+            [access_id, pad_type_id, axis_id, before_pad_amt_id, after_pad_amt_id],
+        ) => {
+            let shape = match &egraph[*access_id].data {
+                crate::language::MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            match &egraph[*pad_type_id].data {
+                crate::language::MyAnalysisData::PadType(PadType::ZeroPadding) => (),
+                _ => todo!("expected zero padding"),
+            };
+            let axis = match &egraph[*axis_id].data {
+                crate::language::MyAnalysisData::Usize(u) => *u,
+                _ => panic!(),
+            };
+            let pad_before_amt = match &egraph[*before_pad_amt_id].data {
+                crate::language::MyAnalysisData::Usize(u) => *u,
+                _ => panic!(),
+            };
+            let pad_after_amt = match &egraph[*after_pad_amt_id].data {
+                crate::language::MyAnalysisData::Usize(u) => *u,
+                _ => panic!(),
+            };
+
+            let mut padding: Vec<_> = std::iter::repeat(vec![IntImm::from(0), IntImm::from(0)])
+                .take(shape.len())
+                .collect();
+            padding[axis][0] = IntImm::from(i32::try_from(pad_before_amt).unwrap());
+            padding[axis][1] = IntImm::from(i32::try_from(pad_after_amt).unwrap());
+            let padding = tvm::runtime::array::Array::from_vec(
+                padding
+                    .drain(..)
+                    .map(|v| tvm::runtime::array::Array::from_vec(v).unwrap())
+                    .collect(),
+            )
+            .unwrap();
+
+            // TODO(@gussmith23) datatype assumption
+            let pad_value = Constant::new(
+                NDArray::from_rust_ndarray(
+                    &ndarray12::arr0(0).into_dyn(),
+                    dev,
+                    DataType::float32(),
+                )
+                .unwrap(),
+                Span::null(),
+            );
+
+            let make_reshape = tvm::Function::get("relay.op.nn._make.pad").unwrap();
+            let ret = make_reshape
+                .invoke(vec![
+                    hashmap[access_id].clone().into(),
+                    padding.into(),
+                    pad_value.into(),
+                    tvm::runtime::String::from("constant").into(),
+                ])
+                .unwrap();
+
+            hashmap.insert(id, Expr::try_from(ret).unwrap());
+        }
         Language::AccessSqueeze(_) => todo!(),
         Language::AccessInsertAxis(_) => todo!(),
         Language::AccessBroadcast(_) => todo!(),
@@ -376,6 +437,44 @@ mod tests {
         rt.run().unwrap();
 
         let expected = input.into_shape(vec![1, 6]).unwrap();
+
+        assert_eq!(
+            ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn pad() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("a".to_string(), vec![2, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str(
+            "(access-pad (access (access-tensor a) 1) zero-padding 1 1 2)",
+        )
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input = ndarray12::arr2(&[[1., 2., 3.], [4., 5., 6.]]).into_dyn();
+        rt.set_input(
+            "a",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let expected =
+            ndarray12::arr2(&[[0.0, 1., 2., 3., 0., 0.], [0., 4., 5., 6., 0., 0.]]).into_dyn();
 
         assert_eq!(
             ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
