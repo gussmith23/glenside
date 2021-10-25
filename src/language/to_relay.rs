@@ -9,11 +9,17 @@ use itertools::Itertools;
 use ndarray::Dimension;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use tvm::ir::attrs::Attrs;
 use tvm::ir::relay::*;
 use tvm::ir::span::Span;
 use tvm::ir::tir::IntImm;
 use tvm::ir::ty::TensorType;
+use tvm::ir::ty::Type;
+use tvm::ir::ty::TypeVar;
+use tvm::ir::PrimExpr;
+use tvm::runtime::array::Array;
 use tvm::runtime::IsObjectRef;
+use tvm::runtime::ObjectRef;
 use tvm::Device;
 use tvm::NDArray;
 
@@ -365,7 +371,145 @@ fn to_relay_impl(
                 Var::new(name.clone(), type_annotation, Span::null()).upcast(),
             );
         }
-        Language::AcceleratorCall(_) => todo!(),
+        Language::AcceleratorCall(ids) => {
+            let shape = match &egraph[id].data {
+                crate::language::MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                _ => panic!(),
+            };
+            let make_accelerator_call =
+                tvm::Function::get("relay.op._make.accelerator_call").unwrap();
+
+            let shape_tvm_array = tvm::runtime::array::Array::from_vec(
+                shape
+                    .iter()
+                    .map(|i| IntImm::from(i32::try_from(*i).unwrap()))
+                    .collect(),
+            )
+            .unwrap();
+            let shape_prim_expr_tvm_array: Array<PrimExpr> = tvm::runtime::array::Array::from_vec(
+                shape
+                    .iter()
+                    .map(|i| IntImm::from(i32::try_from(*i).unwrap()).upcast())
+                    .collect(),
+            )
+            .unwrap();
+
+            let accelerator_call = make_accelerator_call
+                .invoke(vec!["todo".into(), shape_tvm_array.into()])
+                .unwrap();
+
+            let composite_name = "composite_name";
+            let compiler_name = "compiler_name";
+            // let inner_args = (0..ids.len() - 1)
+            //     .map(|i| Var::new(format!("inner_arg_{}", i), Type::null(), Span::null()))
+            //     .collect();
+            let body = Expr::try_from(accelerator_call).unwrap();
+
+            let body = Constant::new(
+                NDArray::from_rust_ndarray(
+                    &ndarray12::ArrayD::<f32>::zeros(shape),
+                    dev,
+                    DataType::float32(),
+                )
+                .unwrap(),
+                Span::null(),
+            )
+            .upcast();
+            let inner_func = Function::new(
+                tvm::runtime::array::Array::from_vec(vec![]).unwrap(), //inner_args).unwrap(),
+                body,
+                TensorType::new(
+                    shape_prim_expr_tvm_array.clone(),
+                    DataType::float32(),
+                    Span::null(),
+                )
+                .upcast(),
+                tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
+            )
+            .upcast();
+
+            let body = Call::new(
+                inner_func,
+                Array::from_vec(vec![]).unwrap(),
+                //     ids[1..ids.len() - 1]
+                //         .iter()
+                //         .map(|id| hashmap.get(id).unwrap().clone())
+                //         .collect(),
+                // )
+                // .unwrap(),
+                Attrs::null(),
+                tvm::runtime::array::Array::<TypeVar>::from_vec(vec![]).unwrap(),
+                Span::null(),
+            )
+            .upcast();
+
+            hashmap.insert(id, body);
+            return;
+
+            let base_func_with_attr = tvm::Function::get("ir.BaseFuncWithAttr").unwrap();
+            //let inner_func = base_func_with_attr
+            //    .invoke(vec![
+            //        inner_func.into(),
+            //        "Composite".into(),
+            //        tvm::runtime::String::from(composite_name)
+            //            .upcast::<ObjectRef>()
+            //            .into(),
+            //    ])
+            //    .unwrap();
+            let outer_args: Vec<Var> = (0..ids.len() - 1)
+                .map(|i| Var::new(format!("outer_arg_{}", i), Type::null(), Span::null()))
+                .collect();
+            let body: Expr = Function::new(
+                tvm::runtime::array::Array::from_vec(outer_args.clone()).unwrap(),
+                Call::new(
+                    inner_func.upcast(),
+                    Array::from_vec(outer_args.iter().cloned().map(|v| v.upcast()).collect())
+                        .unwrap(),
+                    Attrs::null(),
+                    tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
+                    Span::null(),
+                )
+                .upcast(),
+                TensorType::new(shape_prim_expr_tvm_array, DataType::float32(), Span::null())
+                    .upcast(),
+                tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
+            )
+            .upcast();
+
+            let region_counter = 0;
+            // let outer_func = base_func_with_attr
+            //     .invoke(vec![
+            //         outer_func.into(),
+            //         "Primitive".into(),
+            //         IntImm::new(DataType::int(32, 1), 1).into(),
+            //     ])
+            //     .unwrap();
+            // let outer_func = base_func_with_attr
+            //     .invoke(vec![
+            //         Expr::try_from(outer_func).unwrap().into(),
+            //         "global_symbol".into(),
+            //         tvm::runtime::String::from(format!("{}_{}", composite_name, region_counter))
+            //             .upcast::<ObjectRef>()
+            //             .into(),
+            //     ])
+            //     .unwrap();
+
+            let out = Call::new(
+                body,
+                Array::from_vec(
+                    ids[1..ids.len() - 1]
+                        .iter()
+                        .map(|id| hashmap.get(id).unwrap().clone())
+                        .collect(),
+                )
+                .unwrap(),
+                Attrs::null(),
+                tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
+                Span::null(),
+            );
+
+            hashmap.insert(id, out.upcast());
+        }
         Language::AcceleratorFunc(_) => (),
     }
 }
@@ -471,26 +615,26 @@ mod tests {
 
         let out = to_relay(&egraph, id, Device::cpu(0));
 
-        let module =
-            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+        let irmodule = IRModule::from_expr(out).unwrap();
 
-        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
-        let data_input =
-            ArrayD::from_shape_fn(vec![1, 3, 32], |d| d.slice().iter().sum::<usize>() as f32);
-        let weight_input =
-            ArrayD::from_shape_fn(vec![8, 3, 3], |d| d.slice().iter().sum::<usize>() as f32);
-        rt.set_input(
-            "data",
-            NDArray::from_rust_ndarray(&data_input, Device::cpu(0), DataType::float32()).unwrap(),
-        )
-        .unwrap();
-        rt.set_input(
-            "weight",
-            NDArray::from_rust_ndarray(&weight_input, Device::cpu(0), DataType::float32()).unwrap(),
-        )
-        .unwrap();
+        // let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        // let data_input =
+        //     ArrayD::from_shape_fn(vec![1, 3, 32], |d| d.slice().iter().sum::<usize>() as f32);
+        // let weight_input =
+        //     ArrayD::from_shape_fn(vec![8, 3, 3], |d| d.slice().iter().sum::<usize>() as f32);
+        // rt.set_input(
+        //     "data",
+        //     NDArray::from_rust_ndarray(&data_input, Device::cpu(0), DataType::float32()).unwrap(),
+        // )
+        // .unwrap();
+        // rt.set_input(
+        //     "weight",
+        //     NDArray::from_rust_ndarray(&weight_input, Device::cpu(0), DataType::float32()).unwrap(),
+        // )
+        // .unwrap();
 
-        rt.run().unwrap();
+        // rt.run().unwrap();
+        println!("{}", tvm::ir::expr::as_text(irmodule));
 
         todo!("Check output");
     }
