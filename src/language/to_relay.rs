@@ -3,10 +3,12 @@ use super::Language;
 use super::MyAnalysis;
 use egg::EGraph;
 use egg::Id;
+use ndarray::Dimension;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use tvm::ir::relay::*;
 use tvm::ir::span::Span;
+use tvm::ir::ty::TensorType;
 use tvm::runtime::IsObjectRef;
 use tvm::Device;
 use tvm::NDArray;
@@ -98,7 +100,25 @@ fn to_relay_impl(
         Language::RelayKernelLayout(_) => todo!(),
         Language::PadType(_) => todo!(),
         Language::ComputeType(_) => todo!(),
-        Language::Symbol(_) => todo!(),
+        Language::Symbol(name) => {
+            let shape = match &egraph[id].data {
+                crate::language::MyAnalysisData::Shape(s) => s.shape.slice(),
+                _ => panic!(),
+            };
+
+            // TODO(@gussmith23) datatype assumption
+            let type_annotation = TensorType::static_sh(
+                shape.iter().map(|i| i32::try_from(*i).unwrap()).collect(),
+                DataType::float32(),
+                Span::null(),
+            )
+            .upcast();
+
+            hashmap.insert(
+                id,
+                Var::new(name.clone(), type_annotation, Span::null()).upcast(),
+            );
+        }
         Language::AcceleratorCall(_) => todo!(),
         Language::AcceleratorFunc(_) => todo!(),
     }
@@ -112,6 +132,7 @@ mod tests {
     use egg::RecExpr;
     use ndarray12::arr0;
     use ndarray12::ArrayD;
+    use ndarray12::Dimension;
     use tvm::{
         compiler::graph_rt::{compile_module, CompilerConfig},
         ir::IRModule,
@@ -128,11 +149,7 @@ mod tests {
 
         let id = egraph.add_expr(&glenside_expr);
 
-        let out = to_relay(
-            &egraph,
-            id,
-            Device::cpu(0)
-        );
+        let out = to_relay(&egraph, id, Device::cpu(0));
 
         let module =
             compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
@@ -141,6 +158,36 @@ mod tests {
         assert_eq!(
             ArrayD::<u32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
             arr0(23).into_dyn()
+        );
+    }
+
+    #[test]
+    fn symbol() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("a".to_string(), vec![1, 2, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str("a").unwrap();
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input =
+            ArrayD::from_shape_fn(vec![1, 2, 3], |d| d.slice().iter().sum::<usize>() as f32);
+        rt.set_input(
+            "a",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
+            input
         );
     }
 }
