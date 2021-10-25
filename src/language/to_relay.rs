@@ -5,6 +5,7 @@ use super::Language;
 use super::MyAnalysis;
 use egg::EGraph;
 use egg::Id;
+use itertools::Itertools;
 use ndarray::Dimension;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -69,7 +70,124 @@ fn to_relay_impl(
         Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
         Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
         Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
-        Language::AccessWindows(_) => todo!(),
+        Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
+            // Get necessary type information.
+            let (access_dimensions, compute_dimensions) = match &egraph[*access_id].data {
+                crate::language::MyAnalysisData::AccessPattern(a) => {
+                    (a.shape.slice(), a.item_shape.slice())
+                }
+                _ => panic!(),
+            };
+            let filters_shape = match &egraph[*filters_shape_id].data {
+                crate::language::MyAnalysisData::Shape(u) => u.shape.slice(),
+                _ => panic!(),
+            };
+            let stride_shape = match &egraph[*stride_shape_id].data {
+                crate::language::MyAnalysisData::Shape(u) => u.shape.slice(),
+                _ => panic!(),
+            };
+
+            let make_strided_slice = tvm::Function::get("relay.op._make.strided_slice").unwrap();
+
+            // We use this function to give us the number of windows which will
+            // be formed in each dimension. We can then use the per-dimension
+            // window width (aka filter shape) and per-dimension strides to
+            // calculate the start and end of each window.
+            let num_windows_per_dim = crate::language::access_windows_resulting_shape(
+                &ndarray::IxDyn(compute_dimensions),
+                &ndarray::IxDyn(filters_shape),
+                &ndarray::IxDyn(stride_shape),
+            );
+
+            let mut exprs = ndarray::Array::from_elem(num_windows_per_dim.clone(), Expr::null());
+
+            // The Expr to slice.
+            let input_expr = hashmap[access_id].clone();
+
+            let window_indices_iter = num_windows_per_dim
+                .iter()
+                .map(|i| 0..*i)
+                .multi_cartesian_product();
+
+            for window_indices in window_indices_iter {
+                let window_begin_indices: Vec<_> = window_indices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, val)| val * stride_shape[i])
+                    .collect();
+                let window_end_indices: Vec<_> = window_begin_indices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, val)| val + filters_shape[i])
+                    .collect();
+
+                // Slice out each window. The compute dimensions are the
+                // dimensions actually getting sliced into windows. For each
+                // access dimension, on the other hand, we take the entire
+                // dimension each time (hence the repeat(0) as the starting
+                // index and the access dimension length as the ending value).
+                let sliced = make_strided_slice
+                    .invoke(vec![
+                        input_expr.clone().into(),
+                        tvm::runtime::array::Array::from_vec(
+                            std::iter::repeat(&0)
+                                .take(access_dimensions.len())
+                                .chain(window_begin_indices.iter())
+                                .map(|i| IntImm::from(i32::try_from(*i).unwrap()))
+                                .collect(),
+                        )
+                        .unwrap()
+                        .into(),
+                        tvm::runtime::array::Array::from_vec(
+                            access_dimensions
+                                .iter()
+                                .chain(window_end_indices.iter())
+                                .map(|i| IntImm::from(i32::try_from(*i).unwrap()))
+                                .collect(),
+                        )
+                        .unwrap()
+                        .into(),
+                        tvm::runtime::array::Array::from_vec(
+                            std::iter::repeat(IntImm::from(1))
+                                .take(access_dimensions.len() + compute_dimensions.len())
+                                .collect(),
+                        )
+                        .unwrap()
+                        .into(),
+                        "end".into(),
+                    ])
+                    .unwrap();
+
+                exprs[ndarray::IxDyn(&window_indices)] = Expr::try_from(sliced).unwrap();
+            }
+
+            let make_stack = tvm::Function::get("relay.op._make.stack").unwrap();
+            let stack_axis = i32::try_from(access_dimensions.len()).unwrap();
+            for _ in 0..compute_dimensions.len() {
+                exprs = exprs.map_axis(ndarray::Axis(exprs.ndim() - 1), |vals| {
+                    let tuple = Tuple::new(
+                        tvm::runtime::array::Array::from_vec(vals.as_slice().unwrap().to_vec())
+                            .unwrap(),
+                        Span::null(),
+                    );
+
+                    Expr::try_from(
+                        make_stack
+                            .invoke(vec![tuple.into(), stack_axis.into()])
+                            .unwrap(),
+                    )
+                    .unwrap()
+                });
+            }
+
+            hashmap.insert(
+                id,
+                exprs
+                    .into_dimensionality::<ndarray::Ix0>()
+                    .unwrap()
+                    .into_scalar(),
+            );
+        }
         Language::ShapeOf(_) => todo!(),
         Language::SliceShape(_) => todo!(),
         Language::ShapeInsertAxis(_) => todo!(),
@@ -227,6 +345,7 @@ mod tests {
     use super::*;
     use egg::RecExpr;
     use ndarray12::arr0;
+    use ndarray12::s;
     use ndarray12::ArrayD;
     use ndarray12::Dimension;
     use tvm::{
@@ -480,5 +599,222 @@ mod tests {
             ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
             expected
         );
+    }
+
+    #[test]
+    fn windows_0() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("t".to_string(), vec![3, 3, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str(
+            "(access-windows
+            (access (access-tensor t) 0)
+            (shape 3 2 2)
+            (shape 1 1 1))",
+        )
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input = ndarray12::array![
+            [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+            [[10., 11., 12.], [13., 14., 15.], [16., 17., 18.]],
+            [[19., 20., 21.], [22., 23., 24.], [25., 26., 27.]],
+        ]
+        .into_dyn();
+        rt.set_input(
+            "t",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let out = ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap();
+        assert_eq!(out.shape(), &[1, 2, 2, 3, 2, 2]);
+        assert_eq!(
+            out.slice(s![0, 0, 0, .., .., ..]),
+            ndarray12::array![
+                [[1., 2.], [4., 5.]],
+                [[10., 11.], [13., 14.]],
+                [[19., 20.], [22., 23.]],
+            ]
+        );
+        assert_eq!(
+            out.slice(s![0, 1, 0, .., .., ..]),
+            ndarray12::array![
+                [[4., 5.], [7., 8.]],
+                [[13., 14.], [16., 17.]],
+                [[22., 23.], [25., 26.]],
+            ]
+        );
+    }
+
+    #[test]
+    fn windows_1() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("t".to_string(), vec![3, 3, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str(
+            "(access-windows
+            (access (access-tensor t) 1)
+            (shape 2 2)
+            (shape 1 1))",
+        )
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input = ndarray12::array![
+            [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+            [[10., 11., 12.], [13., 14., 15.], [16., 17., 18.]],
+            [[19., 20., 21.], [22., 23., 24.], [25., 26., 27.]],
+        ]
+        .into_dyn();
+        rt.set_input(
+            "t",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let out = ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap();
+
+        assert_eq!(out.shape(), &[3, 2, 2, 2, 2]);
+        assert_eq!(
+            out.slice(s![0, 0, 0, .., ..]),
+            ndarray12::array![[1., 2.], [4., 5.]]
+        );
+        assert_eq!(
+            out.slice(s![0, 1, 0, .., ..]),
+            ndarray12::array![[4., 5.], [7., 8.]]
+        );
+        assert_eq!(
+            out.slice(s![2, 0, 1, .., ..]),
+            ndarray12::array![[20., 21.], [23., 24.]]
+        );
+    }
+
+    #[test]
+    fn windows_1_with_striding() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("t".to_string(), vec![3, 3, 4]);
+
+        let glenside_expr = RecExpr::<Language>::from_str(
+            "(access-windows
+            (access (access-tensor t) 1)
+            (shape 2 2)
+            (shape 1 2))",
+        )
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input = ndarray12::array![
+            [[1., 2., 3., 28.], [4., 5., 6., 29.], [7., 8., 9., 30.]],
+            [
+                [10., 11., 12., 31.],
+                [13., 14., 15., 32.],
+                [16., 17., 18., 33.]
+            ],
+            [
+                [19., 20., 21., 34.],
+                [22., 23., 24., 35.],
+                [25., 26., 27., 36.]
+            ],
+        ]
+        .into_dyn();
+        rt.set_input(
+            "t",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let out = ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap();
+
+        assert_eq!(out.shape(), &[3, 2, 2, 2, 2]);
+        assert_eq!(
+            out.slice(s![0, 0, 0, .., ..]),
+            ndarray12::array![[1., 2.], [4., 5.]]
+        );
+        assert_eq!(
+            out.slice(s![0, 1, 0, .., ..]),
+            ndarray12::array![[4., 5.], [7., 8.]]
+        );
+        assert_eq!(
+            out.slice(s![2, 0, 1, .., ..]),
+            ndarray12::array![[21., 34.], [24., 35.]]
+        );
+    }
+
+    #[test]
+    fn windows_2() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("t".to_string(), vec![3, 3, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str(
+            "(access-windows
+            (access (access-tensor t) 2)
+            (shape 2)
+            (shape 1))",
+        )
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input = ndarray12::array![
+            [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+            [[10., 11., 12.], [13., 14., 15.], [16., 17., 18.]],
+            [[19., 20., 21.], [22., 23., 24.], [25., 26., 27.]],
+        ]
+        .into_dyn();
+        rt.set_input(
+            "t",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let out = ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap();
+
+        assert_eq!(out.shape(), &[3, 3, 2, 2]);
+        assert_eq!(out.slice(s![0, 0, 0, ..]), ndarray12::array![1., 2.]);
+        assert_eq!(out.slice(s![0, 1, 0, ..]), ndarray12::array![4., 5.]);
     }
 }
