@@ -195,7 +195,29 @@ fn to_relay_impl(
         Language::Access([child_id, _]) => {
             hashmap.insert(id, hashmap[child_id].clone());
         }
-        Language::AccessTranspose(_) => todo!(),
+        Language::AccessTranspose([access_id, reordering_id]) => {
+            let reordering = match &egraph[*reordering_id].data {
+                crate::language::MyAnalysisData::List(s) => s.clone(),
+                _ => panic!(),
+            };
+
+            let make_transpose = tvm::Function::get("relay.op._make.transpose").unwrap();
+            let out = make_transpose
+                .invoke(vec![
+                    hashmap[access_id].clone().into(),
+                    tvm::runtime::array::Array::from_vec(
+                        reordering
+                            .iter()
+                            .map(|i| IntImm::from(i32::try_from(*i).unwrap()))
+                            .collect(),
+                    )
+                    .unwrap()
+                    .into(),
+                ])
+                .unwrap();
+
+            hashmap.insert(id, Expr::try_from(out).unwrap());
+        }
         Language::AccessCartesianProduct(_) => todo!(),
         Language::Compute(_) => todo!(),
         Language::AccessReshape([access_id, _]) | Language::AccessFlatten(access_id) => {
@@ -222,7 +244,7 @@ fn to_relay_impl(
             hashmap.insert(id, Expr::try_from(out).unwrap());
         }
         Language::Shape(_) => (),
-        Language::List(_) => todo!(),
+        Language::List(_) => (),
         Language::ConstructTuple(_) => todo!(),
         Language::TupleGetItem(_) => todo!(),
         Language::AccessShape(_) => (),
@@ -895,6 +917,44 @@ mod tests {
         rt.run().unwrap();
 
         let expected = input.into_shape(vec![3, 2]).unwrap();
+
+        assert_eq!(
+            ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn transpose() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("a".to_string(), vec![1, 2, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str(
+            "(access-transpose (access (access-tensor a) 1) (list 2 0 1))",
+        )
+        .unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input =
+            ArrayD::from_shape_fn(vec![1, 2, 3], |d| d.slice().iter().sum::<usize>() as f32);
+        rt.set_input(
+            "a",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let expected = input.permuted_axes(vec![2, 0, 1]);
 
         assert_eq!(
             ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
