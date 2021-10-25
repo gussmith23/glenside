@@ -302,7 +302,26 @@ fn to_relay_impl(
 
             hashmap.insert(id, Expr::try_from(ret).unwrap());
         }
-        Language::AccessSqueeze(_) => todo!(),
+        Language::AccessSqueeze([access_id, dim_id]) => {
+            let dim = match &egraph[*dim_id].data {
+                crate::language::MyAnalysisData::Usize(u) => *u,
+                _ => panic!(),
+            };
+
+            let make_squeeze = tvm::Function::get("relay.op._make.squeeze").unwrap();
+            let ret = make_squeeze
+                .invoke(vec![
+                    hashmap[access_id].clone().into(),
+                    tvm::runtime::array::Array::from_vec(vec![IntImm::from(
+                        i32::try_from(dim).unwrap(),
+                    )])
+                    .unwrap()
+                    .into(),
+                ])
+                .unwrap();
+
+            hashmap.insert(id, Expr::try_from(ret).unwrap());
+        }
         Language::AccessInsertAxis(_) => todo!(),
         Language::AccessBroadcast(_) => todo!(),
         Language::AccessLiteral(_) => todo!(),
@@ -816,5 +835,41 @@ mod tests {
         assert_eq!(out.shape(), &[3, 3, 2, 2]);
         assert_eq!(out.slice(s![0, 0, 0, ..]), ndarray12::array![1., 2.]);
         assert_eq!(out.slice(s![0, 1, 0, ..]), ndarray12::array![4., 5.]);
+    }
+
+    #[test]
+    fn squeeze() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("a".to_string(), vec![1, 2, 3]);
+
+        let glenside_expr =
+            RecExpr::<Language>::from_str("(access-squeeze (access-tensor a) 0))").unwrap();
+
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input =
+            ArrayD::from_shape_fn(vec![1, 2, 3], |d| d.slice().iter().sum::<usize>() as f32);
+        rt.set_input(
+            "a",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        let expected = input.into_shape(vec![2, 3]).unwrap();
+
+        assert_eq!(
+            ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
+            expected
+        );
     }
 }
