@@ -290,8 +290,8 @@ fn to_relay_impl(
                 Span::null(),
             );
 
-            let make_reshape = tvm::Function::get("relay.op.nn._make.pad").unwrap();
-            let ret = make_reshape
+            let make_pad = tvm::Function::get("relay.op.nn._make.pad").unwrap();
+            let ret = make_pad
                 .invoke(vec![
                     hashmap[access_id].clone().into(),
                     padding.into(),
