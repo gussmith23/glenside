@@ -155,6 +155,7 @@ mod tests {
             compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
 
         let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        rt.run().unwrap();
         assert_eq!(
             ArrayD::<u32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
             arr0(23).into_dyn()
@@ -184,6 +185,8 @@ mod tests {
             NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
         )
         .unwrap();
+
+        rt.run().unwrap();
 
         assert_eq!(
             ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
