@@ -193,4 +193,58 @@ mod tests {
             input
         );
     }
+
+    #[test]
+    #[should_panic = "not yet implemented"]
+    fn conv1d() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("data".to_string(), vec![1, 3, 32]);
+        name_to_shape.insert("weights".to_string(), vec![8, 3, 3]);
+        let glenside_expr = RecExpr::<Language>::from_str(
+            r#"(access-transpose
+            (access-reshape
+              (accelerator-call
+                vta-dense
+                (access-flatten (access (access-tensor weights) 1))
+                (access-flatten
+                  (access-squeeze
+                    (access-windows
+                      (access (access-pad (access-tensor data) zero-padding 2 3 4) 1)
+                      (shape 3 3)
+                      (shape 1 2))
+                    1))
+                (shape 8 19))
+              (access-shape (shape 8 1 19) (shape)))
+            (list 1 0 2))"#,
+        )
+        .unwrap();
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let data_input =
+            ArrayD::from_shape_fn(vec![1, 3, 32], |d| d.slice().iter().sum::<usize>() as f32);
+        let weight_input =
+            ArrayD::from_shape_fn(vec![8, 3, 3], |d| d.slice().iter().sum::<usize>() as f32);
+        rt.set_input(
+            "data",
+            NDArray::from_rust_ndarray(&data_input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+        rt.set_input(
+            "weight",
+            NDArray::from_rust_ndarray(&weight_input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        todo!("Check output");
+    }
 }
