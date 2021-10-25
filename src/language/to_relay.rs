@@ -8,14 +8,14 @@ use std::convert::TryFrom;
 use tvm::ir::relay::*;
 use tvm::ir::span::Span;
 use tvm::runtime::IsObjectRef;
-use tvm::Context;
+use tvm::Device;
 use tvm::NDArray;
 
-pub fn to_relay(egraph: &EGraph<Language, MyAnalysis>, id: Id, ctx: Context) -> Expr {
+pub fn to_relay(egraph: &EGraph<Language, MyAnalysis>, id: Id, dev: Device) -> Expr {
     let worklist = generate_worklist_for_codegen(egraph, id);
     let mut hashmap = HashMap::new();
     for id in worklist {
-        to_relay_impl(egraph, id, ctx, &mut hashmap);
+        to_relay_impl(egraph, id, dev, &mut hashmap);
     }
     return hashmap[&id].clone();
 }
@@ -23,7 +23,7 @@ pub fn to_relay(egraph: &EGraph<Language, MyAnalysis>, id: Id, ctx: Context) -> 
 fn to_relay_impl(
     egraph: &EGraph<Language, MyAnalysis>,
     id: Id,
-    ctx: Context,
+    dev: Device,
     hashmap: &mut HashMap<Id, Expr>,
 ) {
     assert!(!hashmap.contains_key(&id), "Id is already in hashmap!");
@@ -41,7 +41,7 @@ fn to_relay_impl(
                 Constant::new(
                     NDArray::from_rust_ndarray(
                         &ndarray12::arr0(u32::try_from(*v).unwrap()).into_dyn(),
-                        ctx,
+                        dev,
                         // TODO(@gussmith23) hardcoded code
                         DataType::new(1, 32, 1),
                     )
@@ -99,6 +99,8 @@ fn to_relay_impl(
         Language::PadType(_) => todo!(),
         Language::ComputeType(_) => todo!(),
         Language::Symbol(_) => todo!(),
+        Language::AcceleratorCall(_) => todo!(),
+        Language::AcceleratorFunc(_) => todo!(),
     }
 }
 
@@ -129,16 +131,13 @@ mod tests {
         let out = to_relay(
             &egraph,
             id,
-            Context {
-                device_type: tvm::DeviceType::CPU,
-                device_id: 0,
-            },
+            Device::cpu(0)
         );
 
         let module =
             compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
 
-        let mut rt = GraphRt::from_module(module, Context::cpu(0)).unwrap();
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
         assert_eq!(
             ArrayD::<u32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
             arr0(23).into_dyn()
