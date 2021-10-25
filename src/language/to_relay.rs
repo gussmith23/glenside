@@ -86,7 +86,9 @@ fn to_relay_impl(
         Language::AccessConcatenate(_) => todo!(),
         Language::AccessPair(_) => todo!(),
         Language::AccessShiftRight(_) => todo!(),
-        Language::AccessTensor(_) => todo!(),
+        Language::AccessTensor(child_id) => {
+            hashmap.insert(id, hashmap[child_id].clone());
+        }
         Language::AccessPad(_) => todo!(),
         Language::AccessSqueeze(_) => todo!(),
         Language::AccessInsertAxis(_) => todo!(),
@@ -246,5 +248,37 @@ mod tests {
         rt.run().unwrap();
 
         todo!("Check output");
+    }
+
+    #[test]
+    fn access_tensor() {
+        let mut name_to_shape = HashMap::new();
+        name_to_shape.insert("a".to_string(), vec![1, 2, 3]);
+
+        let glenside_expr = RecExpr::<Language>::from_str("(access-tensor a)").unwrap();
+        let mut egraph = EGraph::new(MyAnalysis { name_to_shape });
+
+        let id = egraph.add_expr(&glenside_expr);
+
+        let out = to_relay(&egraph, id, Device::cpu(0));
+
+        let module =
+            compile_module(CompilerConfig::default(), IRModule::from_expr(out).unwrap()).unwrap();
+
+        let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
+        let input =
+            ArrayD::from_shape_fn(vec![1, 2, 3], |d| d.slice().iter().sum::<usize>() as f32);
+        rt.set_input(
+            "a",
+            NDArray::from_rust_ndarray(&input, Device::cpu(0), DataType::float32()).unwrap(),
+        )
+        .unwrap();
+
+        rt.run().unwrap();
+
+        assert_eq!(
+            ArrayD::<f32>::try_from(&rt.get_output(0).unwrap()).unwrap(),
+            input
+        );
     }
 }
