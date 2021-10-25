@@ -120,7 +120,7 @@ fn to_relay_impl(
             );
         }
         Language::AcceleratorCall(_) => todo!(),
-        Language::AcceleratorFunc(_) => todo!(),
+        Language::AcceleratorFunc(_) => (),
     }
 }
 
