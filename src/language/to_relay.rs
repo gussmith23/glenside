@@ -112,7 +112,7 @@ fn to_relay_impl(
 
             hashmap.insert(id, Expr::try_from(out).unwrap());
         }
-        Language::Shape(_) => todo!(),
+        Language::Shape(_) => (),
         Language::List(_) => todo!(),
         Language::ConstructTuple(_) => todo!(),
         Language::TupleGetItem(_) => todo!(),
@@ -194,7 +194,7 @@ fn to_relay_impl(
         Language::RelayOperator(_) => todo!(),
         Language::RelayActivationLayout(_) => todo!(),
         Language::RelayKernelLayout(_) => todo!(),
-        Language::PadType(_) => todo!(),
+        Language::PadType(_) => (),
         Language::ComputeType(_) => todo!(),
         Language::Symbol(name) => {
             let shape = match &egraph[id].data {
