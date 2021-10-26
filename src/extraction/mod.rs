@@ -289,6 +289,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::AccessPad(_)
             | Language::AccessFlatten(_)
             | Language::AccessWindows(_)
+            | Language::AccessBroadcast(_) 
             | Language::AccessSqueeze(_) => 2,
 
             Language::AccessInsertAxis(_) | Language::AccessCartesianProduct(_) => 5,
