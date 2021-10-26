@@ -13,11 +13,17 @@ fn test_conv1d_flexmatch() {
     //     nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 19), float32] */
     // }
     // "#;
-    let filename = PathBuf::from(format!(
-        "{}/models/resmlp.relay",
-        env!("CARGO_MANIFEST_DIR")
-    ));
-    let relay = std::fs::read_to_string(&filename).unwrap();
+    let relay = r#"
+    #[version = "0.0.5"]
+    def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(2, 3, 16, 16), float32]) -> Tensor[(1, 2, 13, 13), float32] {
+        nn.conv2d(%data, %weights, strides=[2, 2], padding=[4, 4, 4, 4]) /* ty=Tensor[(1, 2, 13, 13), float32] */
+    }
+    "#;
+    // let filename = PathBuf::from(format!(
+    //     "{}/models/resmlp.relay",
+    //     env!("CARGO_MANIFEST_DIR")
+    // ));
+    // let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
     let (expr, shape_info, equiv_worklist) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
     let mut env = HashMap::default();
@@ -61,7 +67,7 @@ fn test_conv1d_flexmatch() {
     println!("{}", model);
     println!("{}", _cost);
     let json_dump = best.serialize();
-    let output_file = PathBuf::from(format!("{}/models/conv1d.json", env!("CARGO_MANIFEST_DIR")));
+    let output_file = PathBuf::from(format!("{}/models/conv2d.json", env!("CARGO_MANIFEST_DIR")));
     let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
     egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone()
@@ -72,7 +78,7 @@ fn test_conv1d_flexmatch() {
         native_map.insert(k, v);
     }
     let data_json_dump = serialize_analysis_data(&egraph, &native_map);
-    let data_output = PathBuf::from(format!("{}/models/conv1d_data.json", env!("CARGO_MANIFEST_DIR")));
+    let data_output = PathBuf::from(format!("{}/models/conv2d_data.json", env!("CARGO_MANIFEST_DIR")));
     let _ = std::fs::write(data_output, data_json_dump.to_string()).unwrap();
     // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
     // let _ = std::fs::write(output_file, model).unwrap();
