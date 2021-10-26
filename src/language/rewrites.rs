@@ -24,10 +24,8 @@ fn constrain_vars(
 fn match_shape_data(data: &MyAnalysisData) -> Vec<usize> {
     match data {
         MyAnalysisData::Shape(x) => x.shape.slice().to_vec(),
-        MyAnalysisData::AccessPattern(access) => {
-            access.shape.slice().to_vec()
-        }
-        _ => panic!("not enough info for rewriting")
+        MyAnalysisData::AccessPattern(access) => access.shape.slice().to_vec(),
+        _ => panic!("not enough info for rewriting"),
     }
 }
 
@@ -928,7 +926,7 @@ pub fn dot_product_with_vta() -> RW {
     fn no_access_dim(x: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, _, subst| match &egraph[subst[x]].data {
             MyAnalysisData::AccessPattern(access) => access.shape.ndim() == 1,
-            _ => false
+            _ => false,
         }
     }
     struct ApplierImpl(Var, Var);
@@ -936,16 +934,21 @@ pub fn dot_product_with_vta() -> RW {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             let data_shape = match_shape_data(&egraph[subst[self.0]].data);
             let weight_shape = match_shape_data(&egraph[subst[self.1]].data);
-            let output_shape = data_shape.into_iter()
-                                                    .chain(weight_shape.into_iter())
-                                                    .collect::<Vec<usize>>();
-            format!("(accelerator-call vta-dense ?x ?w (shape {}))",
-                    output_shape.into_iter()
-                                .map(|x| x.to_string())
-                                .collect::<Vec<_>>()
-                                .join(" "))
-                                .parse::<Pattern<_>>()
-                                .unwrap().apply_one(egraph, eclass, subst)
+            let output_shape = data_shape
+                .into_iter()
+                .chain(weight_shape.into_iter())
+                .collect::<Vec<usize>>();
+            format!(
+                "(accelerator-call vta-dense ?x ?w (shape {}))",
+                output_shape
+                    .into_iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
         }
     }
     rewrite!("dot-product-on-vta";

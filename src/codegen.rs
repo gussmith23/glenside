@@ -683,7 +683,7 @@ fn codegen_helper(
         // TODO(mike): we probably could make codegen happen here
         Language::AcceleratorCall(_ids) => None,
         Language::ConstantTensor(_ids) => None,
-        Language::AcceleratorFunc(_)    => None,
+        Language::AcceleratorFunc(_) => None,
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
