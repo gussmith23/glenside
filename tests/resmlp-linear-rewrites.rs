@@ -44,6 +44,7 @@ fn test_resmlp() {
     let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
     let (_cost, best) = extractor.find_best(id);
     // let model = best.pretty(80);
+    println!("{}", best.pretty(80));
     // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
     // let _ = std::fs::write(output_file, model).unwrap();
     let json_dump = best.serialize();
