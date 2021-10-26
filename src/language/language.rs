@@ -3,6 +3,7 @@ use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::debug;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
+use serde_json::json;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -1173,32 +1174,40 @@ impl MyAnalysis {
     }
 }
 
-pub fn serialize_analysis_data(egraph: &EGraph<Language, MyAnalysis>, id_map: &HashMap<Id, Id>) -> serde_json::Value{
-    let analysis_data = id_map.into_iter()
-                                .map(|(expr_id, eid)| {
-                                    let shape_dict: HashMap<String, Vec<usize>> = match &egraph[eid.clone()].data {
-                                        MyAnalysisData::AccessPattern(access) => {
-                                            let mut analysis_dict = HashMap::default();
-                                            analysis_dict.insert(String::from("relay_shape"), access.as_vec());
-                                            analysis_dict.insert(String::from("shape"), access.shape.slice().to_vec());
-                                            analysis_dict.insert(String::from("item_shape"), access.item_shape.slice().to_vec());
-                                            analysis_dict
-                                        },
-                                        MyAnalysisData::Shape(shape) => {
-                                            let mut analysis_dict = HashMap::default();
-                                            analysis_dict.insert(String::from("relay_shape"), shape.shape.slice().to_vec());
-                                            analysis_dict
-                                        },
-                                        MyAnalysisData::Literal(lit) => {
-                                            let mut analysis_dict = HashMap::default();
-                                            analysis_dict.insert(String::from("relay_shape"), lit.shape().to_vec());
-                                            analysis_dict
-                                        },
-                                        // MyAnalysisData::List(l) => vec![l.len()],
-                                        _ => HashMap::default(),
-                                    };
-                                    (usize::from(expr_id.clone()), shape_dict)
-                                }).collect::<HashMap<_, _>>();
+pub fn serialize_analysis_data(
+    egraph: &EGraph<Language, MyAnalysis>,
+    id_map: &HashMap<Id, Id>,
+) -> serde_json::Value {
+    let analysis_data = id_map
+        .into_iter()
+        .map(|(expr_id, eid)| {
+            let shape_dict: HashMap<String, Vec<usize>> = match &egraph[eid.clone()].data {
+                MyAnalysisData::AccessPattern(access) => {
+                    let mut analysis_dict = HashMap::default();
+                    analysis_dict.insert(String::from("relay_shape"), access.as_vec());
+                    analysis_dict.insert(String::from("shape"), access.shape.slice().to_vec());
+                    analysis_dict.insert(
+                        String::from("item_shape"),
+                        access.item_shape.slice().to_vec(),
+                    );
+                    analysis_dict
+                }
+                MyAnalysisData::Shape(shape) => {
+                    let mut analysis_dict = HashMap::default();
+                    analysis_dict.insert(String::from("relay_shape"), shape.shape.slice().to_vec());
+                    analysis_dict
+                }
+                MyAnalysisData::Literal(lit) => {
+                    let mut analysis_dict = HashMap::default();
+                    analysis_dict.insert(String::from("relay_shape"), lit.shape().to_vec());
+                    analysis_dict
+                }
+                // MyAnalysisData::List(l) => vec![l.len()],
+                _ => HashMap::default(),
+            };
+            (usize::from(expr_id.clone()), shape_dict)
+        })
+        .collect::<HashMap<_, _>>();
     json!(analysis_data)
 }
 
@@ -1589,24 +1598,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let inp_data = &egraph[ids[1]].data;
                         let wgt_data = &egraph[ids[2]].data;
                         let inp_shape = match inp_data {
-                            MyAnalysisData::AccessPattern(p) => Some(p.shape
-                                                                                    .slice()
-                                                                                    .iter()
-                                                                                    .chain(p.item_shape.slice().iter())
-                                                                                    .cloned()
-                                                                                    .collect::<Vec<_>>()),
-                            MyAnalysisData::Shape(s)        => Some(s.shape.slice().to_vec()),
-                            _ => panic!("Data for input should have shape info")
+                            MyAnalysisData::AccessPattern(p) => Some(
+                                p.shape
+                                    .slice()
+                                    .iter()
+                                    .chain(p.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            ),
+                            MyAnalysisData::Shape(s) => Some(s.shape.slice().to_vec()),
+                            _ => panic!("Data for input should have shape info"),
                         };
                         let wgt_shape = match wgt_data {
-                            MyAnalysisData::AccessPattern(p) => Some(p.shape
-                                                                                    .slice()
-                                                                                    .iter()
-                                                                                    .chain(p.item_shape.slice().iter())
-                                                                                    .cloned()
-                                                                                    .collect::<Vec<_>>()),
-                            MyAnalysisData::Shape(s)        => Some(s.shape.slice().to_vec()),
-                            _ => panic!("Data for weight should have shape info")
+                            MyAnalysisData::AccessPattern(p) => Some(
+                                p.shape
+                                    .slice()
+                                    .iter()
+                                    .chain(p.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            ),
+                            MyAnalysisData::Shape(s) => Some(s.shape.slice().to_vec()),
+                            _ => panic!("Data for weight should have shape info"),
                         };
                         let out_shape = match (inp_shape, wgt_shape) {
                             (Some(inp_shape), Some(wgt_shape)) => {
@@ -1686,7 +1699,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                             [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
                                 (a.clone(), b.clone())
                             }
-                            _ => panic!("Parameters do not type check: {:?} {:?}", egraph[params[1]].data, egraph[params[2]].data),
+                            _ => panic!(
+                                "Parameters do not type check: {:?} {:?}",
+                                egraph[params[1]].data, egraph[params[2]].data
+                            ),
                         };
 
                         if !a.zero_regions.is_empty() || !b.zero_regions.is_empty() {
@@ -1745,16 +1761,21 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                     crate::language::RelayOperator::RelayMean => {
                         let access = match params[1..]
-                        .iter()
-                        .map(|id| &egraph[*id].data)
-                        .collect::<Vec<_>>()[..] {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(usize_data)] => {
-                                let shape_length = a.shape.slice().len() + a.item_shape.slice().len();
-                                let relay_shape = a.shape.slice()
-                                                        .iter()
-                                                        .chain(a.item_shape.slice().iter())
-                                                        .cloned()
-                                                        .collect::<Vec<_>>();
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(usize_data)] =>
+                            {
+                                let shape_length =
+                                    a.shape.slice().len() + a.item_shape.slice().len();
+                                let relay_shape = a
+                                    .shape
+                                    .slice()
+                                    .iter()
+                                    .chain(a.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>();
                                 let axis = *usize_data;
                                 assert!(axis < shape_length);
                                 if axis == shape_length - 1 {
@@ -1767,9 +1788,15 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 } else {
                                     AccessPatternData {
                                         shape: IxDyn(&[]),
-                                        item_shape: IxDyn(&[&relay_shape[..axis], &relay_shape[axis + 1..]].concat()),
+                                        item_shape: IxDyn(
+                                            &[&relay_shape[..axis], &relay_shape[axis + 1..]]
+                                                .concat(),
+                                        ),
                                         zero_regions: HashMap::default(),
-                                        relay_shape: Some(IxDyn(&[&relay_shape[..axis], &relay_shape[axis + 1..]].concat())),
+                                        relay_shape: Some(IxDyn(
+                                            &[&relay_shape[..axis], &relay_shape[axis + 1..]]
+                                                .concat(),
+                                        )),
                                     }
                                 }
                             }
@@ -1826,16 +1853,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()[..]
                         {
                             [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
-                                let lhs_relay_shape = a.shape.slice()
-                                                                        .iter()
-                                                                        .chain(a.item_shape.slice().iter())
-                                                                        .cloned()
-                                                                        .collect::<Vec<_>>();
-                                let rhs_relay_shape = b.shape.slice()
-                                                                      .iter()
-                                                                      .chain(b.item_shape.slice().iter())
-                                                                      .cloned()
-                                                                      .collect::<Vec<_>>();
+                                let lhs_relay_shape = a
+                                    .shape
+                                    .slice()
+                                    .iter()
+                                    .chain(a.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                let rhs_relay_shape = b
+                                    .shape
+                                    .slice()
+                                    .iter()
+                                    .chain(b.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>();
                                 let batch = lhs_relay_shape[0];
                                 let in_feat = lhs_relay_shape[1];
                                 let out_feat = rhs_relay_shape[0];
@@ -1855,20 +1886,18 @@ impl egg::Analysis<Language> for MyAnalysis {
                     crate::language::RelayOperator::RelayReshape => {
                         let zero_regions = HashMap::default();
                         let access = match params[1..]
-                                    .iter()
-                                    .map(|id| &egraph[*id].data)
-                                    .collect::<Vec<_>>()[..] {
-                                        [_, MyAnalysisData::Shape(shape_data)] => {
-                                            
-                                            AccessPatternData {
-                                                shape: IxDyn(&[]),
-                                                item_shape: IxDyn(shape_data.shape.slice()),
-                                                relay_shape: Some(IxDyn(shape_data.shape.slice())),
-                                                zero_regions,
-                                            }
-                                        }
-                                        _ => panic!("Cannot match parameters for Reshape operator")
-                                    };
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [_, MyAnalysisData::Shape(shape_data)] => AccessPatternData {
+                                shape: IxDyn(&[]),
+                                item_shape: IxDyn(shape_data.shape.slice()),
+                                relay_shape: Some(IxDyn(shape_data.shape.slice())),
+                                zero_regions,
+                            },
+                            _ => panic!("Cannot match parameters for Reshape operator"),
+                        };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayBiasAdd => {
@@ -2277,8 +2306,8 @@ impl egg::Analysis<Language> for MyAnalysis {
             },
             &ConstantTensor([_value, shape]) => match &egraph[shape].data {
                 MyAnalysisData::Shape(s) => MyAnalysisData::Shape(s.clone()),
-                _ => panic!()
-            }
+                _ => panic!(),
+            },
             &NotNanFloat64(v) => MyAnalysisData::Literal(ndarray::arr0(v.into_inner()).into_dyn()),
             &Literal(id) => match &egraph[id].data {
                 t @ MyAnalysisData::Literal(_) => t.clone(),
