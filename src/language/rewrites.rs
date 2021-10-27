@@ -2591,6 +2591,24 @@ pub fn simplify_multiple_accesses() -> RW {
      "(access (access ?a ?d0) ?d1)" => "(access ?a ?d1)")
 }
 
+pub fn simplify_multiple_transposes() -> RW {
+    rewrite!("simplify-multiple-transposes";
+    "(access-transpose (access-transpose ?a ?list1) ?list2)" =>
+    "?a"
+    if move |egraph: &mut EG, _, subst: &Subst| {
+        let (l1, l2) = match (&egraph[subst["?list1".parse().unwrap()]].data,
+                                &egraph[subst["?list2".parse().unwrap()]].data) {
+            (MyAnalysisData::List(l1), MyAnalysisData::List(l2)) => (l1.clone(), l2.clone()),
+            _ => panic!(),
+        };
+
+        assert_eq!(l1.len(), l2.len());
+
+        // If we apply l2 to l1 and get back 0, 1, 2, ... then these transposes cancel!
+        (0..l1.len()).collect::<Vec<_>>() == l2.iter().map(|i| l1[*i]).collect::<Vec<_>>()
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -5430,5 +5448,62 @@ mod tests {
             .search_eclass(&runner.egraph, id)
             .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn simplify_multiple_transposes_0() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![2, 3, 4, 5]);
+
+        let program = "
+         (access-transpose (access-transpose (access-tensor data) (list 3 1 0 2)) (list 2 1 3 0))
+         "
+        .parse()
+        .unwrap();
+
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::simplify_multiple_transposes()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-tensor data)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn simplify_multiple_transposes_1() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![2, 3, 4, 5]);
+
+        let program = "
+         (access-transpose (access-transpose (access-tensor data) (list 3 1 0 2)) (list 2 3 1 0))
+         "
+        .parse()
+        .unwrap();
+
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::simplify_multiple_transposes()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        assert!("(access-tensor data)"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .is_none());
     }
 }
