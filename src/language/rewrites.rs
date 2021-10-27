@@ -2650,6 +2650,10 @@ pub fn simplify_reduce_max() -> RW {
         access.item_shape.slice().iter().product::<usize>() == 1
     }))
 }
+
+pub fn simplify_multiple_access_reshapes() -> RW {
+    rewrite!("simplify-multiple-access-reshapes";
+     "(access-reshape (access-reshape ?a ?s0) ?s1)" => "(access-reshape ?a ?s1)")
 }
 
 #[cfg(test)]
@@ -5412,6 +5416,7 @@ mod tests {
             // Collapses adjacent operators.
             super::simplify_multiple_accesses(),
             super::simplify_multiple_transposes(),
+            super::simplify_multiple_access_reshapes(),
             // Move access through access-transpose, to enable more collapsing.
             super::bubble_access_through_access_transpose(),
             // Remove the topmost reduce-max which becomes "trivial" (i.e. a max
@@ -5429,7 +5434,6 @@ mod tests {
 
         let matches = "
          (access-reshape
-          (access-reshape
            (access
              (access-transpose
               (flexasr-maxpool
@@ -5447,7 +5451,6 @@ mod tests {
                 0))
               (list 1 0))
             1)
-           (access-shape (shape 64) (shape)))
           (access-shape (shape 16 2 2) (shape)))
         "
         .parse::<Pattern<_>>()
