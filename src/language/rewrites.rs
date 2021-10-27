@@ -5433,23 +5433,23 @@ mod tests {
 
         let matches = "
          (access-reshape
-           (access
-             (access-transpose
+          (access
+           (access-transpose
+            (flexasr-maxpool
+             (access
               (flexasr-maxpool
                (access
-                    (flexasr-maxpool
-                     (access
-                      (access-transpose
-                       (access-flatten
-                        (access-windows
-                         (access (access-tensor data) 1)
-                         (shape 2 2)
-                         (shape 2 2)))
-                       (list 1 0))
-                      0))
+                (access-transpose
+                 (access-flatten
+                  (access-windows
+                   (access (access-tensor data) 1)
+                   (shape 2 2)
+                   (shape 2 2)))
+                 (list 1 0))
                 0))
-              (list 1 0))
-            1)
+              0))
+            (list 1 0))
+           1)
           (access-shape (shape 16 2 2) (shape)))
         "
         .parse::<Pattern<_>>()
