@@ -1,7 +1,7 @@
 // TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
 #![cfg(feature = "tvm")]
 
-use crate::language::Language;
+use crate::language::{Language, RelayActivationLayout, RelayKernelLayout};
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
@@ -151,7 +151,7 @@ pub fn conv2d(
     data_layout: &str,
     kernel_layout: &str,
     out_layout: &str,
-) -> Id {
+) -> (Id, Option<Id>) {
     assert_eq!(data_shape.len(), 4);
     assert_eq!(weights_shape.len(), 4);
     assert_eq!(strides.len(), 2);
@@ -171,18 +171,19 @@ pub fn conv2d(
     assert_eq!(out_layout, "");
 
     // Transpose to NCHW
-    let (data_id, data_shape) = match data_layout {
-        "NCHW" => (data_id, Vec::from(data_shape)),
+    let (data_id, data_shape, activation_layout) = match data_layout {
+        "NCHW" => (data_id, Vec::from(data_shape), RelayActivationLayout::NCHW),
         "NHWC" => (
             access_transpose(expr, data_id, &[0, 3, 1, 2]),
             vec![data_shape[0], data_shape[3], data_shape[1], data_shape[2]],
+            RelayActivationLayout::NHWC,
         ),
         _ => unreachable!(),
     };
 
     // Transpose to OIHW
-    let (weights_id, weights_shape) = match kernel_layout {
-        "OIHW" => (weights_id, Vec::from(weights_shape)),
+    let (weights_id, weights_shape, kernel_layout) = match kernel_layout {
+        "OIHW" => (weights_id, Vec::from(weights_shape), RelayKernelLayout::OIHW,),
         "HWIO" => (
             access_transpose(expr, weights_id, &[3, 2, 0, 1]),
             vec![
@@ -191,13 +192,19 @@ pub fn conv2d(
                 weights_shape[0],
                 weights_shape[1],
             ],
+            RelayKernelLayout::HWIO,
         ),
         _ => unreachable!(),
     };
 
+    let activation_layout_id = expr.add(Language::RelayActivationLayout(activation_layout));
+    let kernel_layout_id = expr.add(Language::RelayKernelLayout(kernel_layout));
+
     let pad_axis_id = expr.add(Language::Usize(2));
     let pad_before_id = expr.add(Language::Usize(padding[0]));
+    let pad_left = expr.add(Language::Usize(padding[1]));
     let pad_after_id = expr.add(Language::Usize(padding[2]));
+    let pad_right = expr.add(Language::Usize(padding[3]));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
@@ -206,6 +213,9 @@ pub fn conv2d(
         pad_before_id,
         pad_after_id,
     ]));
+
+    let padding_id = expr.add(Language::Shape(Box::new([pad_before_id, pad_left, pad_after_id, pad_right])));
+    let groups_id = expr.add(Language::Usize(groups.clone()));
 
     let pad_axis_id = expr.add(Language::Usize(3));
     let pad_before_id = expr.add(Language::Usize(padding[1]));
@@ -219,18 +229,11 @@ pub fn conv2d(
         pad_after_id,
     ]));
 
-    // let usize_data_n_id = expr.add(Language::Usize(data_shape[0]));
-    // let usize_data_c_id = expr.add(Language::Usize(data_shape[1]));
-    // let usize_data_h_id = expr.add(Language::Usize(data_shape[2]));
-    // let usize_data_w_id = expr.add(Language::Usize(data_shape[3]));
-    // let data_shape_id = expr.add(Language::Shape(Box::new([
-    //     usize_data_n_id,
-    //     usize_data_c_id,
-    //     usize_data_h_id,
-    //     usize_data_w_id,
-    // ])));
-
     let in_channels = data_shape[1];
+
+    let channel_id = expr.add(Language::Usize(weights_shape[0]));
+
+    let operator_id = expr.add(Language::RelayOperator(RelayOperator::RelayConv2D));
 
     let data_id = match groups as usize {
         1 => {
@@ -251,6 +254,13 @@ pub fn conv2d(
                 usize_kh_id,
                 usize_kw_id,
             ])));
+
+            let operator_call_id = expr.add(Language::RelayOperatorCall(vec![
+                operator_id,
+                data_id, weights_id, stride_shape_id, padding_id,
+                groups_id, channel_id, weights_shape_id,
+                activation_layout_id, kernel_layout_id
+            ].into_boxed_slice()));
 
             let data_id = expr.add(Language::AccessWindows([
                 data_id,
@@ -275,7 +285,7 @@ pub fn conv2d(
 
             let data_id = access_transpose(expr, data_id, &[1, 0, 2, 3]);
 
-            data_id
+            (data_id, Some(operator_call_id))
         }
         // If groups = num input channels (ie in depthwise separable mobilenet convs)
         // TODO(@gussmith23) Layout assumption
@@ -306,6 +316,13 @@ pub fn conv2d(
                 list.push(expr.add(Language::Usize(*v as usize)));
             }
             let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+
+            // let operator_call_id = expr.add(Language::RelayOperatorCall(vec![
+            //     operator_id,
+            //     data_id, weights_id, stride_shape_id, padding_id,
+            //     groups_id, channel_id, weights_shape_id,
+            //     activation_layout_id, kernel_layout_id
+            // ].into_boxed_slice()));
 
             let mut to_be_concatted = Vec::default();
 
@@ -356,7 +373,7 @@ pub fn conv2d(
                 concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
             }
 
-            concatted_id
+            (concatted_id, None)
         }
         _ => panic!("Groups not implemented for groups={}", groups),
     };
@@ -364,7 +381,7 @@ pub fn conv2d(
     // Transpose from NCHW to original layout
     match data_layout {
         "NCHW" => data_id,
-        "NHWC" => access_transpose(expr, data_id, &[0, 2, 3, 1]),
+        "NHWC" => (access_transpose(expr, data_id.0, &[0, 2, 3, 1]), data_id.1),
         _ => unreachable!(),
     }
 }
@@ -1424,6 +1441,9 @@ fn compile_expression(
                     let mut b_id = get_compiled_expression(call.args.get(1).unwrap());
                     let mut b_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+                    
+                    let operator_call_a_id = a_id;
+                    let operator_call_b_id = b_id;
 
                     if primitive_op.name.as_str().unwrap() == "add"
                         && use_opaque_operators_for
@@ -1511,7 +1531,7 @@ fn compile_expression(
                                 crate::language::RelayOperator::RelayAdd,
                             ));
                             let operator_call = glenside_expr.add(Language::RelayOperatorCall(
-                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                                vec![add_operator_id, operator_call_a_id, operator_call_b_id].into_boxed_slice(),
                             ));
                             (
                                 compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id),
@@ -1524,7 +1544,7 @@ fn compile_expression(
                                 crate::language::RelayOperator::RelayMultiply,
                             ));
                             let operator_call = glenside_expr.add(Language::RelayOperatorCall(
-                                vec![mult_operator_id, a_id, b_id].into_boxed_slice(),
+                                vec![mult_operator_id, operator_call_a_id, operator_call_b_id].into_boxed_slice(),
                             ));
                             (
                                 compute(glenside_expr, ComputeType::ElementwiseMul, pair_id),
@@ -1796,82 +1816,78 @@ fn compile_expression(
                         // TODO(@gussmith23) How to actually constrain this?
                         tvm::DataType::new(3, 0, 0)
                     );
-
-                    (
-                        conv2d(
-                            glenside_expr,
-                            data_id,
-                            &data_shape,
-                            weights_id,
-                            &weights_shape,
-                            &[
-                                attrs
-                                    .strides
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .strides
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                            &[
-                                attrs
-                                    .padding
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(2)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(3)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                            &[
-                                attrs
-                                    .dilation
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .dilation
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                            attrs.groups.try_into().unwrap(),
-                            attrs.data_layout.as_str().unwrap(),
-                            attrs.kernel_layout.as_str().unwrap(),
-                            attrs.out_layout.as_str().unwrap(),
-                        ),
-                        None,
+                    conv2d(
+                        glenside_expr,
+                        data_id,
+                        &data_shape,
+                        weights_id,
+                        &weights_shape,
+                        &[
+                            attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .strides
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        &[
+                            attrs
+                                .padding
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(2)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(3)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        &[
+                            attrs
+                                .dilation
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .dilation
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                        attrs.groups.try_into().unwrap(),
+                        attrs.data_layout.as_str().unwrap(),
+                        attrs.kernel_layout.as_str().unwrap(),
+                        attrs.out_layout.as_str().unwrap(),
                     )
                 }
                 "nn.upsampling" => {
