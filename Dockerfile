@@ -42,7 +42,7 @@ RUN echo 'set(CMAKE_CXX_STANDARD 14)' >> config.cmake
 RUN echo 'set(CMAKE_CXX_STANDARD_REQUIRED ON)' >> config.cmake
 RUN echo 'set(CMAKE_CXX_EXTENSIONS OFF)' >> config.cmake
 #RUN echo 'set(CMAKE_BUILD_TYPE Debug)' >> config.cmake
-ENV tvm_build_threads=2
+ARG tvm_build_threads=2
 RUN bash -c \
      "mkdir -p build && \
      cd build && \
