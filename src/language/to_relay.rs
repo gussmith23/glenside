@@ -15,7 +15,6 @@ use tvm::ir::span::Span;
 use tvm::ir::tir::IntImm;
 use tvm::ir::ty::TensorType;
 use tvm::ir::ty::Type;
-use tvm::ir::ty::TypeVar;
 use tvm::ir::PrimExpr;
 use tvm::runtime::array::Array;
 use tvm::runtime::IsObjectRef;
@@ -386,6 +385,7 @@ fn to_relay_impl(
                     .collect(),
             )
             .unwrap();
+
             let shape_prim_expr_tvm_array: Array<PrimExpr> = tvm::runtime::array::Array::from_vec(
                 shape
                     .iter()
@@ -394,29 +394,19 @@ fn to_relay_impl(
             )
             .unwrap();
 
-            let accelerator_call = make_accelerator_call
-                .invoke(vec!["todo".into(), shape_tvm_array.into()])
-                .unwrap();
-
-            let composite_name = "composite_name";
-            let compiler_name = "compiler_name";
-            // let inner_args = (0..ids.len() - 1)
-            //     .map(|i| Var::new(format!("inner_arg_{}", i), Type::null(), Span::null()))
-            //     .collect();
-            let body = Expr::try_from(accelerator_call).unwrap();
-
-            let body = Constant::new(
-                NDArray::from_rust_ndarray(
-                    &ndarray12::ArrayD::<f32>::zeros(shape),
-                    dev,
-                    DataType::float32(),
-                )
-                .unwrap(),
-                Span::null(),
+            let body = Expr::try_from(
+                make_accelerator_call
+                    .invoke(vec!["todo".into(), shape_tvm_array.into()])
+                    .unwrap(),
             )
-            .upcast();
-            let inner_func = Function::new(
-                tvm::runtime::array::Array::from_vec(vec![]).unwrap(), //inner_args).unwrap(),
+            .unwrap();
+
+            let inner_args = (0..ids.len() - 1)
+                .map(|i| Var::new(format!("inner_arg_{}", i), Type::null(), Span::null()))
+                .collect();
+
+            let inner_func: Expr = Function::new(
+                tvm::runtime::array::Array::from_vec(inner_args).unwrap(),
                 body,
                 TensorType::new(
                     shape_prim_expr_tvm_array.clone(),
@@ -428,48 +418,37 @@ fn to_relay_impl(
             )
             .upcast();
 
-            let body = Call::new(
-                inner_func,
-                Array::from_vec(vec![]).unwrap(),
-                //     ids[1..ids.len() - 1]
-                //         .iter()
-                //         .map(|id| hashmap.get(id).unwrap().clone())
-                //         .collect(),
-                // )
-                // .unwrap(),
+            let composite_name = "composite_name";
+            let base_func_with_attr = tvm::Function::get("ir.BaseFuncWithAttr").unwrap();
+            let inner_func = Expr::try_from(
+                base_func_with_attr
+                    .invoke(vec![
+                        inner_func.into(),
+                        "Composite".into(),
+                        tvm::runtime::String::from(composite_name)
+                            .upcast::<ObjectRef>()
+                            .into(),
+                    ])
+                    .unwrap(),
+            )
+            .unwrap();
+
+            let outer_args: Vec<Var> = (0..ids.len() - 1)
+                .map(|i| Var::new(format!("outer_arg_{}", i), Type::null(), Span::null()))
+                .collect();
+
+            let body: Expr = Call::new(
+                inner_func.clone(),
+                Array::from_vec(outer_args.clone()).unwrap().upcast(),
                 Attrs::null(),
-                tvm::runtime::array::Array::<TypeVar>::from_vec(vec![]).unwrap(),
+                tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
                 Span::null(),
             )
             .upcast();
 
-            hashmap.insert(id, body);
-            return;
-
-            let base_func_with_attr = tvm::Function::get("ir.BaseFuncWithAttr").unwrap();
-            //let inner_func = base_func_with_attr
-            //    .invoke(vec![
-            //        inner_func.into(),
-            //        "Composite".into(),
-            //        tvm::runtime::String::from(composite_name)
-            //            .upcast::<ObjectRef>()
-            //            .into(),
-            //    ])
-            //    .unwrap();
-            let outer_args: Vec<Var> = (0..ids.len() - 1)
-                .map(|i| Var::new(format!("outer_arg_{}", i), Type::null(), Span::null()))
-                .collect();
-            let body: Expr = Function::new(
+            let outer_func: Expr = Function::new(
                 tvm::runtime::array::Array::from_vec(outer_args.clone()).unwrap(),
-                Call::new(
-                    inner_func.upcast(),
-                    Array::from_vec(outer_args.iter().cloned().map(|v| v.upcast()).collect())
-                        .unwrap(),
-                    Attrs::null(),
-                    tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
-                    Span::null(),
-                )
-                .upcast(),
+                body,
                 TensorType::new(shape_prim_expr_tvm_array, DataType::float32(), Span::null())
                     .upcast(),
                 tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
@@ -477,25 +456,47 @@ fn to_relay_impl(
             .upcast();
 
             let region_counter = 0;
-            // let outer_func = base_func_with_attr
-            //     .invoke(vec![
-            //         outer_func.into(),
-            //         "Primitive".into(),
-            //         IntImm::new(DataType::int(32, 1), 1).into(),
-            //     ])
-            //     .unwrap();
-            // let outer_func = base_func_with_attr
-            //     .invoke(vec![
-            //         Expr::try_from(outer_func).unwrap().into(),
-            //         "global_symbol".into(),
-            //         tvm::runtime::String::from(format!("{}_{}", composite_name, region_counter))
-            //             .upcast::<ObjectRef>()
-            //             .into(),
-            //     ])
-            //     .unwrap();
+            let compiler_name = "compiler_name";
+            let outer_func = Expr::try_from(
+                base_func_with_attr
+                    .invoke(vec![
+                        outer_func.into(),
+                        "Primitive".into(),
+                        IntImm::new(DataType::int(32, 1), 1).into(),
+                    ])
+                    .unwrap(),
+            )
+            .unwrap();
+            let outer_func = Expr::try_from(
+                base_func_with_attr
+                    .invoke(vec![
+                        Expr::try_from(outer_func).unwrap().into(),
+                        "global_symbol".into(),
+                        tvm::runtime::String::from(format!(
+                            "{}_{}",
+                            composite_name, region_counter
+                        ))
+                        .upcast::<ObjectRef>()
+                        .into(),
+                    ])
+                    .unwrap(),
+            )
+            .unwrap();
+            let outer_func = Expr::try_from(
+                base_func_with_attr
+                    .invoke(vec![
+                        Expr::try_from(outer_func).unwrap().into(),
+                        "Compiler".into(),
+                        tvm::runtime::String::from(compiler_name)
+                            .upcast::<ObjectRef>()
+                            .into(),
+                    ])
+                    .unwrap(),
+            )
+            .unwrap();
 
-            let out = Call::new(
-                body,
+            let body = Call::new(
+                outer_func,
                 Array::from_vec(
                     ids[1..ids.len() - 1]
                         .iter()
@@ -506,9 +507,10 @@ fn to_relay_impl(
                 Attrs::null(),
                 tvm::runtime::array::Array::from_vec(vec![]).unwrap(),
                 Span::null(),
-            );
+            )
+            .upcast();
 
-            hashmap.insert(id, out.upcast());
+            hashmap.insert(id, body);
         }
         Language::AcceleratorFunc(_) => (),
     }
@@ -516,14 +518,13 @@ fn to_relay_impl(
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use egg::RecExpr;
     use ndarray12::arr0;
     use ndarray12::s;
     use ndarray12::ArrayD;
     use ndarray12::Dimension;
+    use std::str::FromStr;
     use tvm::{
         compiler::graph_rt::{compile_module, CompilerConfig},
         ir::IRModule,
@@ -586,7 +587,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not yet implemented"]
     fn conv1d() {
         let mut name_to_shape = HashMap::new();
         name_to_shape.insert("data".to_string(), vec![1, 3, 32]);
@@ -617,26 +617,54 @@ mod tests {
 
         let irmodule = IRModule::from_expr(out).unwrap();
 
-        // let mut rt = GraphRt::from_module(module, Device::cpu(0)).unwrap();
-        // let data_input =
-        //     ArrayD::from_shape_fn(vec![1, 3, 32], |d| d.slice().iter().sum::<usize>() as f32);
-        // let weight_input =
-        //     ArrayD::from_shape_fn(vec![8, 3, 3], |d| d.slice().iter().sum::<usize>() as f32);
-        // rt.set_input(
-        //     "data",
-        //     NDArray::from_rust_ndarray(&data_input, Device::cpu(0), DataType::float32()).unwrap(),
-        // )
-        // .unwrap();
-        // rt.set_input(
-        //     "weight",
-        //     NDArray::from_rust_ndarray(&weight_input, Device::cpu(0), DataType::float32()).unwrap(),
-        // )
-        // .unwrap();
+        // TODO(@gussmith23) Use something other than a string check...
+        assert_eq!(
+            tvm::ir::expr::as_text(irmodule),
+            r#"#[version = "0.0.5"]
+def @main(%weights: Tensor[(8, 3, 3), float32], %data: Tensor[(1, 3, 32), float32]) {
+  %1 = nn.pad(%data, 0f, pad_width=[[0, 0], [0, 0], [3, 4]]);
+  %2 = strided_slice(%1, begin=[0, 0, 0], end=[1, 3, 3], strides=[1, 1, 1]);
+  %3 = strided_slice(%1, begin=[0, 0, 2], end=[1, 3, 5], strides=[1, 1, 1]);
+  %4 = strided_slice(%1, begin=[0, 0, 4], end=[1, 3, 7], strides=[1, 1, 1]);
+  %5 = strided_slice(%1, begin=[0, 0, 6], end=[1, 3, 9], strides=[1, 1, 1]);
+  %6 = strided_slice(%1, begin=[0, 0, 8], end=[1, 3, 11], strides=[1, 1, 1]);
+  %7 = strided_slice(%1, begin=[0, 0, 10], end=[1, 3, 13], strides=[1, 1, 1]);
+  %8 = strided_slice(%1, begin=[0, 0, 12], end=[1, 3, 15], strides=[1, 1, 1]);
+  %9 = strided_slice(%1, begin=[0, 0, 14], end=[1, 3, 17], strides=[1, 1, 1]);
+  %10 = strided_slice(%1, begin=[0, 0, 16], end=[1, 3, 19], strides=[1, 1, 1]);
+  %11 = strided_slice(%1, begin=[0, 0, 18], end=[1, 3, 21], strides=[1, 1, 1]);
+  %12 = strided_slice(%1, begin=[0, 0, 20], end=[1, 3, 23], strides=[1, 1, 1]);
+  %13 = strided_slice(%1, begin=[0, 0, 22], end=[1, 3, 25], strides=[1, 1, 1]);
+  %14 = strided_slice(%1, begin=[0, 0, 24], end=[1, 3, 27], strides=[1, 1, 1]);
+  %15 = strided_slice(%1, begin=[0, 0, 26], end=[1, 3, 29], strides=[1, 1, 1]);
+  %16 = strided_slice(%1, begin=[0, 0, 28], end=[1, 3, 31], strides=[1, 1, 1]);
+  %17 = strided_slice(%1, begin=[0, 0, 30], end=[1, 3, 33], strides=[1, 1, 1]);
+  %18 = strided_slice(%1, begin=[0, 0, 32], end=[1, 3, 35], strides=[1, 1, 1]);
+  %19 = strided_slice(%1, begin=[0, 0, 34], end=[1, 3, 37], strides=[1, 1, 1]);
+  %20 = strided_slice(%1, begin=[0, 0, 36], end=[1, 3, 39], strides=[1, 1, 1]);
+  %21 = (%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20);
+  %22 = stack(%21, axis=1);
+  %23 = (%22,);
+  %24 = stack(%23, axis=1);
+  %25 = squeeze(%24, axis=[1]);
+  %26 = reshape(%weights, newshape=[8, 9]);
+  %27 = reshape(%25, newshape=[19, 9]);
+  %28 = fn (%outer_arg_0, %outer_arg_1, %outer_arg_2, Primitive=1, global_symbol="composite_name_0", Compiler="compiler_name") -> Tensor[(8, 19), float32] {
+    %0 = fn (%inner_arg_0, %inner_arg_1, %inner_arg_2, Composite="composite_name") -> Tensor[(8, 19), float32] {
+      accelerator_call(meta[relay.attrs.AcceleratorCallAttrs][0])
+    };
+    %0(%outer_arg_0, %outer_arg_1, %outer_arg_2)
+  };
+  %29 = %28(%26, %27);
+  %30 = reshape(%29, newshape=[8, 1, 19]);
+  transpose(%30, axes=[1, 0, 2])
+}
 
-        // rt.run().unwrap();
-        println!("{}", tvm::ir::expr::as_text(irmodule));
-
-        todo!("Check output");
+/* For debugging purposes the metadata section has been omitted.
+ * If you would like to see the full metadata section you can set the 
+ * option to `True` when invoking `astext`. 
+ */"#
+        );
     }
 
     #[test]
