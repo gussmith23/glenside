@@ -32,7 +32,7 @@ WORKDIR /root
 RUN --mount=type=ssh git clone --recursive git@github.com:uwsampl/3la-tvm.git tvm
 WORKDIR /root/tvm
 RUN --mount=type=ssh git fetch
-RUN git checkout 473af6b4937e25e7e850e24f9d44c53a16525cb5
+RUN git checkout 71b48540eca48338826da167e183db83a5e0f110
 RUN git submodule sync && git submodule update
 # Note the --ignore-libllvm, necessary for fixing Rust bindings as mentioned
 # here:
