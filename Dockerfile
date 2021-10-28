@@ -34,7 +34,10 @@ WORKDIR /root/tvm
 RUN --mount=type=ssh git fetch
 RUN git checkout 473af6b4937e25e7e850e24f9d44c53a16525cb5
 RUN git submodule sync && git submodule update
-RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
+# Note the --ignore-libllvm, necessary for fixing Rust bindings as mentioned
+# here:
+# https://discuss.tvm.apache.org/t/python-debugger-segfaults-with-tvm/843/9
+RUN echo 'set(USE_LLVM "$ENV{LLVM_CONFIG_PATH} --ignore-libllvm")' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
 RUN echo 'set(USE_SORT ON)' >> config.cmake
 RUN echo 'set(USE_GRAPH_RUNTIME ON)' >> config.cmake
