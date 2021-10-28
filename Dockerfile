@@ -32,7 +32,7 @@ WORKDIR /root
 RUN --mount=type=ssh git clone --recursive git@github.com:uwsampl/3la-tvm.git tvm
 WORKDIR /root/tvm
 RUN --mount=type=ssh git fetch
-RUN git checkout bb6c378e5440899083af253c3466db087157acb6
+RUN git checkout 71b48540eca48338826da167e183db83a5e0f110
 RUN git submodule sync && git submodule update
 RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
