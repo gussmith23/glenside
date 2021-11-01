@@ -29,6 +29,9 @@ num-traits = "0.2.11"
 serde_json = "1.0"
 ordered-float = "2.0.0"
 
+# TODO(@gussmith23) Need TVM's version of ndarray. At least make this so that it's only needed when TVM is needed.
+ndarray12 = {package = "ndarray", version = "0.12.1"}
+
 [dependencies.rand]
 version = "0.7.3"
 # Limited features so we can compile to WASM. Probably slows things down when
@@ -51,7 +54,7 @@ git = "https://github.com/gussmith23/rplex"
 # git = "https://github.com/hypercubestart/incubator-tvm"
 git = "ssh://git@github.com/uwsampl/3la-tvm.git"
 # branch = "3la-pldi-push-main"
-rev = "bb6c378e5440899083af253c3466db087157acb6"
+rev = "71b48540eca48338826da167e183db83a5e0f110"
 optional = true
 
 [dependencies.egg]

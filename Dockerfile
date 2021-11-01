@@ -32,9 +32,12 @@ WORKDIR /root
 RUN --mount=type=ssh git clone --recursive git@github.com:uwsampl/3la-tvm.git tvm
 WORKDIR /root/tvm
 RUN --mount=type=ssh git fetch
-RUN git checkout bb6c378e5440899083af253c3466db087157acb6
+RUN git checkout 71b48540eca48338826da167e183db83a5e0f110
 RUN git submodule sync && git submodule update
-RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
+# Note the --ignore-libllvm, necessary for fixing Rust bindings as mentioned
+# here:
+# https://discuss.tvm.apache.org/t/python-debugger-segfaults-with-tvm/843/9
+RUN echo 'set(USE_LLVM "$ENV{LLVM_CONFIG_PATH} --ignore-libllvm")' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
 RUN echo 'set(USE_SORT ON)' >> config.cmake
 RUN echo 'set(USE_GRAPH_RUNTIME ON)' >> config.cmake
@@ -43,7 +46,7 @@ RUN echo 'set(CMAKE_CXX_STANDARD 14)' >> config.cmake
 RUN echo 'set(CMAKE_CXX_STANDARD_REQUIRED ON)' >> config.cmake
 RUN echo 'set(CMAKE_CXX_EXTENSIONS OFF)' >> config.cmake
 #RUN echo 'set(CMAKE_BUILD_TYPE Debug)' >> config.cmake
-ENV tvm_build_threads=2
+ARG tvm_build_threads=2
 RUN bash -c \
      "mkdir -p build && \
      cd build && \
