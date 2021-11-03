@@ -358,7 +358,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             &Language::NotNanFloat64(_) => {}
-            &Language::Usize(_) | &Language::PadType(_) => (),
+            &Language::Usize(_) | &Language::Int32(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
             | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
             | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
@@ -472,6 +472,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | Language::AcceleratorFunc(_)
             | &Language::NotNanFloat64(_)
             | &Language::Usize(_)
+            | &Language::Int32(_)
             | &Language::PadType(_) => (),
 
             &Language::Literal(_)
@@ -1426,6 +1427,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             Some(out_var_name)
         }
         &Language::Usize(u) => Some(format!("{}", u)),
+        &Language::Int32(x) => Some(format!("{}", x)),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,

@@ -13,6 +13,7 @@ pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
     Access(Access<DataType>),
     Usize(usize),
+    Int32(i32),
     Shape(IxDyn),
     ComputeType(ComputeType),
     PadType(PadType),
@@ -957,6 +958,7 @@ where
                 .clone(),
         ),
         &Language::Usize(u) => Value::Usize(u),
+        &Language::Int32(x) => Value::Int32(x),
 
         &Language::MoveAxis(_)
         | &Language::CartesianProduct(_)
