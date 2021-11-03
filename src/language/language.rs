@@ -627,6 +627,7 @@ pub enum AcceleratorFunc {
     FlexLSTM,
     VTADense,
     VTAConv1D,
+    HlsCNNConv2D,
 }
 
 impl FromStr for AcceleratorFunc {
@@ -638,6 +639,7 @@ impl FromStr for AcceleratorFunc {
             "flex-lstm" => Ok(AcceleratorFunc::FlexLSTM),
             "vta-dense" => Ok(AcceleratorFunc::VTADense),
             "vta-conv1d" => Ok(AcceleratorFunc::VTAConv1D),
+            "hlscnn-conv2d" => Ok(AcceleratorFunc::HlsCNNConv2D),
             _ => Err(()),
         }
     }
@@ -653,6 +655,7 @@ impl Display for AcceleratorFunc {
                 AcceleratorFunc::FlexLSTM => "flex-lstm",
                 AcceleratorFunc::VTADense => "vta-dense",
                 AcceleratorFunc::VTAConv1D => "vta-conv1d",
+                AcceleratorFunc::HlsCNNConv2D => "hlscnn-conv2d",
             }
         )
     }
@@ -1651,6 +1654,43 @@ impl egg::Analysis<Language> for MyAnalysis {
                             relay_shape: None,
                         })
                     }
+                    crate::language::AcceleratorFunc::HlsCNNConv2D => {
+                        let access = match ids[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            {
+                                let mut data_shape = data
+                                    .shape
+                                    .slice()
+                                    .iter()
+                                    .chain(data.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                data_shape[2] += padding.shape[0] + padding.shape[2];
+                                data_shape[3] += padding.shape[1] + padding.shape[3];
+                                let n = data_shape[0].clone();
+                                let c = channels.clone();
+                                let access_window_shape = access_windows_resulting_shape(
+                                    &IxDyn(&data_shape[1..]),
+                                    &kernel_size.shape,
+                                    &strides.shape,
+                                );
+                                let h = access_window_shape[1];
+                                let w = access_window_shape[2];
+                                AccessPatternData {
+                                    shape: IxDyn(&[n, c, h, w]),
+                                    item_shape: IxDyn(&[]),
+                                    relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                    zero_regions: HashMap::default(),
+                                }
+                            }
+                            _ => panic!("Cannot parse arguments for Conv2D"),
+                        };
+                        MyAnalysisData::AccessPattern(access)
+                    }
                 }
             }
             AcceleratorFunc(name) => {
@@ -1659,6 +1699,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     | crate::language::AcceleratorFunc::FlexLSTM => "flexnlp",
                     crate::language::AcceleratorFunc::VTAConv1D
                     | crate::language::AcceleratorFunc::VTADense => "vta",
+                    crate::language::AcceleratorFunc::HlsCNNConv2D => "hlscnn",
                 };
                 MyAnalysisData::AcceleratorFunc(AcceleratorFuncData {
                     pattern: name.clone(),
