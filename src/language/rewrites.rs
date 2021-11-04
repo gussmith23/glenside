@@ -966,10 +966,13 @@ pub fn dot_product_to_linear() -> RW {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
             // let x_shape = match_shape_data(&egraph[subst[self.0]].data);
             let w_shape = match_shape_data(&egraph[subst[self.1]].data);
-            format!("(accelerator-call flex-linear ?x ?w (constant-tensor 0 (shape 1 {})))", w_shape[1])
-                                    .parse::<Pattern<_>>()
-                                    .unwrap()
-                                    .apply_one(egraph, eclass, subst)
+            format!(
+                "(accelerator-call flex-linear ?x ?w (constant-tensor 0 (shape 1 {})))",
+                w_shape[1]
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
         }
     }
     rewrite!("dot-product-to-linear";
