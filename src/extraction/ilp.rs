@@ -336,6 +336,7 @@ pub fn create_generic_egraph_lp_model<'a>(
         }
 
         // Filter out enodes that the user doesn't want variables for.
+        let mut var_count = 0;
         for enode in eclass
             .nodes
             .iter()
@@ -348,7 +349,9 @@ pub fn create_generic_egraph_lp_model<'a>(
             let column_index = problem.add_variable(bn_var).unwrap();
             assert!(!bn_vars.contains_key(&enode));
             bn_vars.insert(enode, column_index);
+            var_count += 1;
         }
+        assert!(var_count > 0, "No variable selected for eclass {}: {:?}", eclass.id, eclass);
     }
 
     // All roots must be chosen.
