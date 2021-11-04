@@ -491,7 +491,10 @@ pub fn extract_single_expression(
         .collect::<Vec<_>>();
     // Finally, sort by variable value.
     eclasses_in_topological_order.sort_unstable_by_key(
-        |&(eclass_id, &_column_index): &(&Id, &usize)| eclass_id
+        |&(_eclass_id, &column_index): &(&Id, &usize)| match results[column_index] {
+            VariableValue::Integer(i) => i,
+            _ => panic!(),
+        },
     );
 
     let mut old_id_to_new_id_map = HashMap::new();
