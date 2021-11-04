@@ -1072,6 +1072,7 @@ pub struct AccessPatternData {
     /// space efficient.
     pub zero_regions: HashMap<Ix, BoolVecRangeSet>,
     pub relay_shape: Option<IxDyn>,
+    pub contains_accelerator_calls: bool,
 }
 
 impl AccessPatternData {
@@ -1237,6 +1238,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             item_shape,
             zero_regions: _,
             relay_shape,
+            contains_accelerator_calls: _,
         }) = to
         {
             if let None = relay_shape {
@@ -1252,17 +1254,22 @@ impl egg::Analysis<Language> for MyAnalysis {
                     item_shape: to_item_shape,
                     zero_regions: to_zero_regions,
                     relay_shape: to_relay_shape,
+                    contains_accelerator_calls: to_contains_accel_calls,
                 }),
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: from_shape,
                     item_shape: from_item_shape,
                     zero_regions: from_zero_regions,
                     relay_shape: from_relay_shape,
+                    contains_accelerator_calls: from_contains_accel_calls,
                 }),
             ) => {
                 if *to_relay_shape == None && *from_relay_shape == None {
                     assert_eq!(to_shape, from_shape);
                     assert_eq!(to_item_shape, from_item_shape);
+                }
+                if *from_contains_accel_calls && !*to_contains_accel_calls {
+                    *to_contains_accel_calls = true;
                 }
 
                 let mut calculated = false;
@@ -1395,6 +1402,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(t % 2, 0);
                 assert_eq!(h % 16, 0);
                 access.item_shape[0] = access.item_shape[0] / 2;
+                access.contains_accelerator_calls = true;
 
                 MyAnalysisData::AccessPattern(access)
             }
@@ -1447,6 +1455,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     relay_shape: None,
+                    contains_accelerator_calls: data.contains_accelerator_calls
+                        || weights.contains_accelerator_calls,
                 })
             }
             &SystolicArrayConv2dNhwcHwioWithBlocking(
@@ -1497,6 +1507,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     relay_shape: None,
+                    contains_accelerator_calls: data.contains_accelerator_calls
+                        || weights.contains_accelerator_calls,
                 })
             }
             &SystolicArrayConv2dIm2colNchwOihwWithBlocking(
@@ -1548,6 +1560,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     relay_shape: None,
+                    contains_accelerator_calls: data.contains_accelerator_calls
+                        || weights.contains_accelerator_calls,
                 })
             }
             &SystolicArrayConv2dNchwOihwWithBlocking(
@@ -1598,6 +1612,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     relay_shape: None,
+                    contains_accelerator_calls: data.contains_accelerator_calls
+                        || weights.contains_accelerator_calls,
                 })
             }
             AcceleratorCall(ids) => {
@@ -1651,6 +1667,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&[]),
                             item_shape: out_shape.clone(),
                             relay_shape: Some(out_shape),
+                            contains_accelerator_calls: true,
                         })
                     }
                     crate::language::AcceleratorFunc::VTAConv1D
@@ -1661,6 +1678,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
                             relay_shape: None,
+                            contains_accelerator_calls: true,
                         })
                     }
                     crate::language::AcceleratorFunc::HlsCNNConv2D => {
@@ -1694,6 +1712,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     item_shape: IxDyn(&[]),
                                     relay_shape: Some(IxDyn(&[n, c, h, w])),
                                     zero_regions: HashMap::default(),
+                                    contains_accelerator_calls: true,
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
@@ -1799,6 +1818,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             item_shape: IxDyn(&[]),
                             zero_regions,
                             relay_shape: Some(IxDyn(new_shape.as_slice())),
+                            contains_accelerator_calls: a.contains_accelerator_calls
+                                || b.contains_accelerator_calls,
                         })
                     }
                     crate::language::RelayOperator::RelayErf => {
@@ -1812,6 +1833,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 item_shape: a.item_shape.clone(),
                                 zero_regions: HashMap::default(),
                                 relay_shape: a.relay_shape.clone(),
+                                contains_accelerator_calls: a.contains_accelerator_calls,
                             },
                             _ => panic!("Erf only supports accepting 1 input tensor"),
                         };
@@ -1842,6 +1864,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         item_shape: IxDyn(&relay_shape[..axis]),
                                         zero_regions: HashMap::default(),
                                         relay_shape: Some(IxDyn(&relay_shape[..axis])),
+                                        contains_accelerator_calls: a.contains_accelerator_calls,
                                     }
                                 } else {
                                     AccessPatternData {
@@ -1855,6 +1878,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             &[&relay_shape[..axis], &relay_shape[axis + 1..]]
                                                 .concat(),
                                         )),
+                                        contains_accelerator_calls: a.contains_accelerator_calls,
                                     }
                                 }
                             }
@@ -1897,6 +1921,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     item_shape: IxDyn(output_shape.slice()),
                                     zero_regions: HashMap::default(),
                                     relay_shape: Some(output_shape),
+                                    contains_accelerator_calls: data.contains_accelerator_calls
+                                        || weight.contains_accelerator_calls,
                                 }
                             }
                             _ => panic!("Conv1D can only accept 2 params"),
@@ -1909,7 +1935,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
                             {
                                 let mut data_shape = data
                                     .shape
@@ -1934,6 +1960,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     item_shape: IxDyn(&[]),
                                     relay_shape: Some(IxDyn(&[n, c, h, w])),
                                     zero_regions: HashMap::default(),
+                                    contains_accelerator_calls: data.contains_accelerator_calls
+                                        || weight.contains_accelerator_calls,
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
@@ -1972,6 +2000,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     item_shape: IxDyn(&[]),
                                     relay_shape: Some(IxDyn(&new_shape)),
                                     zero_regions,
+                                    contains_accelerator_calls: a.contains_accelerator_calls
+                                        || b.contains_accelerator_calls,
                                 }
                             }
                             _ => panic!("Dense current only support 2 parameters"),
@@ -1985,12 +2015,15 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [_, MyAnalysisData::Shape(shape_data)] => AccessPatternData {
-                                shape: IxDyn(&[]),
-                                item_shape: IxDyn(shape_data.shape.slice()),
-                                relay_shape: Some(IxDyn(shape_data.shape.slice())),
-                                zero_regions,
-                            },
+                            [MyAnalysisData::AccessPattern(access), MyAnalysisData::Shape(shape_data)] => {
+                                AccessPatternData {
+                                    shape: IxDyn(&[]),
+                                    item_shape: IxDyn(shape_data.shape.slice()),
+                                    relay_shape: Some(IxDyn(shape_data.shape.slice())),
+                                    zero_regions,
+                                    contains_accelerator_calls: access.contains_accelerator_calls,
+                                }
+                            }
                             _ => panic!("Cannot match parameters for Reshape operator"),
                         };
                         MyAnalysisData::AccessPattern(access)
@@ -2370,6 +2403,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     item_shape: a.item_shape.clone(),
                                     zero_regions: a.zero_regions.clone(),
                                     relay_shape: Some(shape),
+                                    contains_accelerator_calls: a.contains_accelerator_calls,
                                 }
                             }
                             _ => panic!("Parameters do not type check"),
@@ -2396,6 +2430,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&[]),
                     item_shape: IxDyn(t.shape()),
                     relay_shape: None,
+                    contains_accelerator_calls: false,
                 }),
                 _ => panic!(),
             },
@@ -2449,6 +2484,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         ]
                         .concat(),
                     )),
+                    contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
             List(list) => {
@@ -2529,6 +2565,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     relay_shape: None,
+                    contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
             &AccessInsertAxis([access_id, axis_id]) => {
@@ -2696,6 +2733,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: shape.clone(),
                     relay_shape: Some(shape),
                     item_shape: IxDyn(&[]),
+                    contains_accelerator_calls: false,
                 })
             }
             &AccessShiftRight(a_id) => {
@@ -2728,6 +2766,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&combined[..(a.shape.ndim().saturating_sub(1))]),
                     item_shape: IxDyn(&combined[(a.shape.ndim().saturating_sub(1))..]),
                     relay_shape: None,
+                    contains_accelerator_calls: a.contains_accelerator_calls,
                 })
             }
             &AccessPair([a0_id, a1_id]) => {
@@ -2769,6 +2808,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()
                             .as_slice(),
                     ),
+                    contains_accelerator_calls: a0.contains_accelerator_calls
+                        || a1.contains_accelerator_calls,
                 })
             }
             &AccessSlice([access_id, axis_id, low_id, high_id]) => {
@@ -2850,6 +2891,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::Shape(s) => s.shape.clone(),
                         _ => panic!(),
                     },
+                    contains_accelerator_calls: false,
                 })
             }
             Shape(list) => MyAnalysisData::Shape(ShapeData {
@@ -2868,6 +2910,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         item_shape: IxDyn(&[]),
                         zero_regions: HashMap::default(),
                         relay_shape: None,
+                        contains_accelerator_calls: false,
                     },
                     _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
@@ -2912,6 +2955,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&[a.shape.as_array_view().iter().product()]),
                     item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
                     relay_shape: None,
+                    contains_accelerator_calls: a.contains_accelerator_calls,
                 })
             }
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
@@ -2954,6 +2998,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: a0.shape.clone(),
                             item_shape: ndarray::IxDyn(&[]),
                             relay_shape: a0.relay_shape.clone(),
+                            contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
                     self::ComputeType::Softmax => {
@@ -2979,6 +3024,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: a0.shape.clone(),
                             item_shape: a0.item_shape.clone(),
                             relay_shape: a0.relay_shape.clone(),
+                            contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
                     self::ComputeType::ElementwiseAdd
@@ -3003,6 +3049,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&a0.item_shape.slice()[1..]),
                             relay_shape: None,
+                            contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
                     self::ComputeType::DotProduct => {
@@ -3034,6 +3081,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
                             relay_shape: None,
+                            contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
                     self::ComputeType::ReduceSum | self::ComputeType::ReduceMax => {
@@ -3054,6 +3102,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
                             relay_shape: Some(a0.shape.clone()),
+                            contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
                     self::ComputeType::ReLU
@@ -3143,6 +3192,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: new_shape.clone(),
                     item_shape: new_item_shape.clone(),
                     relay_shape: Some(IxDyn(&[new_shape.slice(), new_item_shape.slice()].concat())),
+                    contains_accelerator_calls: a0.contains_accelerator_calls
+                        || a1.contains_accelerator_calls,
                 })
             }
             &SliceShape([shape_id, dim_id]) => {
@@ -3227,6 +3278,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&shape[..dim]),
                     item_shape: IxDyn(&shape[dim..]),
                     relay_shape: Some(IxDyn(&shape)),
+                    contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
             &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
@@ -3389,6 +3441,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                     item_shape: IxDyn(&[]),
                     relay_shape: None,
+                    contains_accelerator_calls: a0.contains_accelerator_calls
+                        || a1.contains_accelerator_calls,
                 })
             }
             &Slice([tensor_id, axis_id, low_id, high_id]) => {
@@ -3521,6 +3575,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                     item_shape: filters_shape.clone(),
                     relay_shape: None,
+                    contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
 
