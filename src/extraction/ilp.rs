@@ -436,7 +436,7 @@ pub fn create_generic_egraph_lp_model<'a>(
                 let large_number = number_of_classes_f64;
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
-                    -large_number,
+                    1.0 - large_number,
                     format!("topo sort eclass {}", child_eclass_id),
                 );
                 con.add_wvar(WeightedVariable::new_idx(*this_eclass_topo_sort_var, 1.0));
