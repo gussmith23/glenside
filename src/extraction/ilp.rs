@@ -551,7 +551,7 @@ pub fn extract_single_expression(
         // new expression.
         let converted_node = selected_variant.clone().map_children(|id| {
             *old_id_to_new_id_map
-                .get(&id)
+                .get(&egraph_lp_problem.egraph.find(id.clone()))
                 .unwrap_or_else(|| panic!("id {} in enode {:?} not found!", id, selected_variant))
         });
 
