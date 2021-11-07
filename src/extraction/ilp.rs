@@ -312,16 +312,20 @@ pub fn create_generic_egraph_lp_model<'a>(
     let number_of_classes_f64 = egraph.number_of_classes() as f64;
     // Create all of the variables
     for eclass in egraph.classes() {
+        let canonical_id = egraph.find(eclass.id);
+        if bq_vars.contains_key(&canonical_id) {
+            continue;
+        }
         {
-            let bq_name = format!("bq_{}", eclass.id);
+            let bq_name = format!("bq_{}", canonical_id);
             let bq_var = var!(bq_name -> 1.0 as Binary);
             let column_index = problem.add_variable(bq_var).unwrap();
-            assert!(!bq_vars.contains_key(&eclass.id));
-            bq_vars.insert(eclass.id, column_index);
+            assert!(!bq_vars.contains_key(&canonical_id));
+            bq_vars.insert(canonical_id, column_index);
         }
 
         {
-            let topo_sort_var_name = format!("topo_sort_{}", eclass.id);
+            let topo_sort_var_name = format!("topo_sort_{}", canonical_id);
             // TODO(@gussmith23) the `as f64` thing here is potentially a bug
             let topo_sort_var = Variable::new(
                 VariableType::Integer,
@@ -331,13 +335,13 @@ pub fn create_generic_egraph_lp_model<'a>(
                 topo_sort_var_name,
             );
             let column_index = problem.add_variable(topo_sort_var).unwrap();
-            assert!(!topo_sort_vars.contains_key(&eclass.id));
-            topo_sort_vars.insert(eclass.id, column_index);
+            assert!(!topo_sort_vars.contains_key(&canonical_id));
+            topo_sort_vars.insert(canonical_id, column_index);
         }
 
         // Filter out enodes that the user doesn't want variables for.
         let mut var_count = 0;
-        for enode in eclass
+        for enode in egraph[canonical_id]
             .nodes
             .iter()
             .filter(|node| filter_enode(node, eclass.id, egraph))
@@ -355,8 +359,8 @@ pub fn create_generic_egraph_lp_model<'a>(
     }
 
     // All roots must be chosen.
-    for id in roots {
-        let column_index = bq_vars.get(id).unwrap();
+    for id in roots.iter().map(|id| egraph.find(*id)) {
+        let column_index = bq_vars.get(&id).unwrap();
         let mut con = Constraint::new(ConstraintType::Eq, 1.0, format!("root constraint {}", id));
         con.add_wvar(WeightedVariable::new_idx(*column_index, 1.0));
         problem.add_constraint(con).unwrap();
@@ -404,8 +408,8 @@ pub fn create_generic_egraph_lp_model<'a>(
         // Implemented as
         // -bn + bq >= 0 for each bq
         for (bn_idx, node) in &bn_idxs_and_nodes {
-            for eclass_id in node.children().iter() {
-                let bq_idx = bq_vars.get(eclass_id).unwrap();
+            for eclass_id in node.children().iter().map(|id| egraph.find(*id)) {
+                let bq_idx = bq_vars.get(&eclass_id).unwrap();
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
                     0.0,
@@ -431,8 +435,8 @@ pub fn create_generic_egraph_lp_model<'a>(
         // some_large_number, in this case, can just be num_classes
         let this_eclass_topo_sort_var = topo_sort_vars.get(id).unwrap();
         for (bn_idx, node) in &bn_idxs_and_nodes {
-            for child_eclass_id in node.children().iter() {
-                let child_eclass_topo_sort_var = topo_sort_vars.get(child_eclass_id).unwrap();
+            for child_eclass_id in node.children().iter().map(|id| egraph.find(*id)) {
+                let child_eclass_topo_sort_var = topo_sort_vars.get(&child_eclass_id).unwrap();
                 let large_number = number_of_classes_f64;
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
