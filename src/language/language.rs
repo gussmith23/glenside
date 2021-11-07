@@ -1268,7 +1268,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     assert_eq!(to_shape, from_shape);
                     assert_eq!(to_item_shape, from_item_shape);
                 }
-                if *from_contains_accel_calls && !*to_contains_accel_calls {
+                if *from_contains_accel_calls {
                     *to_contains_accel_calls = true;
                 }
 
