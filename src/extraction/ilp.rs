@@ -367,6 +367,36 @@ pub fn create_generic_egraph_lp_model<'a>(
     }
 
     for (id, bq_idx) in bq_vars.iter() {
+        // If an eclass is selected, then at least one of its parents must be selected
+        // if all its parents are filtered out, then this eclass must not be selected
+        let mut available_parents = vec![];
+        for p in egraph[*id].parents.iter() {
+            if let Some(parent_idx) = bn_vars.get(&p.0) {
+                available_parents.push(parent_idx);
+            }
+        }
+
+        if available_parents.len() == 0 && !roots.contains(&id) {
+            let mut con = Constraint::new(ConstraintType::Eq,
+                0.0,
+                format!("Disable eclass {} because it doesn't have an available parent", id));
+            con.add_wvar(WeightedVariable::new_idx(*bq_idx, 1.0));
+            problem.add_constraint(con).unwrap();
+            continue;
+        } else {
+            // bq => OR p_idx for p_idx in bq of eclass parents
+            let mut con = Constraint::new(
+                ConstraintType::GreaterThanEq,
+                0.0,
+                format!("Need to choose parents for {}", id),
+            );
+            con.add_wvar(WeightedVariable::new_idx(*bq_idx, -1.0));
+            for p_idx in available_parents.into_iter() {
+                con.add_wvar(WeightedVariable::new_idx(*p_idx, 1.0));
+            }
+            problem.add_constraint(con).unwrap();
+        }
+
         // We only allow the extraction of certain nodes. This gets a list of
         // all of ILP variable indices for enode variables and their
         // corresponding enodes, for enodes that passed through the
@@ -400,36 +430,6 @@ pub fn create_generic_egraph_lp_model<'a>(
             con.add_wvar(WeightedVariable::new_idx(*bq_idx, -1.0));
             for (bn_idx, _) in &bn_idxs_and_nodes {
                 con.add_wvar(WeightedVariable::new_idx(*bn_idx, 1.0));
-            }
-            problem.add_constraint(con).unwrap();
-        }
-
-        // If an eclass is selected, then at least one of its parents must be selected
-        // if all its parents are filtered out, then this eclass must not be selected
-        let mut available_parents = vec![];
-        for p in egraph[*id].parents.iter() {
-            if let Some(parent_idx) = bn_vars.get(&p.0) {
-                available_parents.push(parent_idx);
-            }
-        }
-
-        if available_parents.len() == 0 {
-            let mut con = Constraint::new(ConstraintType::Eq,
-                0.0,
-                format!("Disable eclass {} because it doesn't have an available parent", id));
-            con.add_wvar(WeightedVariable::new_idx(*bq_idx, 1.0));
-            problem.add_constraint(con).unwrap();
-            continue;
-        } else {
-            // bq => OR p_idx for p_idx in bq of eclass parents
-            let mut con = Constraint::new(
-                ConstraintType::GreaterThanEq,
-                0.0,
-                format!("Need to choose parents for {}", id),
-            );
-            con.add_wvar(WeightedVariable::new_idx(*bq_idx, -1.0));
-            for p_idx in available_parents.into_iter() {
-                con.add_wvar(WeightedVariable::new_idx(*p_idx, 1.0));
             }
             problem.add_constraint(con).unwrap();
         }
