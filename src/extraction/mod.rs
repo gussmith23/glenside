@@ -243,7 +243,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
         C: FnMut(Id) -> Self::Cost,
     {
         if let Language::AcceleratorCall(_) = &enode {
-            return -self.0;
+            return -self.0 * 100.0;
         }
         let base_cost: f64 = match enode {
             // We only consider accelerator calls and relay operators for now when
@@ -307,7 +307,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
                 _ => 100.0,
             },
             Language::AccessPair(_) => self.0,
-            _ => self.0,
+            _ => self.0 / 10.0,
         };
         enode.fold(base_cost, |sum, id| sum + costs(id))
     }
