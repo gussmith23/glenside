@@ -423,9 +423,9 @@ pub fn create_generic_egraph_lp_model<'a>(
             // That is, if an eclass is selected, at least one of its variants
             // is selected.
             // implemented as:
-            // -bq + bn ... >= 0
+            // -bq + bn ... == 0
             let mut con = Constraint::new(
-                ConstraintType::GreaterThanEq,
+                ConstraintType::Eq,
                 0.0,
                 format!("must select enode for eclass {}", id),
             );
