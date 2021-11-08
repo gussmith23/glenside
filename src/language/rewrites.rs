@@ -932,12 +932,12 @@ pub fn access_reshape_to_relay() -> RW {
 }
 
 pub fn dot_product_with_vta() -> RW {
-    // fn no_access_dim(x: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-    //     move |egraph, _, subst| match &egraph[subst[x]].data {
-    //         MyAnalysisData::AccessPattern(access) => access.shape.ndim() == 1,
-    //         _ => false,
-    //     }
-    // }
+    fn dim_supported(x: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match &egraph[subst[x]].data {
+            MyAnalysisData::AccessPattern(access) => access.shape.ndim() + access.item_shape.ndim() == 2,
+            _ => false,
+        }
+    }
     // struct ApplierImpl(Var, Var);
     // impl Applier<Language, MyAnalysis> for ApplierImpl {
     //     fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
@@ -949,7 +949,9 @@ pub fn dot_product_with_vta() -> RW {
     // }
     rewrite!("dot-product-on-vta";
         "(compute dot-product (access-cartesian-product ?x ?w))"
-        => "(accelerator-call vta-dense ?x ?w)")
+        => "(accelerator-call vta-dense ?x ?w)"
+            if dim_supported("?x".parse().unwrap())
+            if dim_supported("?w".parse().unwrap()))
 }
 
 pub fn dot_product_to_linear() -> RW {
