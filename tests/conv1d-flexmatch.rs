@@ -20,7 +20,7 @@ fn test_conv1d_flexmatch() {
     // }
     // "#;
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-    let (expr, shape_info, equiv_worklist) =
+    let (expr, shape_info, dtype_info, equiv_worklist) =
         glenside::language::from_relay::from_relay(&module, false, &vec![]);
     let mut env = HashMap::default();
     for (name, shape) in &shape_info {
@@ -28,6 +28,7 @@ fn test_conv1d_flexmatch() {
     }
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
+        name_to_dtype: dtype_info.iter().cloned().collect(),
     });
     let rws = vec![
         glenside::language::rewrites::flatten_unflatten_any_access(),
@@ -63,6 +64,7 @@ fn test_conv1d_flexmatch() {
     let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
     egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
+        name_to_dtype: dtype_info.into_iter().collect(),
     });
     let (_, id_map) = egraph.add_expr_with_record(&best);
     let mut native_map = HashMap::new();

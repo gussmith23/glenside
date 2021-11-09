@@ -693,8 +693,17 @@ pub enum MyAnalysisData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum DataType {
+    Bool,
+    Int(usize),
+    Float(usize),
+    Uint(usize),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShapeData {
     pub shape: IxDyn,
+    pub dtype: DataType,
 }
 
 /// New version of rangeset.
@@ -1087,7 +1096,8 @@ impl AccessPatternData {
     ///         shape: ndarray::IxDyn(&[1, 2, 3]),
     ///         item_shape: ndarray::IxDyn(&[4, 5]),
     ///         zero_regions: std::collections::HashMap::default(),
-    ///         relay_shape: None
+    ///         relay_shape: None,
+    ///         contains_accelerator_calls: false,
     ///     }
     ///     .as_vec(),
     ///     vec![1, 2, 3, 4, 5]
@@ -1167,6 +1177,7 @@ pub struct MyAnalysisDataLegacyData {
 #[derive(Default)]
 pub struct MyAnalysis {
     pub name_to_shape: HashMap<String, Vec<usize>>,
+    pub name_to_dtype: HashMap<String, DataType>,
 }
 impl MyAnalysis {
     pub fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
@@ -1184,6 +1195,12 @@ impl MyAnalysis {
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         match &egraph[id].data {
             MyAnalysisData::Shape(s) => &s.shape,
+            _ => panic!(),
+        }
+    }
+    pub(crate) fn get_dtype(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &DataType {
+        match &egraph[id].data {
+            MyAnalysisData::Shape(s) => &s.dtype,
             _ => panic!(),
         }
     }
@@ -2904,6 +2921,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .collect::<Vec<_>>()
                         .as_slice(),
                 ),
+                dtype: DataType::Uint(64),
             }),
             &AccessReshape([access_id, access_shape_id]) => {
                 let a = match &egraph[access_id].data {
@@ -3207,6 +3225,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
                 MyAnalysisData::Shape(ShapeData {
                     shape: IxDyn(shape.as_array_view().slice(s![dim..]).to_slice().unwrap()),
+                    dtype: DataType::Uint(64),
                 })
             }
             &ShapeInsertAxis([shape_id, dim_id]) => {
@@ -3228,6 +3247,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()
                             .as_slice(),
                     ),
+                    dtype: DataType::Uint(64),
                 })
             }
             &ShapeRemoveAxis([shape_id, dim_id]) => {
@@ -3248,6 +3268,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()
                             .as_slice(),
                     ),
+                    dtype: DataType::Uint(64),
                 })
             }
             &Access([tensor_or_access_id, dim_id]) => {
@@ -3286,6 +3307,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
                 let mut new_shape = Self::get_shape(tensor_id, egraph).clone();
+                let dtype = Self::get_dtype(tensor_id, egraph).clone();
                 let src_axis = Self::get_usize(src_axis_id, egraph);
                 let dest_axis = Self::get_usize(dest_axis_id, egraph);
 
@@ -3295,7 +3317,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let tmp = new_shape[dest_axis];
                 new_shape[dest_axis] = new_shape[src_axis];
                 new_shape[src_axis] = tmp;
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
+                    dtype,
+                })
             }
             &CartesianProduct([t0_id, t1_id]) => {
                 let initial_shape_left: &IxDyn = Self::get_shape(t0_id, egraph);
@@ -3308,6 +3333,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                     initial_shape_left[initial_shape_left.as_array_view().len() - 1],
                     initial_shape_right[initial_shape_right.as_array_view().len() - 1],
                 );
+                let t0_dtype = Self::get_dtype(t0_id, egraph);
+                let t1_dtype = Self::get_dtype(t1_id, egraph);
+                assert_eq!(t0_dtype, t1_dtype);
 
                 // New shape is [a1, ..., an, b1, ..., bn, 2, c].
                 let mut new_shape: Vec<usize> = initial_shape_left
@@ -3333,10 +3361,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                         + 1
                         + 1
                 );
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
+                    dtype: t0_dtype.clone(),
+                })
             }
             &MapDotProduct(tensor_id) => {
                 let shape: &IxDyn = Self::get_shape(tensor_id, egraph);
+                let dtype = Self::get_dtype(tensor_id, egraph).clone();
 
                 assert!(shape.as_array_view().len() >= 3);
                 assert_eq!(shape[shape.as_array_view().len() - 2], 2);
@@ -3349,7 +3381,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .copied()
                         .collect::<Vec<usize>>()[..],
                 );
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
+                    dtype,
+                })
             }
             &BsgSystolicArray([rows_id, cols_id, t0_id, t1_id]) => {
                 // Check that the rows and cols are usizes.
@@ -3360,6 +3395,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let right_shape = Self::get_shape(t1_id, egraph);
                 let left_shape_len: usize = left_shape.as_array_view().len();
                 let right_shape_len: usize = right_shape.as_array_view().len();
+                let left_dtype = Self::get_dtype(t0_id, egraph);
+                let right_dtype = Self::get_dtype(t1_id, egraph);
 
                 // TODO(@gussmith23) check that the rows/cols params sizes are correct
                 // given the input tensor shapes.
@@ -3367,6 +3404,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 // Assumptions I'm making right now.
                 assert!(left_shape_len == 1 || left_shape_len == 2);
                 assert_eq!(right_shape_len, 2);
+                assert_eq!(left_dtype, right_dtype);
 
                 let new_shape: Vec<ndarray::Ix> = left_shape
                     .as_array_view()
@@ -3377,6 +3415,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .collect();
                 MyAnalysisData::Shape(ShapeData {
                     shape: ndarray::IxDyn(&new_shape),
+                    dtype: left_dtype.clone(),
                 })
             }
             &SystolicArray([rows_id, cols_id, a0_id, a1_id])
@@ -3450,6 +3489,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             &Slice([tensor_id, axis_id, low_id, high_id]) => {
                 let mut new_shape: IxDyn = Self::get_shape(tensor_id, egraph).clone();
+                let dtype = Self::get_dtype(tensor_id, egraph).clone();
 
                 let axis: usize = Self::get_usize(axis_id, egraph);
                 let low: usize = Self::get_usize(low_id, egraph);
@@ -3460,7 +3500,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert!(high <= new_shape[axis]);
 
                 new_shape[axis] = high - low;
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
+                    dtype,
+                })
             }
             &Concatenate([t0_id, t1_id, axis_id]) => {
                 let axis = Self::get_usize(axis_id, egraph);
@@ -3471,16 +3514,26 @@ impl egg::Analysis<Language> for MyAnalysis {
                     t1_shape.as_array_view().len()
                 );
                 assert!(axis < t1_shape.as_array_view().len());
+                let h_dtype = Self::get_dtype(t0_id, egraph);
+                let t_dtype = Self::get_dtype(t1_id, egraph);
+                assert_eq!(h_dtype, t_dtype);
                 new_shape[axis] += t1_shape[axis];
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
+                MyAnalysisData::Shape(ShapeData {
+                    shape: new_shape,
+                    dtype: h_dtype.clone(),
+                })
             }
             &ElementwiseAdd([t0_id, t1_id]) => {
                 assert_eq!(
                     Self::get_shape(t0_id, egraph),
                     Self::get_shape(t1_id, egraph)
                 );
+                let left_dtype = Self::get_dtype(t0_id, egraph);
+                let right_dtype = Self::get_dtype(t1_id, egraph);
+                assert_eq!(left_dtype, right_dtype);
                 MyAnalysisData::Shape(ShapeData {
                     shape: Self::get_shape(t0_id, egraph).clone(),
+                    dtype: left_dtype.clone(),
                 })
             }
 
@@ -3526,6 +3579,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 .clone(),
                         })[..],
                     ),
+                    dtype: egraph
+                        .analysis
+                        .name_to_dtype
+                        .get(name)
+                        .unwrap_or_else(|| &DataType::Float(32))
+                        .clone(),
                 })
             }
             PadType(t) => MyAnalysisData::PadType(*t),
@@ -3584,7 +3643,8 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
 
             &ShapeOf([tensor_id]) => MyAnalysisData::Shape(ShapeData {
-                shape: MyAnalysis::get_shape(tensor_id, egraph).clone(),
+                shape: Self::get_shape(tensor_id, egraph).clone(),
+                dtype: Self::get_dtype(tensor_id, egraph).clone(),
             }),
         }
     }
@@ -4931,6 +4991,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
             name_to_shape: HashMap::default(),
+            name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
@@ -4954,8 +5015,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -4980,8 +5043,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         egraph.add_expr(&program);
     }
 
@@ -4999,8 +5064,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         egraph.add_expr(&program);
     }
 
@@ -5027,9 +5094,12 @@ mod tests {
         .parse()
         .unwrap();
         let mut map = HashMap::default();
+        let name_to_dtype = [("a".into(), DataType::Float(32))].into();
         map.insert("a".to_string(), vec![4, 5, 6]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype,
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5053,9 +5123,12 @@ mod tests {
         .parse()
         .unwrap();
         let mut map = HashMap::new();
+        let name_to_dtype = [("t".into(), DataType::Float(32))].into();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype,
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5078,8 +5151,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::new();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5102,8 +5177,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::new();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5128,8 +5205,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 5, 6]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         egraph.add_expr(&program);
     }
 
@@ -5143,8 +5222,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 6]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         egraph.add_expr(&program);
     }
 
@@ -5346,8 +5427,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5371,8 +5454,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5396,8 +5481,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5422,8 +5509,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let _id = egraph.add_expr(&program);
     }
 
@@ -5447,8 +5536,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5480,8 +5571,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5503,8 +5596,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5529,8 +5624,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5551,8 +5648,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5573,6 +5672,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
             name_to_shape: HashMap::default(),
+            name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
@@ -5599,8 +5699,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5626,8 +5728,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5654,8 +5758,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5678,8 +5784,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5702,8 +5810,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5727,8 +5837,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5750,8 +5862,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5775,8 +5889,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5801,8 +5917,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5826,8 +5944,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5851,8 +5971,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5877,8 +5999,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5902,8 +6026,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5924,8 +6050,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5950,8 +6078,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5974,8 +6104,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -5996,8 +6128,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6019,8 +6153,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6042,8 +6178,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6070,8 +6208,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6098,8 +6238,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6128,8 +6270,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6158,8 +6302,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
@@ -6180,8 +6326,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::Tuple(a) => {
@@ -6208,8 +6356,10 @@ mod tests {
          "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(b) => {
