@@ -72,6 +72,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::SystolicArrayWithBlocking(_)
             | Language::Usize(_)
             | Language::Int32(_)
+            | Language::Uint8(_)
             | Language::ConstructTuple(_)
             | Language::TupleGetItem(_)
             | Language::AccessSlice(_)
@@ -223,8 +224,8 @@ impl CostFunction<Language> for SimpleCostFunction {
             | AccessBroadcast(_) => 1,
             // Other glenside constructs that are necessary.
             Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
-            | List(_) | AccessShape(_) | Usize(_) | Int32(_) | PadType(_) | ComputeType(_)
-            | Symbol(_) | Literal(_) | NotNanFloat64(_) => 1,
+            | List(_) | AccessShape(_) | Usize(_) | Int32(_) | Uint8(_) | PadType(_)
+            | ComputeType(_) | Symbol(_) | Literal(_) | NotNanFloat64(_) => 1,
             // Old constructs that are no longer used
             MoveAxis(_) | CartesianProduct(_) | MapDotProduct(_) | Slice(_) | Concatenate(_)
             | ElementwiseAdd(_) | BsgSystolicArray(_) => std::usize::MAX,
@@ -259,6 +260,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::RelayOperatorCall(_)
             | Language::PadType(_)
             | Language::Int32(_)
+            | Language::Uint8(_)
             | Language::AccessTensor(_) => 0.0,
             Language::RelayOperator(op) => match op {
                 crate::language::RelayOperator::RelayReshape

@@ -14,6 +14,7 @@ pub enum Value<DataType> {
     Access(Access<DataType>),
     Usize(usize),
     Int32(i32),
+    Uint8(u8),
     Shape(IxDyn),
     ComputeType(ComputeType),
     PadType(PadType),
@@ -959,6 +960,7 @@ where
         ),
         &Language::Usize(u) => Value::Usize(u),
         &Language::Int32(x) => Value::Int32(x),
+        &Language::Uint8(u) => Value::Uint8(u),
 
         &Language::MoveAxis(_)
         | &Language::CartesianProduct(_)
