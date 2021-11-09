@@ -38,7 +38,8 @@ fn mobilenet_try_to_run_rewrites() {
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, _) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shapes_vec, dtypes_vec, _) =
+        glenside::language::from_relay::from_relay(&module, false, &vec![]);
 
     let mut env = HashMap::default();
     for (k, v) in &shapes_vec {
@@ -51,6 +52,7 @@ fn mobilenet_try_to_run_rewrites() {
     // from_relay.py. It can be simpler (e.g. collapsing accesses).
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
+        name_to_dtype: dtypes_vec.into_iter().collect(),
     });
     let _id = egraph.add_expr(&expr);
 
