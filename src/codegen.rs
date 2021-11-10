@@ -295,7 +295,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
-            Language::FlexASRMaxPool(_) => todo!(),
             Language::RelayOperator(_) => {}
             Language::ConstantTensor(_) => {}
             Language::RelayKernelLayout(_) => {}
@@ -411,8 +410,6 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             assert_eq!(expr[id].nodes.len(), 1);
             &expr[id].nodes[0]
         } {
-            Language::FlexASRMaxPool(_) => todo!(),
-
             // Id
             &Language::AccessTensor(id) | &Language::AccessFlatten(id) => {
                 helper(worklist, expr, id);
@@ -683,8 +680,6 @@ fn codegen_helper(
         }
         &expr[id].nodes[0]
     } {
-        Language::FlexASRMaxPool(_) => todo!(),
-
         // TODO(mike): we probably could make codegen happen here
         Language::AcceleratorCall(_ids) => None,
         Language::ConstantTensor(_ids) => None,
@@ -700,6 +695,7 @@ fn codegen_helper(
                 RelayOperator::RelayConv2D => todo!(),
                 RelayOperator::RelayErf => todo!(),
                 RelayOperator::RelayMean => todo!(),
+                RelayOperator::RelaySplit => todo!(),
                 RelayOperator::RelayMultiply => todo!(),
                 RelayOperator::RelayBatchNormInference => {
                     let data = get_c_variable_for_id(expr, ids[1]);
