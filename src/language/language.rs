@@ -5191,7 +5191,10 @@ mod tests {
         .parse()
         .unwrap();
         let mut map = HashMap::default();
-        let name_to_dtype = [("a".into(), DataType::Float(32))].into();
+        let name_to_dtype = [("a".into(), DataType::Float(32))]
+            .iter()
+            .cloned()
+            .collect();
         map.insert("a".to_string(), vec![4, 5, 6]);
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
             name_to_shape: map,
@@ -5220,7 +5223,10 @@ mod tests {
         .parse()
         .unwrap();
         let mut map = HashMap::new();
-        let name_to_dtype = [("t".into(), DataType::Float(32))].into();
+        let name_to_dtype = [("t".into(), DataType::Float(32))]
+            .iter()
+            .cloned()
+            .collect();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
             name_to_shape: map,
