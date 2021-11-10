@@ -52,7 +52,6 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
         C: FnMut(Id) -> Self::Cost,
     {
         let base_cost = match enode {
-            Language::FlexASRMaxPool(_) => todo!(),
             &Language::SystolicArray([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
             | &Language::SystolicArrayWithBlocking([rows_id, cols_id, _tensor_0_id, _tensor_1_id])
                 if (
@@ -173,7 +172,6 @@ impl CostFunction<Language> for SimpleCostFunction {
     {
         use crate::language::Language::*;
         let base_cost = match enode {
-            Language::FlexASRMaxPool(_) => todo!(),
             Language::RelayOperator(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
@@ -276,7 +274,8 @@ impl CostFunction<Language> for AcceleratorCostFunction {
                 | crate::language::RelayOperator::RelayBiasAdd
                 | crate::language::RelayOperator::RelaySigmoid
                 | crate::language::RelayOperator::RelayLeakyReLU => 2.0,
-                crate::language::RelayOperator::RelayDense => 3.0,
+                crate::language::RelayOperator::RelayDense
+                | crate::language::RelayOperator::RelaySplit => 3.0,
                 crate::language::RelayOperator::RelayConv1D
                 | crate::language::RelayOperator::RelayConv2D
                 | crate::language::RelayOperator::RelayUpSampling
@@ -417,7 +416,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(
+        let ex = Extractor::new(
             &egraph,
             MonolithicCostFunction {
                 systolic_array_configuration: (16, 128),
@@ -457,7 +456,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(
+        let ex = Extractor::new(
             &egraph,
             MonolithicCostFunction {
                 egraph: &egraph,
@@ -529,7 +528,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(&egraph, SimpleCostFunction::default());
+        let ex = Extractor::new(&egraph, SimpleCostFunction::default());
 
         let (cost, best) = ex.find_best(id);
         assert!(cost < std::usize::MAX);
