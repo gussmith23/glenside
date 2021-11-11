@@ -297,6 +297,8 @@ define_language! {
 
         Uint8(u8),
 
+        DataType(DataType),
+
         // Important that this go after usize, so that usizes are parsed as
         // usizes, not as floats.
         NotNanFloat64(NotNan<f64>),
@@ -398,6 +400,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-split <data: access> <indices_or_sections: usize> <axis: usize>)
     RelaySplit,
+
+    /// (relay-operator relay-cast <data: access> <dtype: DataType>)
+    RelayCast,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -425,6 +430,7 @@ impl FromStr for RelayOperator {
             "relay-multiply" => Ok(RelayOperator::RelayMultiply),
             "relay-conv2d" => Ok(RelayOperator::RelayConv2D),
             "relay-split" => Ok(RelayOperator::RelaySplit),
+            "relay-cast" => Ok(RelayOperator::RelayCast),
             _ => Err(()),
         }
     }
@@ -457,6 +463,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayMultiply => "relay-mul",
                 RelayOperator::RelayConv2D => "relay-conv2d",
                 RelayOperator::RelaySplit => "relay-split",
+                RelayOperator::RelayCast => "relay-cast",
             }
         )
     }
@@ -684,6 +691,7 @@ pub enum MyAnalysisData {
     Usize(usize),
     Int32(i32),
     Uint8(u8),
+    DataType(DataType),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
     Tuple(Vec<MyAnalysisData>),
@@ -698,12 +706,50 @@ pub enum MyAnalysisData {
     AcceleratorFunc(AcceleratorFuncData),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Copy)]
 pub enum DataType {
     Bool,
     Int(usize),
     Float(usize),
     Uint(usize),
+}
+
+impl Display for DataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                DataType::Bool => "bool".into(),
+                DataType::Int(x) => format!("int{}", x),
+                DataType::Float(x) => format!("float{}", x),
+                DataType::Uint(x) => format!("uint{}", x),
+            }
+        )
+    }
+}
+
+impl FromStr for DataType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (dtype, bits) = match s.find(char::is_numeric) {
+            Some(idx) => s.split_at(idx),
+            None => (s, "32"),
+        };
+        if dtype == "bool" {
+            return Ok(DataType::Bool);
+        }
+        if let Ok(bits) = bits.parse::<usize>() {
+            match dtype {
+                "int" => Ok(DataType::Int(bits)),
+                "float" => Ok(DataType::Float(bits)),
+                "uint" => Ok(DataType::Uint(bits)),
+                _ => Err(format!("Not supported: {}", dtype))
+            }
+        } else {
+            Err(format!("cannot parse bits"))
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2176,6 +2222,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
+                    crate::language::RelayOperator::RelayCast => {
+                        match params[1..].iter().map(|id| &egraph[*id].data).collect::<Vec<_>>()[..] {
+                            [MyAnalysisData::AccessPattern(data), _] => {
+                                MyAnalysisData::AccessPattern(data.clone())
+                            }
+                            [MyAnalysisData::Shape(from_shape), MyAnalysisData::DataType(dtype)] => {
+                                MyAnalysisData::Shape(ShapeData {
+                                    shape: from_shape.shape.clone(),
+                                    dtype: dtype.clone(),
+                                })
+                            }
+                            _ => panic!("Invalid cast")
+                        }
+                    }
                     crate::language::RelayOperator::RelayReshape => {
                         let zero_regions = HashMap::default();
                         let access = match params[1..]
@@ -3069,7 +3129,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .collect::<Vec<_>>()
                         .as_slice(),
                 ),
-                dtype: DataType::Uint(64),
+                dtype: crate::language::DataType::Uint(64),
             }),
             &AccessReshape([access_id, access_shape_id]) => {
                 let a = match &egraph[access_id].data {
@@ -3373,7 +3433,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
                 MyAnalysisData::Shape(ShapeData {
                     shape: IxDyn(shape.as_array_view().slice(s![dim..]).to_slice().unwrap()),
-                    dtype: DataType::Uint(64),
+                    dtype: crate::language::DataType::Uint(64),
                 })
             }
             &ShapeInsertAxis([shape_id, dim_id]) => {
@@ -3395,7 +3455,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()
                             .as_slice(),
                     ),
-                    dtype: DataType::Uint(64),
+                    dtype: crate::language::DataType::Uint(64),
                 })
             }
             &ShapeRemoveAxis([shape_id, dim_id]) => {
@@ -3416,9 +3476,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()
                             .as_slice(),
                     ),
-                    dtype: DataType::Uint(64),
+                    dtype: crate::language::DataType::Uint(64),
                 })
             }
+            &DataType(dtype) => MyAnalysisData::DataType(dtype.clone()),
             &Access([tensor_or_access_id, dim_id]) => {
                 // TODO(@gussmith23) How to access tensor literals?
                 let dim = MyAnalysis::get_usize(dim_id, egraph);
@@ -3738,7 +3799,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .analysis
                         .name_to_dtype
                         .get(name)
-                        .unwrap_or_else(|| &DataType::Float(32))
+                        .unwrap_or_else(|| &crate::language::DataType::Float(32))
                         .clone(),
                 })
             }
@@ -6654,5 +6715,23 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+}
+
+#[test]
+fn test_relay_cast() {
+    let mut map = HashMap::default();
+    map.insert("data".to_string(), vec![2, 3, 32, 32]);
+    let dtypes = [("data".into(), crate::language::DataType::Int(32))].iter().cloned().collect();
+    let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map, name_to_dtype: dtypes });
+    let program = "
+    (relay-operator-call relay-cast data float32)
+    ";
+    let id = egraph.add_expr(&program.parse().unwrap());
+    match &egraph[id].data {
+        MyAnalysisData::Shape(shape) => {
+            assert_eq!(shape.dtype, crate::language::DataType::Float(32))
+        }
+        _ => panic!("Not a valid cast")
     }
 }

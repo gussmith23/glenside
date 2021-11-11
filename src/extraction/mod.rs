@@ -138,6 +138,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayOperator(_) => todo!(),
+            Language::DataType(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
             Language::RelayKernelLayout(_) => todo!(),
         };
@@ -176,6 +177,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
             Language::RelayKernelLayout(_) => todo!(),
+            Language::DataType(_) => todo!(),
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
@@ -264,6 +266,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::ConstructTuple(_)
             | Language::ConstantTensor(_)
             | Language::TupleGetItem(_)
+            | Language::DataType(_)
             | Language::AccessTensor(_) => 0.0,
             Language::RelayOperatorCall(_) => self.0 / 100.0,
             Language::AccessTranspose(_)

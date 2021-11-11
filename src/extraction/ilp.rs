@@ -65,6 +65,7 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
                     | Language::Uint8(_)
                     | Language::NotNanFloat64(_)
                     | Language::RelayOperator(_)
+                    | Language::DataType(_)
                     | Language::Symbol(_) => true,
 
                 // Things I'm not sure about.
@@ -141,6 +142,7 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::RelayKernelLayout(_)
             | Language::AcceleratorCall(_)
             | Language::AcceleratorFunc(_)
+            | Language::DataType(_)
             | Language::SystolicArrayWithBlocking(_) => true,
 
             Language::Shape(_)
