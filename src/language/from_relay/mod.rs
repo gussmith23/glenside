@@ -12,7 +12,7 @@ use tvm::ir::tir::*;
 use tvm::ir::ty::*;
 use tvm::runtime::IsObjectRef;
 
-use super::ComputeType;
+use super::{ComputeType, MyAnalysisData};
 use super::PadType;
 use super::RelayOperator;
 
@@ -667,6 +667,8 @@ pub fn dtype_from_type(t: tvm::ir::ty::Type) -> crate::language::DataType {
         crate::language::DataType::Int(32)
     } else if dtype == "uint8".parse().unwrap() {
         crate::language::DataType::Uint(8)
+    } else if dtype == "int64".parse().unwrap() {
+        crate::language::DataType::Int(64)
     } else {
         panic!("Unsupported data type: {:?}", dtype)
     }
@@ -685,8 +687,10 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
         });
     assert!(
         tensor_type.dtype.clone() == "float32".parse().unwrap()
-            || tensor_type.dtype.clone() == "int32".parse().unwrap(),
-        "only supporting float32x1 and int32x1 at the moment"
+            || tensor_type.dtype.clone() == "int32".parse().unwrap()
+            || tensor_type.dtype.clone() == "int64".parse().unwrap(),
+        "only supporting float32x1 and int32x1 and int64x1 at the moment, but got {}",
+        tensor_type.dtype.clone()
     );
     let mut shape = Vec::<usize>::default();
     for j in 0..tensor_type.shape.len() {
@@ -727,7 +731,7 @@ pub fn from_relay(
     use_opaque_operators_for: &Vec<RelayOperator>,
 ) -> (
     RecExpr<Language>,
-    Vec<(String, Vec<usize>)>,
+    Vec<(String, Vec<MyAnalysisData>)>,
     Vec<(String, crate::language::DataType)>,
     Vec<(Id, Id)>,
 ) {
