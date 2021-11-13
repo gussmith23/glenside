@@ -5,6 +5,7 @@ use crate::language::{Language, RelayActivationLayout, RelayKernelLayout};
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use tvm::ir::module::*;
 use tvm::ir::relay::*;
@@ -992,7 +993,27 @@ fn compile_expression(
         {
             match primitive_op.name.as_str().unwrap() {
                 "take" => {
-                    todo!()
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let indices_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::TakeAttrs>()
+                        .unwrap();
+
+                    let axis: usize = usize::try_from(attrs.axis.value).unwrap();
+                    let axis_id = glenside_expr.add(Language::Usize(axis));
+
+                    let take_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayTake,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![take_op_id, data_id, indices_id, axis_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
                 }
                 "nn.batch_norm" => {
                     assert!(simplify_batch_norm_for_inference_hack);
