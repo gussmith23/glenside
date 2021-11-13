@@ -749,7 +749,7 @@ impl FromStr for DataType {
                 "int" => Ok(DataType::Int(bits)),
                 "float" => Ok(DataType::Float(bits)),
                 "uint" => Ok(DataType::Uint(bits)),
-                _ => Err(format!("Not supported: {}", dtype))
+                _ => Err(format!("Not supported: {}", dtype)),
             }
         } else {
             Err(format!("cannot parse bits"))
@@ -2268,7 +2268,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayCast => {
-                        match params[1..].iter().map(|id| &egraph[*id].data).collect::<Vec<_>>()[..] {
+                        match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
                             [MyAnalysisData::AccessPattern(data), _] => {
                                 MyAnalysisData::AccessPattern(data.clone())
                             }
@@ -2278,7 +2282,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     dtype: dtype.clone(),
                                 })
                             }
-                            _ => panic!("Invalid cast")
+                            _ => panic!("Invalid cast"),
                         }
                     }
                     crate::language::RelayOperator::RelayReshape => {
