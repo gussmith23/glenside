@@ -49,7 +49,7 @@ git = "https://github.com/gussmith23/rplex"
 # If the versions get out of whack, we'll probably have some weird errors.
 # rev = "4ed759f6b6cafbab707f95b57762913a1f57c021"
 # git = "https://github.com/hypercubestart/incubator-tvm"
-git = "ssh://git@github.com/uwsampl/3la-tvm.git"
+# git = "ssh://git@github.com/uwsampl/3la-tvm.git"
 # branch = "3la-pldi-push-main"
 rev = "0d3c609220ae79859dd46c77d7eb66d60cf880aa"
 optional = true
