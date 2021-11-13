@@ -992,6 +992,30 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.dropout" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::DropoutAttrs>()
+                        .unwrap();
+
+                    let rate = attrs.rate;
+
+                    let rate_id =
+                        glenside_expr.add(Language::NotNanFloat64(NotNan::try_from(rate).unwrap()));
+
+                    let dropout_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayDropout,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![dropout_op_id, data_id, rate_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
                 "take" => {
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let indices_id = get_compiled_expression(call.args.get(1).unwrap());
@@ -2197,8 +2221,8 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
                     let axis = attrs.axis;
-                    assert!(axis >= 0);
-                    let axis_id = glenside_expr.add(Language::Int32(axis.try_into().unwrap()));
+                    //assert!(axis >= 0);
+                    let axis_id = glenside_expr.add(Language::Int32(axis));
                     let relay_operator_id =
                         glenside_expr.add(Language::RelayOperator(RelayOperator::RelaySplit));
 
@@ -2483,7 +2507,9 @@ fn compile_expression(
                         .unwrap();
 
                     // assume for efficientnet
-                    assert_eq!(attrs.axis.len(), 2);
+                    // I don't think this assumption is needed! I think the code
+                    // below is general-purpose.
+                    //assert_eq!(attrs.axis.len(), 2);
                     for i in (0..attrs.axis.len()).rev() {
                         let usize_id = glenside_expr.add(Language::Usize(
                             attrs
