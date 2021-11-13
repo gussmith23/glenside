@@ -694,6 +694,7 @@ fn codegen_helper(
             };
 
             match relay_op {
+                RelayOperator::RelayTanh => todo!(),
                 RelayOperator::RelayTake => todo!(),
                 RelayOperator::RelayConv1D => todo!(),
                 RelayOperator::RelayConv2D => todo!(),

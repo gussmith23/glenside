@@ -2354,6 +2354,25 @@ fn compile_expression(
                         todo!()
                     }
                 }
+                "tanh" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelayTanh)
+                    {
+                        let tanh_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayTanh,
+                        ));
+                        (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![tanh_id, data_id].into_boxed_slice(),
+                            )),
+                            None,
+                        )
+                    } else {
+                        todo!()
+                    }
+                }
                 "transpose" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
