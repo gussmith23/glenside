@@ -2476,8 +2476,7 @@ fn compile_expression(
                     (data_id, None)
                 }
                 op => {
-                    println!("{} operator not implemented", op);
-                    todo!()
+                    todo!("{} operator not implemented", op);
                 }
             }
         } else {
