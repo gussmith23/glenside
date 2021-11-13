@@ -51,10 +51,10 @@ fn test_resnet_flexmatch() {
     );
     let (_cost, best) = extractor.find_best(id);
     // let json_dump = best.serialize();
-    let model = best.pretty(80);
+    let _model = best.pretty(80);
     // println!("{}", model);
     // println!("{}", _cost);
-    let json_dump = best.serialize();
+    let _json_dump = best.serialize();
     let output_file = PathBuf::from(format!("{}/models/resnet.json", env!("CARGO_MANIFEST_DIR")));
     let _ = std::fs::write(output_file, best.to_string()).unwrap();
     egraph = EGraph::new(MyAnalysis {
