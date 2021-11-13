@@ -1120,6 +1120,29 @@ fn compile_expression(
                         None,
                     )
                 }
+                "nn.log_softmax" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
+                        .unwrap();
+
+                    assert!(use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayLogSoftmax));
+
+                    let log_softmax_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLogSoftmax,
+                    ));
+
+                    let axis_id =
+                        glenside_expr.add(Language::Int32(attrs.axis.try_into().unwrap()));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![log_softmax_id, data_id, axis_id].into_boxed_slice(),
+                    ));
+                    (opaque_call_id, None)
+                }
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
