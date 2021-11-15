@@ -349,8 +349,8 @@ pub fn conv2d(
             let operator_call_id = expr.add(Language::RelayOperatorCall(
                 vec![
                     operator_id,
-                    data_id,
-                    weights_id,
+                    operator_data_id,
+                    operator_weights_id,
                     operator_call_stride_id,
                     padding_id,
                     groups_id,
