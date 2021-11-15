@@ -318,7 +318,7 @@ pub fn conv2d(
             stride_list.push(expr.add(Language::Usize(1)));
             stride_list.push(expr.add(Language::Usize(strides[0])));
             stride_list.push(expr.add(Language::Usize(strides[1])));
-            let stride_shape_id =
+            let _stride_shape_id =
                 expr.add(Language::Shape(Box::from(stride_list.clone().as_slice())));
             let operator_call_stride_id = expr.add(Language::Shape(
                 stride_list[1..]
@@ -341,7 +341,7 @@ pub fn conv2d(
             for v in weights_shape[2..].iter() {
                 list.push(expr.add(Language::Usize(*v as usize)));
             }
-            let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+            let _weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
             let o_id = expr.add(Language::Usize(weights_shape[0]));
             let relay_operator_weight_shape_id = expr.add(Language::Shape(
                 vec![o_id, list[2], list[3]].into_boxed_slice(),
