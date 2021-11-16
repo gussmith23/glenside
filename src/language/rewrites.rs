@@ -1005,7 +1005,8 @@ pub fn bubble_reshape_through_linear_generalized() -> Vec<RW> {
                         .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
         }
     }
-    vec![rewrite!("bubble-reshape-through-linear";
+    vec![
+        rewrite!("bubble-reshape-through-linear";
             "(compute elementwise-add 
                 (access-pair 
                     (access 
@@ -1037,7 +1038,8 @@ pub fn bubble_reshape_through_linear_generalized() -> Vec<RW> {
         rewrite!("add-to-bias-add";
                 "(relay-operator-call relay-add ?x ?b)"
                 => "(relay-operator-call relay-bias-add ?x ?b 1)"
-                    if can_broadcast("?b".parse().unwrap()))]
+                    if can_broadcast("?b".parse().unwrap())),
+    ]
 }
 
 pub fn bubble_reshape_through_linear() -> RW {
