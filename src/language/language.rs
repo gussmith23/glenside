@@ -403,6 +403,15 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-cast <data: access> <dtype: DataType>)
     RelayCast,
+
+    /// (relay-operator relay-clip <data: access> <a_min: NonNanf64> <a_max: NonNanf64>)
+    RelayClip,
+
+    /// (relay-operator relay-left-shift <data: access> <nbits: i32>)
+    RelayLeftShift,
+
+    /// (relay-operator relay-right-shift <data: access> <nbits: i32>)
+    RelayRightShift,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -431,6 +440,9 @@ impl FromStr for RelayOperator {
             "relay-conv2d" => Ok(RelayOperator::RelayConv2D),
             "relay-split" => Ok(RelayOperator::RelaySplit),
             "relay-cast" => Ok(RelayOperator::RelayCast),
+            "relay-clip" => Ok(RelayOperator::RelayClip),
+            "relay-left-shift" => Ok(RelayOperator::RelayLeftShift),
+            "relay-right-shift" => Ok(RelayOperator::RelayRightShift),
             _ => Err(()),
         }
     }
@@ -464,6 +476,9 @@ impl Display for RelayOperator {
                 RelayOperator::RelayConv2D => "relay-conv2d",
                 RelayOperator::RelaySplit => "relay-split",
                 RelayOperator::RelayCast => "relay-cast",
+                RelayOperator::RelayClip => "relay-clip",
+                RelayOperator::RelayLeftShift => "relay-left-shift",
+                RelayOperator::RelayRightShift => "relay-right-shift",
             }
         )
     }
@@ -744,7 +759,7 @@ impl FromStr for DataType {
                 "int" => Ok(DataType::Int(bits)),
                 "float" => Ok(DataType::Float(bits)),
                 "uint" => Ok(DataType::Uint(bits)),
-                _ => Err(format!("Not supported: {}", dtype))
+                _ => Err(format!("Not supported: {}", dtype)),
             }
         } else {
             Err(format!("cannot parse bits"))
@@ -1834,6 +1849,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayLeftShift
+                    | crate::language::RelayOperator::RelayRightShift => {
+                        match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(access), _] => {
+                                MyAnalysisData::AccessPattern(access.clone())
+                            }
+                            [MyAnalysisData::Shape(shape), _] => {
+                                MyAnalysisData::AccessPattern(AccessPatternData {
+                                    shape: IxDyn(&[]),
+                                    item_shape: IxDyn(&shape.shape.slice()),
+                                    relay_shape: Some(IxDyn(&shape.shape.slice())),
+                                    zero_regions: HashMap::default(),
+                                    contains_accelerator_calls: false,
+                                })
+                            }
+                            _ => panic!("Invalid bit-shifting"),
+                        }
+                    }
                     crate::language::RelayOperator::RelayAdd
                     | crate::language::RelayOperator::RelayMultiply
                     | crate::language::RelayOperator::RelayMaximum
@@ -2220,7 +2257,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayCast => {
-                        match params[1..].iter().map(|id| &egraph[*id].data).collect::<Vec<_>>()[..] {
+                        match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
                             [MyAnalysisData::AccessPattern(data), _] => {
                                 MyAnalysisData::AccessPattern(data.clone())
                             }
@@ -2230,7 +2271,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     dtype: dtype.clone(),
                                 })
                             }
-                            _ => panic!("Invalid cast")
+                            _ => panic!("Invalid cast"),
+                        }
+                    }
+                    crate::language::RelayOperator::RelayClip => {
+                        match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(access), _, _] => {
+                                MyAnalysisData::AccessPattern(access.clone())
+                            }
+                            [MyAnalysisData::Shape(shape), _, _] => {
+                                MyAnalysisData::AccessPattern(AccessPatternData {
+                                    shape: IxDyn(&[]),
+                                    item_shape: IxDyn(&shape.shape.slice()),
+                                    relay_shape: Some(IxDyn(&shape.shape.slice())),
+                                    zero_regions: HashMap::default(),
+                                    contains_accelerator_calls: false,
+                                })
+                            }
+                            _ => panic!("Invalid Clip"),
                         }
                     }
                     crate::language::RelayOperator::RelayReshape => {
@@ -6719,8 +6781,14 @@ mod tests {
 fn test_relay_cast() {
     let mut map = HashMap::default();
     map.insert("data".to_string(), vec![2, 3, 32, 32]);
-    let dtypes = [("data".into(), crate::language::DataType::Int(32))].iter().cloned().collect();
-    let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map, name_to_dtype: dtypes });
+    let dtypes = [("data".into(), crate::language::DataType::Int(32))]
+        .iter()
+        .cloned()
+        .collect();
+    let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+        name_to_shape: map,
+        name_to_dtype: dtypes,
+    });
     let program = "
     (relay-operator-call relay-cast data float32)
     ";
@@ -6729,6 +6797,6 @@ fn test_relay_cast() {
         MyAnalysisData::Shape(shape) => {
             assert_eq!(shape.dtype, crate::language::DataType::Float(32))
         }
-        _ => panic!("Not a valid cast")
+        _ => panic!("Not a valid cast"),
     }
 }
