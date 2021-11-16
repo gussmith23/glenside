@@ -412,6 +412,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-right-shift <data: access> <nbits: i32>)
     RelayRightShift,
+
+    /// (relay-operator round <data: access>)
+     RelayRound,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -443,6 +446,7 @@ impl FromStr for RelayOperator {
             "relay-clip" => Ok(RelayOperator::RelayClip),
             "relay-left-shift" => Ok(RelayOperator::RelayLeftShift),
             "relay-right-shift" => Ok(RelayOperator::RelayRightShift),
+            "relay-round" => Ok(RelayOperator::RelayRound),
             _ => Err(()),
         }
     }
@@ -479,6 +483,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayClip => "relay-clip",
                 RelayOperator::RelayLeftShift => "relay-left-shift",
                 RelayOperator::RelayRightShift => "relay-right-shift",
+                RelayOperator::RelayRound => "relay-round",
             }
         )
     }
@@ -1849,6 +1854,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayRound => {
+                        match &egraph[params[1]].data {
+                            x @ MyAnalysisData::AccessPattern(_) => x.clone(),
+                            MyAnalysisData::Shape(shape) => MyAnalysisData::AccessPattern(AccessPatternData {
+                                shape: IxDyn(&[]),
+                                item_shape: IxDyn(&shape.shape.slice()),
+                                relay_shape: Some(IxDyn(&shape.shape.slice())),
+                                zero_regions: HashMap::default(),
+                                contains_accelerator_calls: false,
+                            }),
+                            _ => panic!("Invalid rounding"),
+                        }
+                    }
                     crate::language::RelayOperator::RelayLeftShift
                     | crate::language::RelayOperator::RelayRightShift => {
                         match params[1..]
