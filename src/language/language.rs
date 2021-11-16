@@ -418,7 +418,7 @@ pub enum RelayOperator {
     RelayRightShift,
 
     /// (relay-operator round <data: access>)
-     RelayRound,
+    RelayRound,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -1860,19 +1860,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                    crate::language::RelayOperator::RelayRound => {
-                        match &egraph[params[1]].data {
-                            x @ MyAnalysisData::AccessPattern(_) => x.clone(),
-                            MyAnalysisData::Shape(shape) => MyAnalysisData::AccessPattern(AccessPatternData {
+                    crate::language::RelayOperator::RelayRound => match &egraph[params[1]].data {
+                        x @ MyAnalysisData::AccessPattern(_) => x.clone(),
+                        MyAnalysisData::Shape(shape) => {
+                            MyAnalysisData::AccessPattern(AccessPatternData {
                                 shape: IxDyn(&[]),
                                 item_shape: IxDyn(&shape.shape.slice()),
                                 relay_shape: Some(IxDyn(&shape.shape.slice())),
                                 zero_regions: HashMap::default(),
                                 contains_accelerator_calls: false,
-                            }),
-                            _ => panic!("Invalid rounding"),
+                            })
                         }
-                    }
+                        _ => panic!("Invalid rounding"),
+                    },
                     crate::language::RelayOperator::RelayLeftShift
                     | crate::language::RelayOperator::RelayRightShift => {
                         match params[1..]
