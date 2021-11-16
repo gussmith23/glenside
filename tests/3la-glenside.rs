@@ -50,10 +50,8 @@ fn test_3la_glenside_linear_rewrite() {
         name_to_shape: env.clone(),
         name_to_dtype: dtypes_info.into_iter().collect(),
     });
-    let rws = vec![
-        glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
-        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
-    ];
+    let mut rws = vec![glenside::language::rewrites::linear_layer_accelerator_rewrites()];
+    rws.extend(glenside::language::rewrites::bubble_reshape_through_linear_generalized());
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
         if let (Some(&new_left), Some(&new_right)) = (id_map.get(&left), id_map.get(&right)) {

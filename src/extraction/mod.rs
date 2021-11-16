@@ -244,7 +244,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
         C: FnMut(Id) -> Self::Cost,
     {
         if let Language::AcceleratorCall(_) = &enode {
-            return -self.0 * 100.0;
+            return 0.0;
         }
         let base_cost: f64 = match enode {
             // We only consider accelerator calls and relay operators for now when
@@ -268,7 +268,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::TupleGetItem(_)
             | Language::DataType(_)
             | Language::AccessTensor(_) => 0.0,
-            Language::RelayOperatorCall(_) => self.0 / 100.0,
+            Language::RelayOperatorCall(_) => self.0 / 2.0,
             Language::AccessTranspose(_)
             | Language::RelayKernelLayout(_)
             | Language::RelayActivationLayout(_)
