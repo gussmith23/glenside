@@ -295,7 +295,11 @@ define_language! {
 
         Int32(i32),
 
+        Int64(i64),
+
         Uint8(u8),
+
+        Int8(i8),
 
         DataType(DataType),
 
@@ -710,6 +714,8 @@ pub enum MyAnalysisData {
     Literal(ndarray::ArrayD<f64>),
     Usize(usize),
     Int32(i32),
+    Int64(i64),
+    Int8(i8),
     Uint8(u8),
     DataType(DataType),
     AccessPattern(AccessPatternData),
@@ -3833,6 +3839,8 @@ impl egg::Analysis<Language> for MyAnalysis {
             Usize(u) => MyAnalysisData::Usize(*u),
             Int32(x) => MyAnalysisData::Int32(*x),
             Uint8(u) => MyAnalysisData::Uint8(*u),
+            Int64(x) => MyAnalysisData::Int64(*x),
+            Int8(x) => MyAnalysisData::Int8(*x),
             Symbol(name) => {
                 MyAnalysisData::Shape(ShapeData {
                     shape: ndarray::IxDyn(
