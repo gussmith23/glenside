@@ -7,11 +7,12 @@ use std::collections::HashMap;
 #[test]
 fn lstm_relay_to_glenside() {
     test_logger::ensure_env_logger_initialized();
+    // Note: we unwrap the "%hidden" argument from a tuple into two separate tensors.
+    // Note: we remove the first line that casts data to int32 from int64. we just assume data is int32.
     let relay = r#"
 #[version = "0.0.5"]
-def @main(%data: Tensor[(35, 10), int64], %hidden0: Tensor[(1, 10, 128), float32], %hidden1: Tensor[(1, 10, 128), float32], %encoder_weight: Tensor[(33278, 128), float32], %rnn_weight_ih_l0: Tensor[(512, 128), float32], %rnn_weight_hh_l0: Tensor[(512, 128), float32], %rnn_bias_ih_l0: Tensor[(512), float32], %rnn_bias_hh_l0: Tensor[(512), float32], %decoder_weight: Tensor[(33278, 128), float32], %decoder_bias: Tensor[(33278), float32]) {
-  %0 = cast(%data, dtype="int32");
-  %1 = take(%encoder_weight, %0, axis=0);
+def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32], %hidden1: Tensor[(1, 10, 128), float32], %encoder_weight: Tensor[(33278, 128), float32], %rnn_weight_ih_l0: Tensor[(512, 128), float32], %rnn_weight_hh_l0: Tensor[(512, 128), float32], %rnn_bias_ih_l0: Tensor[(512), float32], %rnn_bias_hh_l0: Tensor[(512), float32], %decoder_weight: Tensor[(33278, 128), float32], %decoder_bias: Tensor[(33278), float32]) {
+  %1 = take(%encoder_weight, %data, axis=0);
   %2 = nn.dropout(%1, rate=0.2f);
   %3 = %2.0;
   %4 = split(%3, indices_or_sections=35);
@@ -86,7 +87,7 @@ def @main(%data: Tensor[(35, 10), int64], %hidden0: Tensor[(1, 10, 128), float32
   %73 = squeeze(%38, axis=[0]);
   %74 = squeeze(%39, axis=[0]);
   %75 = (%40, %41, %42, %43, %44, %45, %46, %47, %48, %49, %50, %51, %52, %53, %54, %55, %56, %57, %58, %59, %60, %61, %62, %63, %64, %65, %66, %67, %68, %69, %70, %71, %72, %73, %74);
-  %76 = %hidden.0;
+  %76 = %hidden0;
   %77 = split(%76, indices_or_sections=1);
   %78 = %77.0;
   %79 = squeeze(%78, axis=[0]);
@@ -103,7 +104,7 @@ def @main(%data: Tensor[(35, 10), int64], %hidden0: Tensor[(1, 10, 128), float32
   %90 = split(%89, indices_or_sections=4, axis=-1);
   %91 = %90.3;
   %92 = %90.1;
-  %93 = %hidden.1;
+  %93 = %hidden1;
   %94 = split(%93, indices_or_sections=1);
   %95 = %94.0;
   %96 = squeeze(%95, axis=[0]);
