@@ -2278,7 +2278,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                                                 || weight.contains_accelerator_calls,
                                         }
                                     }
-                                    _ => panic!("Only supporting standard convolution or depthwise convolution (groups=={}) but groups == {}", c, *group),
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
