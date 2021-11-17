@@ -2728,9 +2728,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(_) | MyAnalysisData::Shape(_)] => {
-                                a.clone()
-                            }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Int32(_)
+                            | MyAnalysisData::Usize(_)
+                            | MyAnalysisData::Shape(_)] => a.clone(),
                             _ => panic!("Parameters do not type check"),
                         };
 
