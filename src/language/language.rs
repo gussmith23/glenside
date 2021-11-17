@@ -1,6 +1,7 @@
 use egg::{define_language, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::{debug, warn};
+use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
 use serde_json::json;
@@ -422,6 +423,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-take <data: access> <indices: access> <axis: usize>)
     RelayTake,
+
+    /// (relay-operator relay-dropout <data: access> <rate: f64>)
+    RelayDropout,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -455,6 +459,7 @@ impl FromStr for RelayOperator {
             "relay-right-shift" => Ok(RelayOperator::RelayRightShift),
             "relay-round" => Ok(RelayOperator::RelayRound),
             "relay-take" => Ok(RelayOperator::RelayTake),
+            "relay-dropout" => Ok(RelayOperator::RelayDropout),
             _ => Err(()),
         }
     }
@@ -493,6 +498,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayRightShift => "relay-right-shift",
                 RelayOperator::RelayRound => "relay-round",
                 RelayOperator::RelayTake => "relay-take",
+                RelayOperator::RelayDropout => "relay-dropout",
             }
         )
     }
@@ -1899,6 +1905,24 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                             _ => panic!("Invalid bit-shifting"),
                         }
+                    }
+                    crate::language::RelayOperator::RelayDropout => {
+                        let (access, _) = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Literal(f)] => (
+                                a.clone(),
+                                f.clone()
+                                    .into_dimensionality::<Ix0>()
+                                    .expect("Rate argument must be a scalar")
+                                    .into_scalar(),
+                            ),
+                            _ => panic!("Parameters do not type check"),
+                        };
+
+                        MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayTake => {
                         let (data, indices, axis) = match params[1..]
