@@ -2,12 +2,8 @@
 
 use std::{path::PathBuf, str::FromStr};
 
-use egg::{
-    rewrite, Applier, AstSize, CostFunction, EGraph, ENodeOrVar, Extractor, Id,
-    Language as LanguageTrait, Pattern, RecExpr, Runner, Searcher, Var,
-};
+use egg::{rewrite, EGraph, ENodeOrVar, Pattern, RecExpr, Runner, Searcher, Var};
 use glenside::language::{Language, MyAnalysis, MyAnalysisData};
-use num_traits::SaturatingAdd;
 
 /// Importing LSTM to Glenside.
 ///
@@ -122,26 +118,19 @@ fn lstm_relay_to_glenside() {
         Pattern::from(pattern_ast)
     };
 
-    println!("{}", pattern.pretty(80));
     assert_eq!(pattern.search(&egraph).len(), 1);
 
+
     let rewrite = rewrite!("flex-lstm"; 
-        { pattern } => "(accelerator-call flex-lstm x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)");
+        { pattern } => "(accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)");
 
     let runner = Runner::default().with_egraph(egraph).run(vec![&rewrite]);
 
+
     let matches = "
-     (accelerator-call flexlstm x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)"
+     (accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)"
         .parse::<Pattern<_>>()
         .unwrap()
         .search(&runner.egraph);
     assert_eq!(matches.len(), 1);
-
-    let matches = "
-     (construct-tuple ?a ?b)"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
-        .unwrap();
-    assert_eq!(matches.substs.len(), 1);
 }
