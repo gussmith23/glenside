@@ -2,7 +2,7 @@
 
 use egg::EGraph;
 use glenside::language::MyAnalysis;
-use std::collections::HashMap;
+
 
 #[test]
 fn lstm_relay_to_glenside() {
