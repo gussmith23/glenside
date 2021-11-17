@@ -111,7 +111,7 @@ pub fn conv1d(
     stride_list.push(expr.add(Language::Usize(strides[0])));
     let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
 
-    let usize_o_id = expr.add(Language::Usize(1));
+    let _usize_o_id = expr.add(Language::Usize(1));
     let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
     let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
     let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
