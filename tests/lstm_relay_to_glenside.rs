@@ -3,6 +3,13 @@
 use egg::EGraph;
 use glenside::language::{MyAnalysis, MyAnalysisData};
 
+/// Importing LSTM to Glenside.
+///
+/// LSTM is a good example of where multi-patterns in egg would be useful. LSTMs
+/// have multiple outputs which (at least in the Relay definition that I'm
+/// using) which don't necessarily all appear in a tuple together at the end.
+/// This means we can't match on all the outputs at the same time, as there's no
+/// single expression which represents the whole LSTM.
 #[test]
 fn lstm_relay_to_glenside() {
     test_logger::ensure_env_logger_initialized();
@@ -911,6 +918,7 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
 
     let id = egraph.add_expr(&expr);
 
+    // Check that the types match the expected Relay types.
     match &egraph[id].data {
         MyAnalysisData::Tuple(v) => match v.as_slice() {
             [MyAnalysisData::AccessPattern(a), MyAnalysisData::Tuple(t)] => {
