@@ -702,6 +702,7 @@ fn codegen_helper(
                 RelayOperator::RelayLeftShift => todo!(),
                 RelayOperator::RelayRightShift => todo!(),
                 RelayOperator::RelayClip => todo!(),
+                RelayOperator::RelayTake => todo!(),
                 RelayOperator::RelayConv1D => todo!(),
                 RelayOperator::RelayConv2D => todo!(),
                 RelayOperator::RelayErf => todo!(),
