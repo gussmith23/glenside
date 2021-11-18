@@ -1324,7 +1324,7 @@ pub fn serialize_analysis_data(
     let analysis_data = id_map
         .into_iter()
         .map(|(expr_id, eid)| {
-            let shape_dict: HashMap<String, Vec<usize>> = match &egraph[eid.clone()].data {
+            let shape_dict: HashMap<String, Vec<usize>> = match &egraph[egraph.find(eid.clone())].data {
                 MyAnalysisData::AccessPattern(access) => {
                     let mut analysis_dict = HashMap::default();
                     analysis_dict.insert(String::from("relay_shape"), access.as_vec());
@@ -1735,20 +1735,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
                 match accelerator_func_data.pattern {
                     crate::language::AcceleratorFunc::FlexLSTM => {
-                        // let mut access = match ids[1..]
-                        //     .iter()
-                        //     .map(|id| egraph[id].data)
-                        //     .collect::<Vec<_>>()
-                        // {
-                        //     [MyAnalysisData::AccessPattern(a)] => a.clone(),
-                        //     _ => panic!(),
-                        // };
 
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             zero_regions: HashMap::default(),
-                            shape: IxDyn(&[35, 1, 128]),
+                            shape: IxDyn(&[]),
                             item_shape: IxDyn(&[]),
-                            relay_shape: Some(IxDyn(&[35, 1, 128])),
+                            relay_shape: None,
                             contains_accelerator_calls: true,
                         })
                     }
