@@ -57,7 +57,7 @@ optional = true
 [dependencies.egg]
 # rev = "39415f19acdacd6dde62f40cb2bb08f8669acc85"
 git = "https://github.com/AD1024/egg"
-rev = "16e9428aaadcdc001ff80deb31f48e23e2b61d4a"
+rev = "b8f902f554cc476c397e4fd9c7bea229f946d2a9"
 features = ["serde-json"]
 
 [dependencies.ndarray]

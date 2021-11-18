@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
 use itertools::Itertools;
@@ -966,6 +968,67 @@ pub fn dot_product_to_linear() -> RW {
     rewrite!("dot-product-to-linear";
         "(compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1)))"
         => {ApplierImpl("?x".parse().unwrap(), "?w".parse().unwrap())})
+}
+
+pub fn lstm_to_flexasr() -> RW {
+    use std::path::PathBuf;
+    let pattern = {
+        let filename = PathBuf::from(format!(
+            "{}/models/lstm-for-pldi-pattern.relay",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+        let relay = std::fs::read_to_string(&filename).unwrap();
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        // The pattern in the Glenside language.
+        let (orig_pattern, _, _, _) = crate::language::from_relay::from_relay(
+            &module,
+            false,
+            // Has to stay the same as the list above...
+            &vec![
+                crate::language::RelayOperator::RelaySigmoid,
+                crate::language::RelayOperator::RelayTanh,
+                crate::language::RelayOperator::RelayLogSoftmax,
+                crate::language::RelayOperator::RelayAdd,
+            ],
+        );
+
+        let pattern_ast = egg::RecExpr::from(
+            orig_pattern
+                .as_ref()
+                .iter()
+                .map(|enode| {
+                    // We have a single Var in this pattern: it's the "%x"
+                    // argument to the pattern. In the pattern compiled to
+                    // Glenside, it looks like (access-tensor x).
+                    if let crate::language::Language::AccessTensor(id) = enode {
+                        if let crate::language::Language::Symbol(v) = &orig_pattern[*id] {
+                            if v == "x" {
+                                return egg::ENodeOrVar::Var(Var::from_str("?x".into()).unwrap());
+                            }
+                        }
+                    }
+                    // Construct the ENode-type node in the pattern AST by first
+                    // recursively converting the children of this node.
+                    egg::ENodeOrVar::ENode(enode.clone())
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        // Here, we don't use any Vars. This means we won't bind anything with
+        // this pattern, BUT the pattern should be much faster according to Max.
+        // let pattern_ast = RecExpr::from(
+        //     orig_pattern
+        //         .as_ref()
+        //         .iter()
+        //         .map(|enode| ENodeOrVar::ENode(enode.clone()))
+        //         .collect::<Vec<_>>(),
+        // );
+
+        Pattern::from(pattern_ast)
+    };
+    rewrite!("flex-lstm"; 
+        { pattern } => "(accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)")
 }
 
 /// Model rewrite
