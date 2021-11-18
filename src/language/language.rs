@@ -1788,8 +1788,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         };
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             zero_regions: HashMap::default(),
-                            shape: IxDyn(&[]),
-                            item_shape: out_shape.clone(),
+                            shape: out_shape.clone(),
+                            item_shape: IxDyn(&[]),
                             relay_shape: Some(out_shape),
                             contains_accelerator_calls: true,
                         })
