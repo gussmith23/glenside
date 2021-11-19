@@ -438,6 +438,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-log-softmax <data: access> <axis: usize>)
     RelayLogSoftmax,
+
+    /// (relay-operator relay-strided-slice <data: access> <begin: shape> <end: shape> <strides: shape>)
+    RelayStridedSlice,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -474,6 +477,7 @@ impl FromStr for RelayOperator {
             "relay-dropout" => Ok(RelayOperator::RelayDropout),
             "relay-stack" => Ok(RelayOperator::RelayStack),
             "relay-log-softmax" => Ok(RelayOperator::RelayLogSoftmax),
+            "relay-strided-slice" => Ok(RelayOperator::RelayStridedSlice),
             _ => Err(()),
         }
     }
@@ -484,6 +488,7 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
+                RelayOperator::RelayStridedSlice => "relay-strided-slice",
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
                 RelayOperator::RelaySoftmax => "relay-softmax",
                 RelayOperator::RelayReLU => "relay-relu",
@@ -2058,6 +2063,50 @@ impl egg::Analysis<Language> for MyAnalysis {
                             relay_shape: Some(IxDyn(&out_shape)),
                             contains_accelerator_calls: data.contains_accelerator_calls
                                 || indices.contains_accelerator_calls,
+                        })
+                    }
+                    crate::language::RelayOperator::RelayStridedSlice => {
+                        let (data, begin, end, strides) = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(begin), MyAnalysisData::Shape(end), MyAnalysisData::Shape(strides)] => {
+                                (
+                                    a,
+                                    begin.shape.slice(),
+                                    end.shape.slice(),
+                                    strides.shape.slice(),
+                                )
+                            }
+                            _ => panic!("Parameters do not type check",),
+                        };
+
+                        assert!(strides.iter().all(|i| *i == 1));
+                        assert_eq!(begin.len(), end.len());
+                        assert_eq!(begin.len(), strides.len());
+                        assert_eq!(begin.len(), data.as_vec().len());
+
+                        let new_shape: Vec<_> = begin
+                            .iter()
+                            .zip(end.iter())
+                            .map(|(begin, end)| end - begin)
+                            .collect();
+
+                        if !data.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        let zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(new_shape.as_slice()),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: zero_regions,
+                            relay_shape: Some(IxDyn(new_shape.as_slice())),
+                            contains_accelerator_calls: data.contains_accelerator_calls,
                         })
                     }
                     crate::language::RelayOperator::RelayAdd
