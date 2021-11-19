@@ -705,6 +705,7 @@ fn codegen_helper(
                 RelayOperator::RelayLogSoftmax => todo!(),
                 RelayOperator::RelayTanh => todo!(),
                 RelayOperator::RelayTake => todo!(),
+                RelayOperator::RelayStridedSlice => todo!(),
                 RelayOperator::RelayConv1D => todo!(),
                 RelayOperator::RelayConv2D => todo!(),
                 RelayOperator::RelayErf => todo!(),
