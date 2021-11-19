@@ -1170,7 +1170,11 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
 pub fn glenside_matmul_to_relay_dense() -> RW {
     rewrite!("glenside_matmul_to_relay_dense";
              "(compute dot-product (access-cartesian-product ?x ?w))"
-             => "(relay-operator-call relay-dense ?x ?w)")
+             => "(relay-operator-call relay-dense ?x ?w)"
+            if constrain_access("?w".parse().unwrap(),
+                                |v| v.as_vec().len() == 2)
+            if constrain_access("?x".parse().unwrap(),
+                                |v| v.as_vec().len() == 2))
 }
 
 /// Experimental rewrite to add a bias add on any dense.
