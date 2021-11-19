@@ -326,6 +326,7 @@ define_language! {
     }
 }
 
+// TODO(@gussmith23) We need to just make a full-fledged Relay dialect.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RelayOperator {
     /// (relay-operator relay-batch-norm-inference <data: access>
