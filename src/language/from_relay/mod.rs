@@ -1144,16 +1144,79 @@ fn compile_expression(
                     //assert_eq!(a_type, attrs.out_dtype);
                     assert_eq!(a_shape.len(), 3);
                     assert_eq!(b_shape.len(), 3);
+                    assert_eq!(
+                        a_shape.get(0).unwrap().downcast::<IntImm>().unwrap().value,
+                        b_shape.get(0).unwrap().downcast::<IntImm>().unwrap().value
+                    );
+                    let batch_size = a_shape.get(0).unwrap().downcast::<IntImm>().unwrap().value;
+
+                    let mut matmul_ids = (0..batch_size)
+                        .map(|batch_i| {
+                            let a_sliced_id = access_slice(
+                                glenside_expr,
+                                a_id,
+                                0,
+                                batch_i as usize,
+                                (batch_i + 1) as usize,
+                            );
+                            let b_sliced_id = access_slice(
+                                glenside_expr,
+                                b_id,
+                                0,
+                                batch_i as usize,
+                                (batch_i + 1) as usize,
+                            );
+
+                            let squeeze_dim_id = glenside_expr.add(Language::Usize(0));
+                            let a_squeezed_id = glenside_expr
+                                .add(Language::AccessSqueeze([a_sliced_id, squeeze_dim_id]));
+                            let b_squeezed_id = glenside_expr
+                                .add(Language::AccessSqueeze([b_sliced_id, squeeze_dim_id]));
+
+                            let a_accessed_id = access(glenside_expr, a_squeezed_id, 1);
+                            let b_accessed_id = access(glenside_expr, b_squeezed_id, 1);
+
+                            let cartprod_id =
+                                glenside_expr.add(Language::AccessCartesianProduct([
+                                    a_accessed_id,
+                                    b_accessed_id,
+                                ]));
+
+                            let compute_op_id =
+                                glenside_expr.add(Language::ComputeType(ComputeType::DotProduct));
+                            let compute_id =
+                                glenside_expr.add(Language::Compute([compute_op_id, cartprod_id]));
+
+                            // Insert the batch dim back.
+                            let insert_dim_id = glenside_expr.add(Language::Usize(0));
+                            let final_id = glenside_expr
+                                .add(Language::AccessInsertAxis([compute_id, insert_dim_id]));
+
+                            final_id
+                        })
+                        .collect::<Vec<_>>();
+
+                    let out_id = matmul_ids
+                        .drain(..)
+                        .reduce(|acc_id, id| {
+                            let concat_dim_id = glenside_expr.add(Language::Usize(0));
+                            glenside_expr.add(Language::AccessConcatenate([
+                                acc_id,
+                                id,
+                                concat_dim_id,
+                            ]))
+                        })
+                        .unwrap();
 
                     let relay_op_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayBatchMatmul,
                     ));
 
                     (
-                        glenside_expr.add(Language::RelayOperatorCall(
+                        out_id,
+                        Some(glenside_expr.add(Language::RelayOperatorCall(
                             vec![relay_op_id, a_id, b_id].into_boxed_slice(),
-                        )),
-                        None,
+                        ))),
                     )
                 }
                 "strided_slice" => {
