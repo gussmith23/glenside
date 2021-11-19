@@ -1164,6 +1164,50 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
         "(accelerator-call flex-linear ?x ?w ?bias (shape 0))")
 }
 
+/// Experimental rewrite to convert Glenside matmuls into Relay denses. Pretty
+/// straightforward; only experimental b/c adding the night before PLDI
+/// deadline.
+pub fn glenside_matmul_to_relay_dense() -> RW {
+    rewrite!("glenside_matmul_to_relay_dense";
+             "(compute dot-product (access-cartesian-product ?x ?w))"
+             => "(relay-operator-call relay-dense ?x ?w)")
+}
+
+/// Experimental rewrite to add a bias add on any dense.
+pub fn add_bias_add_to_dense() -> RW {
+    struct ApplierImpl;
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let shape_str = match &egraph[eclass].data {
+                MyAnalysisData::AccessPattern(a) => {
+                    a.as_vec().iter().map(usize::to_string).join(" ")
+                }
+                MyAnalysisData::Shape(s) => s.shape.slice().iter().map(usize::to_string).join(" "),
+                _ => panic!(),
+            };
+
+            format!(
+                "(relay-operator-call bias-add 
+                  (relay-operator-call relay-dense ?x ?w)
+                  (relay-operator-call relay-zeros (shape {}))
+                  1)",
+                shape_str
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, eclass, subst)
+        }
+    }
+    rewrite!("glenside_matmul_to_relay_dense";
+             "(relay-operator-call relay-dense ?x ?w)"
+             => { ApplierImpl })
+}
+
 /// Tensorizes a computation to an externally-blocked systolic array.
 ///
 /// `rows` and `cols` define the size of the systolic array to map to. This
