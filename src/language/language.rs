@@ -3492,6 +3492,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         a1.item_shape[axis - new_access.shape.ndim()];
                 }
 
+                new_access.contains_accelerator_calls |= a1.contains_accelerator_calls;
+
                 // new_access.relay_shape = Some(IxDyn(&[new_access.shape.slice(), new_access.item_shape.slice()].concat()));
                 MyAnalysisData::AccessPattern(new_access)
             }
