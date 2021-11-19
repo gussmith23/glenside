@@ -1002,6 +1002,39 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.layer_norm" => {
+                    let data = get_compiled_expression(
+                        call.args.get(0).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let gamma = get_compiled_expression(
+                        call.args.get(1).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let beta = get_compiled_expression(
+                        call.args.get(2).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::LayerNormAttrs>()
+                        .unwrap();
+
+                    // Assumptions for now.
+                    assert_eq!(attrs.axis, -1);
+                    assert_eq!(attrs.epsilon, 1e-5);
+                    assert_eq!(attrs.center, true);
+                    assert_eq!(attrs.scale, true);
+
+                    let relay_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLayerNorm,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_op_id, data, gamma, beta].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
                 "stack" => {
                     let tuple = call.args.get(0).unwrap().downcast::<Tuple>().unwrap();
                     let ids: Vec<_> = tuple
@@ -1112,17 +1145,16 @@ fn compile_expression(
                     assert_eq!(a_shape.len(), 3);
                     assert_eq!(b_shape.len(), 3);
 
-                    let access_a_id = access(glenside_expr, a_id, 2);
-                    let access_b_id = access(glenside_expr, b_id, 2);
-                    let cart_prod_id = glenside_expr
-                        .add(Language::AccessCartesianProduct([access_a_id, access_b_id]));
-                    let compute_id = compute(
-                        glenside_expr,
-                        crate::language::ComputeType::DotProduct,
-                        cart_prod_id,
-                    );
+                    let relay_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayBatchMatmul,
+                    ));
 
-                    (compute_id, None)
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_op_id, a_id, b_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
                 }
                 "strided_slice" => {
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
