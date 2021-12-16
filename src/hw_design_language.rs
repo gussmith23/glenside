@@ -130,34 +130,5 @@ mod tests {
                 },
             ],
         };
-
-        assert_eq!(
-            design_to_json(&design),
-            json!(
-                [
-                    { "name" : "multiplier1",
-                       "atom" : "bsg_systolic_array_weight_stationary",
-                       "id" : 1,
-                       "dtype" : "int8",
-                       "cols" : 16,
-                       "rows" : 16,
-                    },
-                    { "name" : "multiplier2",
-                       "atom" : "bsg_systolic_array_weight_stationary",
-                       "id" : 2,
-                       "dtype" : "int8",
-                       "cols" : 16,
-                       "rows" : 16,
-                    },
-                    { "name" : "multiplier3",
-                       "atom" : "bsg_systolic_array_weight_stationary",
-                       "id" : 3,
-                       "dtype" : "int8",
-                       "cols" : 16,
-                       "rows" : 16,
-                    },
-                ]
-            )
-        );
     }
 }

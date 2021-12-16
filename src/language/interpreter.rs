@@ -960,7 +960,6 @@ where
         | &Language::Slice(_)
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)
-        | &Language::BsgSystolicArray(_)
         | &Language::SystolicArray(_)
         | &Language::SystolicArrayWithBlocking(_)
         | &Language::AccessReshape(_)

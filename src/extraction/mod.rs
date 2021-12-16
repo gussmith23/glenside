@@ -122,7 +122,6 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             Language::MoveAxis(_)
             | Language::CartesianProduct(_)
             | Language::ElementwiseAdd(_)
-            | Language::BsgSystolicArray(_)
             | Language::MapDotProduct(_)
             | Language::Slice(_)
             | Language::Concatenate(_) => panic!(),
@@ -218,7 +217,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             | Literal(_) | NotNanFloat64(_) => 1,
             // Old constructs that are no longer used
             MoveAxis(_) | CartesianProduct(_) | MapDotProduct(_) | Slice(_) | Concatenate(_)
-            | ElementwiseAdd(_) | BsgSystolicArray(_) => std::usize::MAX,
+            | ElementwiseAdd(_) => std::usize::MAX,
         };
 
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))

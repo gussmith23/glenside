@@ -49,13 +49,6 @@ define_language! {
         // TODO(@gussmith23) ^^ what did I mean by this?
         "elementwise-add" = ElementwiseAdd([Id; 2]),
 
-        // (bsg-systolic-array <rows (usize)> <cols (usize)> <t0> <t1>)
-        // Represents a systolic array of size rows X cols, fed with tensors t0
-        // and t1.
-        // TODO(@gussmith23) do we need to specify rows and cols? You can infer these
-        // from the size of the input, but it's also useful for searching.
-        "bsg-systolic-array" = BsgSystolicArray([Id; 4]),
-
         // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
         // Represents a systolic array of size rows X cols, fed with two
         // accesses.
@@ -2700,34 +2693,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .collect::<Vec<usize>>()[..],
                 );
                 MyAnalysisData::Shape(ShapeData { shape: new_shape })
-            }
-            &BsgSystolicArray([rows_id, cols_id, t0_id, t1_id]) => {
-                // Check that the rows and cols are usizes.
-                let _unused = Self::get_usize(rows_id, egraph);
-                let _unused = Self::get_usize(cols_id, egraph);
-
-                let left_shape = Self::get_shape(t0_id, egraph);
-                let right_shape = Self::get_shape(t1_id, egraph);
-                let left_shape_len: usize = left_shape.as_array_view().len();
-                let right_shape_len: usize = right_shape.as_array_view().len();
-
-                // TODO(@gussmith23) check that the rows/cols params sizes are correct
-                // given the input tensor shapes.
-
-                // Assumptions I'm making right now.
-                assert!(left_shape_len == 1 || left_shape_len == 2);
-                assert_eq!(right_shape_len, 2);
-
-                let new_shape: Vec<ndarray::Ix> = left_shape
-                    .as_array_view()
-                    .iter()
-                    .cloned()
-                    .take(left_shape.as_array_view().len() - 1)
-                    .chain(right_shape.as_array_view().iter().cloned().skip(1))
-                    .collect();
-                MyAnalysisData::Shape(ShapeData {
-                    shape: ndarray::IxDyn(&new_shape),
-                })
             }
             &SystolicArray([rows_id, cols_id, a0_id, a1_id])
             | &SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {

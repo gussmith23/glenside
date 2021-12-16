@@ -374,7 +374,6 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::Slice(_)
             | &Language::Concatenate(_)
             | &Language::ElementwiseAdd(_)
-            | &Language::BsgSystolicArray(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
         }
     }
@@ -484,7 +483,6 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::Slice(_)
             | &Language::Concatenate(_)
             | &Language::ElementwiseAdd(_)
-            | &Language::BsgSystolicArray(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
         }
 
@@ -1774,7 +1772,6 @@ if (i{i} < {dim_len}) {{
         | &Language::Slice(_)
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)
-        | &Language::BsgSystolicArray(_)
         | &Language::AccessLiteral(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
     }

@@ -638,35 +638,6 @@ pub fn slice_move_axis_composition_commutative() -> Rewrite<Language, MyAnalysis
     )
 }
 
-pub fn systolic_array_vector_matrix() -> Rewrite<Language, MyAnalysis> {
-    struct SystolicArrayApplier {
-        a: Var,
-        b: Var,
-    }
-    impl Applier<Language, MyAnalysis> for SystolicArrayApplier {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            let a_shape = MyAnalysis::get_shape(subst[self.a], egraph);
-            let b_shape = MyAnalysis::get_shape(subst[self.b], egraph);
-            assert_eq!(a_shape.as_array_view().len(), 1);
-            assert_eq!(b_shape.as_array_view().len(), 2);
-            let rows: usize = b_shape.as_array_view()[0];
-            let cols: usize = b_shape.as_array_view()[1];
-
-            let pattern: Pattern<Language> =
-                format!("(bsg-systolic-array {} {} ?a ?b)", rows, cols)
-                    .parse()
-                    .unwrap();
-
-            pattern.apply_one(egraph, eclass, subst)
-        }
-    }
-
-    rewrite!("systolic-array";
-             // TODO(@gussmith23) should check that ?a is a vector.
-             "(map-dot-product (cartesian-product ?a (move-axis ?b 1 0)))" =>
-             {SystolicArrayApplier{a: "?a".parse().unwrap(), b: "?b".parse().unwrap(),}})
-}
-
 // pub fn flatten_unflatten_access_windows() -> RW {
 //     rewrite!("access-windows-to-im2col";
 //              "(access-windows ?access ?kernel-shape ?stride-0 ?stride-1)" =>
