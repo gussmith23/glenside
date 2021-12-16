@@ -10,11 +10,6 @@ use std::str::FromStr;
 
 define_language! {
     pub enum Language {
-        // (move-axis <tensor> <axis (usize)> <dest (usize)>)
-        // Moves axis <axis> so that it is now axis <dest>.
-        // Replaces the "rows" and "cols" operators.
-        "move-axis" = MoveAxis([Id; 3]),
-
         // (cartesian-product <t0> <t1>)
         // Expects tensors of shape
         // [a1, ..., an, c]
@@ -2627,19 +2622,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     item_shape: IxDyn(&shape[dim..]),
                 })
             }
-            &MoveAxis([tensor_id, src_axis_id, dest_axis_id]) => {
-                let mut new_shape = Self::get_shape(tensor_id, egraph).clone();
-                let src_axis = Self::get_usize(src_axis_id, egraph);
-                let dest_axis = Self::get_usize(dest_axis_id, egraph);
-
-                assert!(src_axis < new_shape.as_array_view().len());
-                assert!(dest_axis < new_shape.as_array_view().len());
-
-                let tmp = new_shape[dest_axis];
-                new_shape[dest_axis] = new_shape[src_axis];
-                new_shape[src_axis] = tmp;
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
-            }
             &CartesianProduct([t0_id, t1_id]) => {
                 let initial_shape_left: &IxDyn = Self::get_shape(t0_id, egraph);
                 assert!(initial_shape_left.as_array_view().len() >= 1);
@@ -2901,46 +2883,6 @@ impl egg::Analysis<Language> for MyAnalysis {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse() {
-        "
-         (map-dot-product
-          (cartesian-product
-           single-matrix-multiply-input-a
-           (move-axis single-matrix-multiply-input-b 1 0)
-          )
-         )
-         "
-        .parse::<egg::RecExpr<Language>>()
-        .unwrap();
-    }
-
-    #[test]
-    fn test_cartesian_product_shape() {
-        let program = "(cartesian-product
-          v-32
-          (move-axis t-32-32 1 0)
-         )
-         "
-        .parse()
-        .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        let id = egraph.add_expr(&program);
-        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[32, 2, 32]));
-
-        let program = "(cartesian-product
-          (move-axis t-32-32 1 0)
-          v-32
-         )
-         "
-        .parse()
-        .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        let id = egraph.add_expr(&program);
-        assert_eq!(MyAnalysis::get_shape(id, &egraph), &IxDyn(&[32, 2, 32]));
-    }
-
     #[test]
     fn access_windows() {
         // TODO(@gussmith23) Could probably clean this up with a for loop
@@ -4284,25 +4226,6 @@ mod tests {
          (systolic-array 64 32
           (access (access-tensor a) 1)
           (access (access-tensor a) 0)
-         )
-         "
-        .parse()
-        .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
-        egraph.add_expr(&program);
-    }
-
-    #[test]
-    #[should_panic]
-    fn systolic_array_panic_1() {
-        let mut map = HashMap::default();
-        map.insert("a".to_string(), vec![32, 64]);
-        // Because the second argument is not accessed at the right axis.
-        let program = "
-         (systolic-array 64 32
-          (access (access-tensor a) 1)
-          (access (move-axis (access-tensor a) 0 1) 1)
          )
          "
         .parse()

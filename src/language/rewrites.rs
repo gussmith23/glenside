@@ -300,64 +300,6 @@ pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
     }})
 }
 
-pub fn bubble_concatenate_through_move_axis() -> Rewrite<Language, MyAnalysis> {
-    struct MoveAxisApplier {
-        concatenate_axis: Var,
-        src_axis: Var,
-        dst_axis: Var,
-    }
-    impl Applier<Language, MyAnalysis> for MoveAxisApplier {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            let original_concatenate_axis: usize =
-                MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
-            let src_axis: usize = MyAnalysis::get_usize(subst[self.src_axis], egraph);
-            let dst_axis: usize = MyAnalysis::get_usize(subst[self.dst_axis], egraph);
-
-            // If the move now happens /before/ the concatenate, we have to
-            // figure out what the new axis for the concatenate is.
-            // TODO(@gussmith23) Would be nice to have a more principled system of
-            // keeping track of axes. This is where Remy's relational algebra
-            // stuff could be really useful!
-            let new_concatenate_axis: usize = if (original_concatenate_axis < src_axis
-                && original_concatenate_axis < dst_axis)
-                || (original_concatenate_axis > src_axis && original_concatenate_axis > dst_axis)
-            {
-                // Axis is unaffected if it's not between src and dst.
-                original_concatenate_axis
-            } else if original_concatenate_axis == src_axis {
-                dst_axis
-            } else if original_concatenate_axis < src_axis && original_concatenate_axis >= dst_axis
-            {
-                original_concatenate_axis + 1
-            } else if original_concatenate_axis > src_axis && original_concatenate_axis <= dst_axis
-            {
-                original_concatenate_axis - 1
-            } else {
-                unreachable!()
-            };
-
-            format!(
-                "(concatenate
-                      (move-axis ?a ?src-axis ?dst-axis)
-                      (move-axis ?b ?src-axis ?dst-axis) {})",
-                new_concatenate_axis
-            )
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .apply_one(egraph, eclass, subst)
-        }
-    }
-    rewrite!("bubble-concatenate-through-move-axis";
-        "(move-axis (concatenate ?a ?b ?concatenate-axis) ?src-axis ?dst-axis)" =>
-    {
-        MoveAxisApplier {
-            concatenate_axis: "?concatenate-axis".parse().unwrap(),
-            src_axis:"?src-axis".parse().unwrap(),
-            dst_axis:"?dst-axis".parse().unwrap()
-        }
-    })
-}
-
 /// Whether an axis is the last axis of a given tensor
 fn last_axis(
     var: &'static str,
@@ -589,52 +531,6 @@ pub fn bubble_concatenate_through_map_dot_product_last_axis() -> Rewrite<Languag
             if last_axis("?left", "?axis")
             // This should always be true, for now. Just making extra sure
             if same_number_of_dimensions("?left", "?right")
-    )
-}
-
-pub fn slice_move_axis_composition_commutative() -> Rewrite<Language, MyAnalysis> {
-    struct SliceMoveAxisCompositionCommutativeApplier {
-        move_axis_src: Var,
-        move_axis_dest: Var,
-        slice_axis: Var,
-    }
-    impl Applier<Language, MyAnalysis> for SliceMoveAxisCompositionCommutativeApplier {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
-            let src_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_src], egraph);
-            let dst_axis: usize = MyAnalysis::get_usize(subst[self.move_axis_dest], egraph);
-            let old_slice_axis: usize = MyAnalysis::get_usize(subst[self.slice_axis], egraph);
-            let new_slice_axis = if (old_slice_axis < src_axis && old_slice_axis < dst_axis)
-                || (old_slice_axis > src_axis && old_slice_axis > dst_axis)
-            {
-                // Axis is unaffected if it's not between src and dst.
-                old_slice_axis
-            } else if old_slice_axis == src_axis {
-                dst_axis
-            } else if old_slice_axis < src_axis && old_slice_axis >= dst_axis {
-                old_slice_axis + 1
-            } else if old_slice_axis > src_axis && old_slice_axis <= dst_axis {
-                old_slice_axis - 1
-            } else {
-                unreachable!()
-            };
-
-            format!(
-                "(move-axis (slice ?tensor {} ?bottom ?top) ?src ?dest)",
-                new_slice_axis
-            )
-            .parse::<Pattern<Language>>()
-            .unwrap()
-            .apply_one(egraph, matched_id, subst)
-        }
-    }
-    rewrite!(
-        "slice-move-axis-composition-commutative";
-        "(slice (move-axis ?tensor ?src ?dest) ?axis ?bottom ?top)" =>
-        { SliceMoveAxisCompositionCommutativeApplier {
-            move_axis_src: "?src".parse().unwrap(),
-            move_axis_dest: "?dest".parse().unwrap(),
-            slice_axis: "?axis".parse().unwrap(),
-        }}
     )
 }
 
@@ -2336,68 +2232,6 @@ mod tests {
 
         assert_eq!(
             "(slice (slice t-32-32 1 16 32) 0 16 32)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn slice_move_axis() {
-        test_logger::ensure_env_logger_initialized();
-
-        let program = "(slice (move-axis t-32-32 0 1) 0 0 16)".parse().unwrap();
-
-        let rws = vec![super::slice_move_axis_composition_commutative()];
-
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
-
-        assert_eq!(
-            "(move-axis (slice t-32-32 1 0 16) 0 1)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-
-        let program = "(slice (move-axis t-32-32 1 1) 0 0 16)".parse().unwrap();
-
-        let rws = vec![super::slice_move_axis_composition_commutative()];
-
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
-
-        assert_eq!(
-            "(move-axis (slice t-32-32 0 0 16) 1 1)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-
-        let program = "(slice (move-axis t-32-32 0 0) 1 0 16)".parse().unwrap();
-
-        let rws = vec![super::slice_move_axis_composition_commutative()];
-
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
-
-        assert_eq!(
-            "(move-axis (slice t-32-32 1 0 16) 0 0)"
                 .parse::<Pattern<_>>()
                 .unwrap()
                 .search(&runner.egraph)
