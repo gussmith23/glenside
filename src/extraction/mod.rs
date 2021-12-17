@@ -120,8 +120,6 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
 
             // Old constructs.
             Language::ElementwiseAdd(_)
-            | Language::MapDotProduct(_)
-            | Language::Slice(_)
             | Language::Concatenate(_) => panic!(),
 
             Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
@@ -214,7 +212,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             | List(_) | AccessShape(_) | Usize(_) | PadType(_) | ComputeType(_) | Symbol(_)
             | Literal(_) | NotNanFloat64(_) => 1,
             // Old constructs that are no longer used
-            MapDotProduct(_) | Slice(_) | Concatenate(_)
+            Concatenate(_)
             | ElementwiseAdd(_) => std::usize::MAX,
         };
 

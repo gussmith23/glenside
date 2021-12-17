@@ -10,20 +10,6 @@ use std::str::FromStr;
 
 define_language! {
     pub enum Language {
-        // (map-dot-product <tensor>)
-        // for a tensor with shape
-        // [a1, ..., an, 2, c],
-        // the result is a new tensor with shape
-        // [a1, ..., an]
-        // Whose elements are the dot product of the two c-length vectors at
-        // each position in the original array.
-        "map-dot-product" = MapDotProduct(Id),
-
-        // (slice <tensor> <axis (usize)> <low (usize)> <high (usize)>)
-        // Slices into <tensor> at axis <axis>, slicing the half-open range
-        // [<low>, <high>).
-        "slice" = Slice([Id; 4]),
-
         // (concatenate <t0> <t1> <axis (usize)>)
         // Concatenate tensors <t0> and <t1> along <axis>.
         "concatenate" = Concatenate([Id; 3]),
@@ -2612,22 +2598,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     item_shape: IxDyn(&shape[dim..]),
                 })
             }
-            &MapDotProduct(tensor_id) => {
-                let shape: &IxDyn = Self::get_shape(tensor_id, egraph);
-
-                assert!(shape.as_array_view().len() >= 3);
-                assert_eq!(shape[shape.as_array_view().len() - 2], 2);
-
-                let new_shape: ndarray::IxDyn = ndarray::IxDyn(
-                    &shape
-                        .as_array_view()
-                        .iter()
-                        .take(shape.as_array_view().len() - 2)
-                        .copied()
-                        .collect::<Vec<usize>>()[..],
-                );
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
-            }
             &SystolicArray([rows_id, cols_id, a0_id, a1_id])
             | &SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {
                 let rows = Self::get_usize(rows_id, egraph);
@@ -2693,20 +2663,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                     item_shape: IxDyn(&[]),
                 })
-            }
-            &Slice([tensor_id, axis_id, low_id, high_id]) => {
-                let mut new_shape: IxDyn = Self::get_shape(tensor_id, egraph).clone();
-
-                let axis: usize = Self::get_usize(axis_id, egraph);
-                let low: usize = Self::get_usize(low_id, egraph);
-                let high: usize = Self::get_usize(high_id, egraph);
-
-                assert!(new_shape.as_array_view().len() > axis);
-                assert!(low < new_shape[axis]);
-                assert!(high <= new_shape[axis]);
-
-                new_shape[axis] = high - low;
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
             }
             &Concatenate([t0_id, t1_id, axis_id]) => {
                 let axis = Self::get_usize(axis_id, egraph);

@@ -35,9 +35,7 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
         | Language::TupleGetItem(_) => todo!(),
 
                 // Things we should never see.
-                    Language::MapDotProduct(_)
-                    | Language::Slice(_)
-                    | Language::Concatenate(_)
+                    Language::Concatenate(_)
                     | Language::ElementwiseAdd(_)
                     | Language::ShapeOf(_)
                     | Language::SliceShape(_)
@@ -111,8 +109,7 @@ pub fn filter_obviously_less_preferable_nodes(
             Language::ConstructTuple(_) | Language::TupleGetItem(_) => todo!(),
 
             // Things we should never see.
-            Language::MapDotProduct(_)
-            | Language::Slice(_)
+            Language::Slice(_)
             | Language::Concatenate(_)
             | Language::ElementwiseAdd(_)
             | Language::ShapeOf(_)

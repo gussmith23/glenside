@@ -212,94 +212,6 @@ impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApp
     }
 }
 
-struct SplitApplier {
-    axis: usize,
-}
-impl egg::Applier<Language, MyAnalysis> for SplitApplier {
-    fn apply_one(
-        &self,
-        egraph: &mut EG,
-        id: egg::Id,
-        _subst: &egg::Subst,
-    ) -> std::vec::Vec<egg::Id> {
-        let shape: ndarray::IxDyn = MyAnalysis::get_shape(id, egraph).clone();
-        assert_eq!(shape[self.axis] % 2, 0);
-        let low_bound = 0;
-        let low_bound_id = egraph.add(Language::Usize(low_bound));
-        let high_bound = shape[self.axis];
-        let high_bound_id = egraph.add(Language::Usize(high_bound));
-        let middle_bound = high_bound / 2;
-        let middle_bound_id = egraph.add(Language::Usize(middle_bound));
-
-        let axis_id = egraph.add(Language::Usize(self.axis));
-
-        let slice_0_id = egraph.add(Language::Slice([
-            id,
-            axis_id,
-            low_bound_id,
-            middle_bound_id,
-        ]));
-        let slice_1_id = egraph.add(Language::Slice([
-            id,
-            axis_id,
-            middle_bound_id,
-            high_bound_id,
-        ]));
-
-        let id: egg::Id = egraph.add(Language::Concatenate([slice_0_id, slice_1_id, axis_id]));
-
-        vec![id]
-    }
-}
-
-pub fn split(
-    axis: usize,
-    dimension_greater_than: usize,
-    split_all_nodes: bool,
-) -> Rewrite<Language, MyAnalysis> {
-    rewrite!(format!("split-axis-{}", axis); "?a" =>
-                  {SplitApplier{axis: axis}}
-             if is_symbol(split_all_nodes, "?a")
-             if has_shape("?a")
-             if has_axis("?a", axis)
-             if dimension_is_even("?a", axis)
-             if self::dimension_greater_than("?a", axis, dimension_greater_than))
-}
-
-pub fn collapse_nested_slices() -> Rewrite<Language, MyAnalysis> {
-    struct CollapseNestedSlicesApplier {
-        low0: Var,
-        high0: Var,
-        low1: Var,
-        high1: Var,
-    }
-    impl Applier<Language, MyAnalysis> for CollapseNestedSlicesApplier {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            let low0: usize = MyAnalysis::get_usize(subst[self.low0], egraph);
-            let high0: usize = MyAnalysis::get_usize(subst[self.high0], egraph);
-            let low1: usize = MyAnalysis::get_usize(subst[self.low1], egraph);
-            let high1: usize = MyAnalysis::get_usize(subst[self.high1], egraph);
-
-            let new_low: usize = low0 + low1;
-            assert!(high1 - low1 <= high0 - low0);
-            let new_high: usize = new_low + (high1 - low1);
-
-            format!("(slice ?t ?axis {} {})", new_low, new_high)
-                .parse::<Pattern<Language>>()
-                .unwrap()
-                .apply_one(egraph, eclass, subst)
-        }
-    }
-    rewrite!("collapse-nested-slices";
-    "(slice (slice ?t ?axis ?low0 ?high0) ?axis ?low1 ?high1)" =>
-    { CollapseNestedSlicesApplier {
-        low0: "?low0".parse().unwrap(),
-        low1: "?low1".parse().unwrap(),
-        high0: "?high0".parse().unwrap(),
-        high1: "?high1".parse().unwrap(),
-    }})
-}
-
 /// Whether an axis is the last axis of a given tensor
 fn last_axis(
     var: &'static str,
@@ -498,40 +410,6 @@ pub fn rewrite_nonmatching_cartesian_product_concatenate() -> Rewrite<Language, 
         b2:"?b2".parse().unwrap(),
         b_axis:1,
     }})
-}
-
-pub fn bubble_concatenate_through_map_dot_product_not_last_axis() -> Rewrite<Language, MyAnalysis> {
-    rewrite!(
-
-        "bubble-concatenate-through-map-dot-product-not-last-axis";
-        "(map-dot-product
-          (concatenate ?left ?right ?axis)
-         )" =>
-        "(concatenate
-          (map-dot-product ?left)
-          (map-dot-product ?right)
-         ?axis)"
-            if not_last_axis("?left", "?axis")
-            // This should always be true, for now. Just making extra sure
-            if same_number_of_dimensions("?left", "?right")
-    )
-}
-
-pub fn bubble_concatenate_through_map_dot_product_last_axis() -> Rewrite<Language, MyAnalysis> {
-    rewrite!(
-
-        "bubble-concatenate-through-map-dot-product-last-axis";
-        "(map-dot-product
-          (concatenate ?left ?right ?axis)
-         )" =>
-            "(elementwise-add
-              (map-dot-product ?left)
-              (map-dot-product ?right)
-             )"
-            if last_axis("?left", "?axis")
-            // This should always be true, for now. Just making extra sure
-            if same_number_of_dimensions("?left", "?right")
-    )
 }
 
 // pub fn flatten_unflatten_access_windows() -> RW {
@@ -2184,61 +2062,6 @@ mod tests {
     use ndarray::IxDyn;
     use std::collections::HashMap;
     use std::str::FromStr;
-
-    #[test]
-    fn split() {
-        test_logger::ensure_env_logger_initialized();
-
-        let program = "t-32-32".parse().unwrap();
-
-        let rws = vec![
-            super::split(0, 16, true),
-            super::split(1, 16, true),
-            super::collapse_nested_slices(),
-        ];
-
-        let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
-        egraph.add_expr(&program);
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
-
-        assert_eq!(
-            "(slice (slice t-32-32 1 0 16) 0 0 16)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-
-        assert_eq!(
-            "(slice (slice t-32-32 1 16 32) 0 0 16)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-
-        assert_eq!(
-            "(slice (slice t-32-32 1 0 16) 0 16 32)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-
-        assert_eq!(
-            "(slice (slice t-32-32 1 16 32) 0 16 32)"
-                .parse::<Pattern<_>>()
-                .unwrap()
-                .search(&runner.egraph)
-                .len(),
-            1
-        );
-    }
 
     #[test]
     fn flatten_unflatten_access_windows() {
