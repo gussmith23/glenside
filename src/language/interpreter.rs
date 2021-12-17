@@ -954,8 +954,7 @@ where
         ),
         &Language::Usize(u) => Value::Usize(u),
 
-        &Language::CartesianProduct(_)
-        | &Language::MapDotProduct(_)
+        &Language::MapDotProduct(_)
         | &Language::Slice(_)
         | &Language::Concatenate(_)
         | &Language::ElementwiseAdd(_)

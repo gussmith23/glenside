@@ -10,16 +10,6 @@ use std::str::FromStr;
 
 define_language! {
     pub enum Language {
-        // (cartesian-product <t0> <t1>)
-        // Expects tensors of shape
-        // [a1, ..., an, c]
-        // [b1, ..., bm, c]
-        // Outputs a tensor of shape
-        // [a1, ..., an, b1, ..., bm, 2, c]
-        // which represents the cartesian product of the c-length vectors stored
-        // in the two tensors.
-        "cartesian-product" = CartesianProduct([Id; 2]),
-
         // (map-dot-product <tensor>)
         // for a tensor with shape
         // [a1, ..., an, 2, c],
@@ -2621,44 +2611,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&shape[..dim]),
                     item_shape: IxDyn(&shape[dim..]),
                 })
-            }
-            &CartesianProduct([t0_id, t1_id]) => {
-                let initial_shape_left: &IxDyn = Self::get_shape(t0_id, egraph);
-                assert!(initial_shape_left.as_array_view().len() >= 1);
-                assert!(initial_shape_left.as_array_view().len() <= 2);
-                let initial_shape_right: &IxDyn = Self::get_shape(t1_id, egraph);
-                assert!(initial_shape_left.as_array_view().len() >= 1);
-                assert!(initial_shape_left.as_array_view().len() <= 2);
-                assert_eq!(
-                    initial_shape_left[initial_shape_left.as_array_view().len() - 1],
-                    initial_shape_right[initial_shape_right.as_array_view().len() - 1],
-                );
-
-                // New shape is [a1, ..., an, b1, ..., bn, 2, c].
-                let mut new_shape: Vec<usize> = initial_shape_left
-                    .as_array_view()
-                    .iter()
-                    .take(initial_shape_left.as_array_view().len() - 1)
-                    .copied()
-                    .collect();
-                new_shape.extend(
-                    initial_shape_right
-                        .as_array_view()
-                        .iter()
-                        .take(initial_shape_right.as_array_view().len() - 1),
-                );
-                new_shape.push(2);
-                new_shape.push(initial_shape_left[initial_shape_left.as_array_view().len() - 1]);
-                let new_shape: ndarray::IxDyn = ndarray::IxDyn(&new_shape[..]);
-                assert_eq!(
-                    new_shape.as_array_view().len(),
-                    initial_shape_left.as_array_view().len() - 1
-                        + initial_shape_right.as_array_view().len()
-                        - 1
-                        + 1
-                        + 1
-                );
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
             }
             &MapDotProduct(tensor_id) => {
                 let shape: &IxDyn = Self::get_shape(tensor_id, egraph);
