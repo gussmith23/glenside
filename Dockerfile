@@ -59,9 +59,7 @@ RUN pip3 install --upgrade pip
 COPY ./requirements.txt ./requirements.txt
 RUN pip3 install -r requirements.txt
 
-# Build Glenside with all features
+# Build Glenside.
 WORKDIR /root/glenside
 COPY . .
 
-# At this point, you should be able to build Glenside with whatever features you
-# want!
