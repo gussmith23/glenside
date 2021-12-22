@@ -1916,7 +1916,6 @@ mod tests {
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::collections::HashMap;
     use std::io::Write;
-    use std::path::PathBuf;
     use std::process::Command;
 
     /// Creates a Relay-to-Glenside test
@@ -1998,7 +1997,7 @@ mod tests {
                     // (I think the same filename kept being generated b/c I wasn't
                     // using the RNG carefully...but maybe there's also something
                     // wrong w/ how I'm reading files!)
-                    let output_filepath = std::env::temp_dir().with_file_name(format!(
+                    let output_filepath = std::env::temp_dir().join(format!(
                         "output-{}.npy",
                         rand::thread_rng()
                             .sample_iter(&rand::distributions::Alphanumeric)
@@ -2026,16 +2025,12 @@ mod tests {
                             &mut tensor_rng,
                         );
                         env.insert(name.as_str(), value.clone());
-                        let filepath = PathBuf::from(format!(
-                            "{}/{}",
-                            std::env::temp_dir().display(),
-                            format!(
-                                "arg-{}.npy",
-                                rand::thread_rng()
-                                    .sample_iter(&rand::distributions::Alphanumeric)
-                                    .take(30)
-                                    .collect::<String>()
-                            )
+                        let filepath = std::env::temp_dir().join(format!(
+                            "arg-{}.npy",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
                         ));
                         write_npy(&filepath, &value).unwrap();
                         cmd.arg(filepath);
