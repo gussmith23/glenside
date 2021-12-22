@@ -2025,14 +2025,13 @@ mod tests {
                             &mut tensor_rng,
                         );
                         env.insert(name.as_str(), value.clone());
-                        let filepath = std::env::temp_dir().join(
-                            format!(
-                                "arg-{}.npy",
-                                rand::thread_rng()
-                                    .sample_iter(&rand::distributions::Alphanumeric)
-                                    .take(30)
-                                    .collect::<String>()
-                            ));
+                        let filepath = std::env::temp_dir().join(format!(
+                            "arg-{}.npy",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        ));
                         write_npy(&filepath, &value).unwrap();
                         cmd.arg(filepath);
                     }

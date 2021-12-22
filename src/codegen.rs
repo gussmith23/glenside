@@ -1831,13 +1831,17 @@ mod tests {
         for (name, _) in shapes_vec.iter() {
             let value = env.get(name).unwrap();
             // TODO(@gussmith23) output type assumption
-            let filepath = format!("{}/{}", std::env::temp_dir().display(), format!(
-                "arg-{}.npy",
-                OsRng
-                    .sample_iter(&rand::distributions::Alphanumeric)
-                    .take(30)
-                    .collect::<String>()
-            ));
+            let filepath = format!(
+                "{}/{}",
+                std::env::temp_dir().display(),
+                format!(
+                    "arg-{}.npy",
+                    OsRng
+                        .sample_iter(&rand::distributions::Alphanumeric)
+                        .take(30)
+                        .collect::<String>()
+                )
+            );
             write_npy(&filepath, value).unwrap();
             cmd.arg(filepath);
         }
