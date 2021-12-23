@@ -144,11 +144,6 @@ def _recursive_helper(expr):
             elif expr.op == tvm.ir.Op.get('negative'):
                 return '(compute negative {})' \
                     .format(_recursive_helper(expr.args[0]))
-        
-        elif expr.op.name == "reshape":
-            lhs = _recursive_helper(expr.args[0])
-            shape = expr.attrs.newshape
-            return '(access-reshape {} (shape {}))'.format(lhs, ' '.join(map(str, shape)))
 
         elif expr.op == tvm.ir.Op.get('add') \
            or expr.op == tvm.ir.Op.get('multiply') \
@@ -192,26 +187,6 @@ def _recursive_helper(expr):
                 return _elementwise_div(a, b)
             else:
                 assert False, 'unreachable'
-        # elif expr.op == tvm.ir.Op.get('nn.conv1d'):
-        #     assert len(expr.args) == 2
-        #     assert _ndim(expr.args[0]) == 3
-        #     assert _ndim(expr.args[1]) == 3
-        #     #how would length of padding change on 2d to 1d if at all?
-        #     # how does dilation assertion work/what does it mean?
-        #     # groups aren't present in conv1d, so assertion doesn't seem like it is needed
-        #     assert expr.attrs.data_layout == 'NCW'
-        #     assert expr.attrs.data.kernel_layout == "OIW"
-        #     assert expr.attrs.out_layout == ''
-        #     assert expr.attrs.out_dtype == ''
-
-        #     data = _recursive_helper(expr.args[0])
-        #     weights = _recursive_helper(expr.args[1])
-
-        #     stride = [int(v) for v in expr.attrs.strides]
-        #     pad = [int(v) for v in expr.attrs.padding]
-        #     data_layout = expr.attrs.data_layout
-        #     kernel_layout = expr.attrs.kernel_layout
-            
 
         elif expr.op == tvm.ir.Op.get('nn.conv2d'):
             assert len(expr.args) == 2
