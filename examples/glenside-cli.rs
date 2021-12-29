@@ -477,6 +477,7 @@ fn main() {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: shapes_map.clone(),
+            name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&glenside_expr);
 
@@ -604,6 +605,7 @@ fn main() {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: shapes_map,
+            name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&extracted_expr);
         let (hw_id_map, hw_atoms) = if let Some(val) = matches.value_of("find-monolithic-designs") {

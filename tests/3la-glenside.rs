@@ -39,7 +39,7 @@ fn test_3la_glenside_linear_rewrite() {
     "#;*/
 
     let prog_frag_mod = tvm::ir::IRModule::parse("", prog_frag).unwrap();
-    let (expr, shape_info, equiv_worklist) =
+    let (expr, shape_info, dtypes_info, equiv_worklist) =
         glenside::language::from_relay::from_relay(&prog_frag_mod, false, &vec![]);
 
     let mut env = HashMap::default();
@@ -48,6 +48,7 @@ fn test_3la_glenside_linear_rewrite() {
     }
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
+        name_to_dtype: dtypes_info.into_iter().collect(),
     });
     let rws = vec![
         glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
