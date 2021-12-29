@@ -334,12 +334,12 @@ pub fn conv2d(
             }
             let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
 
-            // let operator_call_id = expr.add(Language::RelayOperatorCall(vec![
-            //     operator_id,
-            //     data_id, weights_id, stride_shape_id, padding_id,
-            //     groups_id, channel_id, weights_shape_id,
-            //     activation_layout_id, kernel_layout_id
-            // ].into_boxed_slice()));
+            let operator_call_id = expr.add(Language::RelayOperatorCall(vec![
+                operator_id,
+                data_id, weights_id, stride_shape_id, padding_id,
+                groups_id, channel_id, weights_shape_id,
+                activation_layout_id, kernel_layout_id
+            ].into_boxed_slice()));
 
             let mut to_be_concatted = Vec::default();
 
@@ -390,7 +390,7 @@ pub fn conv2d(
                 concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
             }
 
-            (concatted_id, None)
+            (concatted_id, Some(operator_call_id))
         }
         _ => panic!("Groups not implemented for groups={}", groups),
     };
