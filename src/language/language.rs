@@ -303,9 +303,9 @@ define_language! {
 
         ComputeType(ComputeType),
 
-        Symbol(String),
-
         AcceleratorFunc(AcceleratorFunc),
+
+        Symbol(String),
     }
 }
 
@@ -604,7 +604,7 @@ impl FromStr for AcceleratorFunc {
 }
 
 impl Display for AcceleratorFunc {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             AcceleratorFunc::FlexLinear => "flex-linear",
             AcceleratorFunc::FlexLSTM   => "flex-lstm",
@@ -614,10 +614,10 @@ impl Display for AcceleratorFunc {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct AcceleratorFuncData {
-    name: String,
+    pattern: AcceleratorFunc,
     accelerator: String,
-    get_output_shape: Box<dyn Fn(&Vec<MyAnalysisDataLegacyData>) -> MyAnalysisDataLegacyData>,
 }
 
 // TODO(@gussmith23) Pick a better analysis name.
@@ -1434,10 +1434,56 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             AcceleratorCall(ids) => {
-                let accelerator_call = egraph[ids[0]].data;
-                match accelerator_call {
-                    MyAnalysisData::Legacy()
+                let accelerator_call = &egraph[ids[0]].data;
+                let accelerator_func_data = match accelerator_call {
+                    MyAnalysisData::AcceleratorFunc(data) => data,
+                    _ => panic!("Invalid data for accelerator function: {:?}", accelerator_call)
+                };
+                match accelerator_func_data.pattern {
+                      crate::language::AcceleratorFunc::FlexLinear
+                    | crate::language::AcceleratorFunc::VTADense => {
+                        let inp_data = &egraph[ids[1]].data;
+                        let wgt_data = &egraph[ids[2]].data;
+                        let inp_shape = match inp_data {
+                            MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
+                            MyAnalysisData::Legacy(p)        => p.shape.clone(),
+                            _ => panic!("Data for input should have shape info")
+                        };
+                        let wgt_shape = match wgt_data {
+                            MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
+                            MyAnalysisData::Legacy(p)        => p.shape.clone(),
+                            _ => panic!("Data for weight should have shape info")
+                        };
+                        let out_shape = match (inp_shape, wgt_shape) {
+                            (Some(inp_shape), Some(wgt_shape)) => Some(IxDyn(&[inp_shape[0], wgt_shape[0]])),
+                            (_, _) => None,
+                        };
+                        MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                            shape: out_shape,
+                            usize_value: None
+                        })
+                    },
+                      crate::language::AcceleratorFunc::VTAConv1D
+                    | crate::language::AcceleratorFunc::FlexLSTM => {
+                        // TODO: add shape here
+                        MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
+                            shape: None,
+                            usize_value: None,
+                        })
+                    }
                 }
+            }
+            AcceleratorFunc(name) => {
+                let accelerator = match &name {
+                      crate::language::AcceleratorFunc::FlexLinear
+                    | crate::language::AcceleratorFunc::FlexLSTM => "flexnlp",
+                      crate::language::AcceleratorFunc::VTAConv1D
+                    | crate::language::AcceleratorFunc::VTADense => "vta", 
+                };
+                MyAnalysisData::AcceleratorFunc(AcceleratorFuncData {
+                    pattern: name.clone(),
+                    accelerator: String::from(accelerator)
+                })
             }
             RelayActivationLayout(l) => MyAnalysisData::RelayActivationLayout(l.clone()),
             RelayKernelLayout(l) => MyAnalysisData::RelayKernelLayout(l.clone()),
@@ -2388,7 +2434,11 @@ impl egg::Analysis<Language> for MyAnalysis {
             }),
             &AccessReshape([access_id, access_shape_id]) => {
                 let a = match &egraph[access_id].data {
-                    MyAnalysisData::AccessPattern(a) => a,
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    MyAnalysisData::Legacy(p) => match &p.shape {
+                        Some(s) => AccessPatternData {shape: s.clone(), item_shape: s.clone(), zero_regions: HashMap::default()},
+                        None => panic!("No shape information before")
+                    }
                     _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
                 let mut new_shape = match &egraph[access_shape_id].data {
