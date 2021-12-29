@@ -1121,7 +1121,12 @@ pub fn access_windows_resulting_shape(
     .map(
         |(&dim_len, &kernel_dim_len, &stride): (&usize, &usize, &usize)| {
             let total_dim_len = dim_len;
-            assert!(total_dim_len >= kernel_dim_len, "{} !>= {}", total_dim_len, kernel_dim_len);
+            assert!(
+                total_dim_len >= kernel_dim_len,
+                "{} !>= {}",
+                total_dim_len,
+                kernel_dim_len
+            );
             let num_spots = total_dim_len - (kernel_dim_len - 1);
             (num_spots + stride - 1) / stride
         },
@@ -1328,8 +1333,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 assert_eq!(access.shape.ndim(), 0);
                 let t = access.item_shape[0];
                 let h = access.item_shape[1];
-                assert_eq!(t%2, 0);
-                assert_eq!(h%16, 0);
+                assert_eq!(t % 2, 0);
+                assert_eq!(h % 16, 0);
                 access.item_shape[0] = access.item_shape[0] / 2;
 
                 MyAnalysisData::AccessPattern(access)
