@@ -51,7 +51,7 @@ git = "https://github.com/gussmith23/rplex"
 # git = "https://github.com/hypercubestart/incubator-tvm"
 git = "ssh://git@github.com/uwsampl/3la-tvm.git"
 # branch = "3la-pldi-push-main"
-rev = "0f37c4d4385bf47d0858c04328733caac283dc89"
+rev = "8185bdfe61ef3e5579867393eb52669bb8daebb2"
 optional = true
 
 [dependencies.egg]
