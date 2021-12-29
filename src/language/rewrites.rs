@@ -937,6 +937,7 @@ pub fn dot_product_with_vta() -> RW {
             MyAnalysisData::AccessPattern(access) => {
                 access.shape.ndim() + access.item_shape.ndim() == 2
             }
+            MyAnalysisData::Shape(shape) => shape.shape.ndim() == 2,
             _ => false,
         }
     }
