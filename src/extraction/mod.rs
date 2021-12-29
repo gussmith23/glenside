@@ -301,6 +301,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
                     | ComputeType::ReduceMean
                     | ComputeType::ElementwiseAdd
                     | ComputeType::ElementwiseMul
+                    | ComputeType::DotProduct
                     | ComputeType::ReduceMax => 10000,
                     _ => 100
                 }
