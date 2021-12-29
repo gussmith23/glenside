@@ -1788,8 +1788,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         };
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             zero_regions: HashMap::default(),
-                            shape: out_shape.clone(),
-                            item_shape: IxDyn(&[]),
+                            shape: IxDyn(&[]),
+                            item_shape: out_shape.clone(),
                             relay_shape: Some(out_shape),
                             contains_accelerator_calls: true,
                         })
@@ -3326,7 +3326,25 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
                 let a1 = match &egraph[a1_id].data {
-                    MyAnalysisData::AccessPattern(a) => a,
+                    MyAnalysisData::AccessPattern(a) => {
+                        if egraph[a1_id].nodes.iter().all(|n| match n {
+                            Language::RelayOperatorCall(_) => true,
+                            _ => false,
+                        }) {
+                            let relay_shape = a.relay_shape.as_ref().unwrap();
+                            let new_axis = new_access.shape.ndim();
+                            assert!(new_axis <= relay_shape.ndim());
+                            AccessPatternData {
+                                zero_regions: HashMap::default(),
+                                shape: IxDyn(&relay_shape.slice()[..new_axis]),
+                                item_shape: IxDyn(&relay_shape.slice()[new_axis..]),
+                                relay_shape: Some(IxDyn(relay_shape.slice())),
+                                contains_accelerator_calls: a.contains_accelerator_calls,
+                            }
+                        } else {
+                            a.clone()
+                        }
+                    },
                     _ => panic!(),
                 };
                 // TODO(@gussmith23) Implement zero_regions
