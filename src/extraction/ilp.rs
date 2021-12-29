@@ -21,7 +21,6 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use egg::{Id, Language as LanguageTrait};
-use log::info;
 use rplex::Variable;
 use rplex::VariableType;
 use rplex::{var, Constraint, ConstraintType, Env, Problem, VariableValue, WeightedVariable};
@@ -338,13 +337,11 @@ pub fn create_generic_egraph_lp_model<'a>(
 
         // Filter out enodes that the user doesn't want variables for.
         let mut var_count = 0;
-        info!("Creating for {}: {:?}", eclass.id, eclass);
         for enode in eclass
             .nodes
             .iter()
             .filter(|node| filter_enode(node, eclass.id, egraph))
         {
-            info!("{} added {:?}", eclass.id, enode);
             let mut s = DefaultHasher::new();
             enode.hash(&mut s);
             let bn_name = "bn_".to_owned() + &s.finish().to_string();
