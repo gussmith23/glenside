@@ -1,6 +1,6 @@
 use egg::{define_language, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
-use log::debug;
+use log::{debug, warn};
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
 use serde_json::json;
@@ -2052,8 +2052,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
                             {
+                                match act_layout {
+                                    crate::language::RelayActivationLayout::NCHW => (),
+                                    crate::language::RelayActivationLayout::NHWC => warn!("Conv2d with NHWC layout detected. The conv2d RelayOperator for Conv2d is broken, but we don't currently have time to fix it before PLDI."),
+                                }
                                 let mut data_shape = data
                                     .shape
                                     .slice()
@@ -2065,6 +2069,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 data_shape[3] += padding.shape[1] + padding.shape[3];
                                 let n = data_shape[0].clone();
                                 let c = channels.clone();
+                                match *group {
+                                    1 => {
                                 let access_window_shape = access_windows_resulting_shape(
                                     &IxDyn(&data_shape[1..]),
                                     &kernel_size.shape,
@@ -2079,6 +2085,51 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: data.contains_accelerator_calls
                                         || weight.contains_accelerator_calls,
+                                }
+
+                                    }
+                                    c => {
+                                        match act_layout {
+                                            crate::language::RelayActivationLayout::NCHW => (),
+                                            crate::language::RelayActivationLayout::NHWC => todo!("Not currently supported, supporting only NCHW for PLDI push.")
+                                        }
+                                        match _ker_layout {
+                                            crate::language::RelayKernelLayout::OIHW => (),
+                                            crate::language::RelayKernelLayout::HWIO => todo!("Not currently supported, supporting only OIHW for PLDI push.")
+                                        }
+                                        assert_eq!(c, *channels);
+                                        assert_eq!(group, channels);
+                                        assert_eq!(kernel_size.shape[0], *channels);
+
+                                        let mut weight_shape = weight
+                                            .shape
+                                            .slice()
+                                            .iter()
+                                            .chain(weight.item_shape.slice().iter())
+                                            .cloned()
+                                            .collect::<Vec<_>>();
+
+                                        assert_eq!(weight_shape[1], data_shape[1]/group);
+
+                                        let access_window_shape = access_windows_resulting_shape(
+                                            &IxDyn(&data_shape[2..]),
+                                            &IxDyn(&kernel_size.shape.slice()[1..]),
+                                            &IxDyn(&strides.shape.slice()[1..]),
+                                        );
+
+                                        let h = access_window_shape[0];
+                                        let w = access_window_shape[1];
+
+                                        AccessPatternData {
+                                            shape: IxDyn(&[n, c, h, w]),
+                                            item_shape: IxDyn(&[]),
+                                            relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                            zero_regions: HashMap::default(),
+                                            contains_accelerator_calls: data.contains_accelerator_calls
+                                                || weight.contains_accelerator_calls,
+                                        }
+                                    }
+                                    _ => panic!("Only supporting standard convolution or depthwise convolution (groups=={}) but groups == {}", c, *group),
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
@@ -6503,6 +6554,96 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(b) => {
                 assert_eq!(b.shape, IxDyn(&[16, 32]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    // >>> data = relay.var('data', shape=(2, 3, 32, 32))
+    // >>> weights = relay.var('weights', shape=(3, 1, 5, 5))
+    // >>> program = relay.nn.conv2d(data, weights, strides=(2, 3), padding=(1, 2, 3, 4), groups=3, channels=3)
+    // >>> mod = tvm.IRModule.from_expr(program)
+    // >>> program = relay.nn.conv2d(data, weights, strides=(2, 3), padding=(1, 2, 3, 4), groups=3, channels=3)
+    // >>> mod = relay.transform.InferType()(mod)
+    // >>> mod
+    // #[version = "0.0.5"]
+    // def @main(%data: Tensor[(2, 3, 32, 32), float32], %weights: Tensor[(3, 1, 5, 5), float32]) -> Tensor[(2, 3, 16, 12), float32] {
+    //   nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4], groups=3, channels=3) /* ty=Tensor[(2, 3, 16, 12), float32] */
+    // }
+    #[test]
+    fn conv2d_depthwise_0() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![2, 3, 32, 32]);
+        map.insert("weights".to_string(), vec![3, 1, 5, 5]);
+
+        let program = "
+         (relay-operator-call relay-conv2d
+            (access-tensor data)
+            (access-tensor weights)
+            (shape 1 2 3)
+            (shape 1 2 3 4)
+            3
+            3
+            (shape 3 5 5)
+            relay-activation-layout-nchw
+            relay-kernel-layout-oihw
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(b) => {
+                assert_eq!(b.shape, IxDyn(&[2, 3, 16, 12]));
+            }
+            _ => panic!(),
+        }
+    }
+    // >>> import tvm
+    // >>> from tvm import relay
+    // >>> data = relay.var('data', shape=(2, 3, 32, 32))
+    // >>> weights = relay.var('weights', shape=(3, 1, 5, 5))
+    // >>> program = relay.nn.conv2d(data, weights, strides=(4, 1), padding=(0, 2, 1, 5), groups=3, channels=3)
+    // >>> mod = tvm.IRModule.from_expr(program)
+    // >>> mod = relay.transform.InferType()(mod)
+    // >>> mod
+    // #[version = "0.0.5"]
+    // def @main(%data: Tensor[(2, 3, 32, 32), float32], %weights: Tensor[(3, 1, 5, 5), float32]) -> Tensor[(2, 3, 8, 35), float32] {
+    //   nn.conv2d(%data, %weights, strides=[4, 1], padding=[0, 2, 1, 5], groups=3, channels=3) /* ty=Tensor[(2, 3, 8, 35), float32] */
+    // }
+    #[test]
+    fn conv2d_depthwise_1() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![2, 3, 32, 32]);
+        map.insert("weights".to_string(), vec![3, 1, 5, 5]);
+
+        let program = "
+         (relay-operator-call relay-conv2d
+            (access-tensor data)
+            (access-tensor weights)
+            (shape 1 4 1)
+            (shape 0 2 1 5)
+            3
+            3
+            (shape 3 5 5)
+            relay-activation-layout-nchw
+            relay-kernel-layout-oihw
+         )
+         "
+        .parse()
+        .unwrap();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
+        let id = egraph.add_expr(&program);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(b) => {
+                assert_eq!(b.shape, IxDyn(&[2, 3, 8, 35]));
             }
             _ => panic!(),
         }
