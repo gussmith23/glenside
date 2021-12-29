@@ -49,8 +49,8 @@ git = "https://github.com/gussmith23/rplex"
 # If the versions get out of whack, we'll probably have some weird errors.
 # rev = "4ed759f6b6cafbab707f95b57762913a1f57c021"
 # git = "https://github.com/hypercubestart/incubator-tvm"
-git = "https://github.com/AD1024/tvm"
-branch = "extend-rs-binding"
+git = "ssh://git@github.com/uwsampl/3la-tvm.git"
+branch = "accelerator-call-op"
 optional = true
 
 [dependencies.egg]
