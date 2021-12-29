@@ -897,7 +897,10 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
     let (expr, shapes_vec, dtypes_vec, _) = glenside::language::from_relay::from_relay(
         &module,
         false,
-        &vec![glenside::language::RelayOperator::RelaySigmoid],
+        &vec![
+            glenside::language::RelayOperator::RelaySigmoid,
+            glenside::language::RelayOperator::RelayTanh,
+        ],
     );
 
     // TODO(@gussmith23) Include some simple simplifying rewrites
