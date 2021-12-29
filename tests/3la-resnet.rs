@@ -23,10 +23,10 @@ fn test_resnet_flexmatch() {
         name_to_shape: env.clone(),
         name_to_dtype: dtypes_info.iter().cloned().collect(),
     });
-    let rws = vec![
+    let mut rws = vec![
         // glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
-        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
         glenside::language::rewrites::access_reshape_to_relay(),
+        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
         glenside::language::rewrites::flatten_unflatten_any_access(),
         glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
         glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
