@@ -5428,9 +5428,8 @@ mod tests {
 
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
+            .with_iter_limit(7)
             .run(&rws);
-
-        runner.print_report();
 
         let matches = "
          (access-reshape
@@ -5457,13 +5456,7 @@ mod tests {
         .unwrap()
         .search_eclass(&runner.egraph, id)
         .unwrap();
-        //assert_eq!(matches.substs.len(), 1);
-
-        for subst in matches.substs {
-            println!("{:?}", runner.egraph[subst["?print-me".parse().unwrap()]]);
-        }
-
-        todo!();
+        assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
