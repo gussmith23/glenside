@@ -297,16 +297,14 @@ impl CostFunction<Language> for AcceleratorCostFunction {
 
             Language::Compute(_) => 1,
             Language::AccessReshape(_) => 10000,
-            Language::ComputeType(compute_type) => {
-                match compute_type {
-                    ComputeType::ReLU
-                    | ComputeType::ReduceMean
-                    | ComputeType::ElementwiseAdd
-                    | ComputeType::ElementwiseMul
-                    | ComputeType::DotProduct
-                    | ComputeType::ReduceMax => 10000,
-                    _ => 100
-                }
+            Language::ComputeType(compute_type) => match compute_type {
+                ComputeType::ReLU
+                | ComputeType::ReduceMean
+                | ComputeType::ElementwiseAdd
+                | ComputeType::ElementwiseMul
+                | ComputeType::DotProduct
+                | ComputeType::ReduceMax => 10000,
+                _ => 100,
             },
             Language::AccessPair(_) => 10000,
             _ => 500,
