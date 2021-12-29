@@ -119,10 +119,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %3 = nn.dense(%1, %2, units=None);
   %4 = reshape(%3, newshape=[20, 32, 768]);
   %5 = add(%4, %decoder_layers_0_self_attn_in_proj_bias);
-  %6 = strided_slice(%5, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1]);
+  %6 = strided_slice(%5, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %7 = multiply(%6, 0.176777f);
   %8 = reshape(%7, newshape=[20, 256, 32]);
-  %9 = strided_slice(%5, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1]);
+  %9 = strided_slice(%5, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %10 = reshape(%9, newshape=[-1, 256, 32]);
   %11 = transpose(%10, axes=[1, 0, 2]);
   %12 = transpose(%11, axes=[0, 2, 1]);
@@ -131,7 +131,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %15 = nn.batch_matmul(%13, %14, meta[relay.attrs.BatchMatmulAttrs][0]);
   %16 = nn.softmax(%15);
   %17 = nn.dropout(%16, rate=0.1f);
-  %18 = strided_slice(%5, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1]);
+  %18 = strided_slice(%5, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %19 = reshape(%18, newshape=[-1, 256, 32]);
   %20 = transpose(%19, axes=[1, 0, 2]);
   %21 = %17.0;
@@ -149,13 +149,13 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %33 = %32.0;
   %34 = add(%input_1, %33);
   %35 = nn.layer_norm(%34, %decoder_layers_0_norm1_weight, %decoder_layers_0_norm1_bias);
-  %36 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1]);
+  %36 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %37 = transpose(%36, axes=[1, 0]);
   %38 = reshape(%35, newshape=[-1, 256]);
   %39 = transpose(%37, axes=[1, 0]);
   %40 = nn.dense(%38, %39, units=None);
   %41 = reshape(%40, newshape=[20, 32, 256]);
-  %42 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1]);
+  %42 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
   %43 = add(%41, %42);
   %44 = multiply(%43, 0.176777f);
   %45 = reshape(%44, newshape=[20, 256, 32]);
@@ -165,10 +165,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %49 = nn.dense(%47, %48, units=None);
   %50 = reshape(%49, newshape=[10, 32, 768]);
   %51 = add(%50, %encoder_layers_0_self_attn_in_proj_bias);
-  %52 = strided_slice(%51, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %52 = strided_slice(%51, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %53 = multiply(%52, 0.176777f);
   %54 = reshape(%53, newshape=[10, 256, 32]);
-  %55 = strided_slice(%51, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %55 = strided_slice(%51, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %56 = reshape(%55, newshape=[-1, 256, 32]);
   %57 = transpose(%56, axes=[1, 0, 2]);
   %58 = transpose(%57, axes=[0, 2, 1]);
@@ -177,7 +177,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %61 = nn.batch_matmul(%59, %60, meta[relay.attrs.BatchMatmulAttrs][2]);
   %62 = nn.softmax(%61);
   %63 = nn.dropout(%62, rate=0.1f);
-  %64 = strided_slice(%51, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1]);
+  %64 = strided_slice(%51, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %65 = reshape(%64, newshape=[-1, 256, 32]);
   %66 = transpose(%65, axes=[1, 0, 2]);
   %67 = %63.0;
@@ -220,10 +220,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %104 = nn.dense(%102, %103, units=None);
   %105 = reshape(%104, newshape=[10, 32, 768]);
   %106 = add(%105, %encoder_layers_1_self_attn_in_proj_bias);
-  %107 = strided_slice(%106, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %107 = strided_slice(%106, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %108 = multiply(%107, 0.176777f);
   %109 = reshape(%108, newshape=[10, 256, 32]);
-  %110 = strided_slice(%106, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %110 = strided_slice(%106, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %111 = reshape(%110, newshape=[-1, 256, 32]);
   %112 = transpose(%111, axes=[1, 0, 2]);
   %113 = transpose(%112, axes=[0, 2, 1]);
@@ -232,7 +232,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %116 = nn.batch_matmul(%114, %115, meta[relay.attrs.BatchMatmulAttrs][4]);
   %117 = nn.softmax(%116);
   %118 = nn.dropout(%117, rate=0.1f);
-  %119 = strided_slice(%106, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1]);
+  %119 = strided_slice(%106, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %120 = reshape(%119, newshape=[-1, 256, 32]);
   %121 = transpose(%120, axes=[1, 0, 2]);
   %122 = %118.0;
@@ -275,10 +275,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %159 = nn.dense(%157, %158, units=None);
   %160 = reshape(%159, newshape=[10, 32, 768]);
   %161 = add(%160, %encoder_layers_2_self_attn_in_proj_bias);
-  %162 = strided_slice(%161, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %162 = strided_slice(%161, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %163 = multiply(%162, 0.176777f);
   %164 = reshape(%163, newshape=[10, 256, 32]);
-  %165 = strided_slice(%161, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %165 = strided_slice(%161, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %166 = reshape(%165, newshape=[-1, 256, 32]);
   %167 = transpose(%166, axes=[1, 0, 2]);
   %168 = transpose(%167, axes=[0, 2, 1]);
@@ -287,7 +287,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %171 = nn.batch_matmul(%169, %170, meta[relay.attrs.BatchMatmulAttrs][6]);
   %172 = nn.softmax(%171);
   %173 = nn.dropout(%172, rate=0.1f);
-  %174 = strided_slice(%161, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1]);
+  %174 = strided_slice(%161, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %175 = reshape(%174, newshape=[-1, 256, 32]);
   %176 = transpose(%175, axes=[1, 0, 2]);
   %177 = %173.0;
@@ -330,10 +330,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %214 = nn.dense(%212, %213, units=None);
   %215 = reshape(%214, newshape=[10, 32, 768]);
   %216 = add(%215, %encoder_layers_3_self_attn_in_proj_bias);
-  %217 = strided_slice(%216, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %217 = strided_slice(%216, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %218 = multiply(%217, 0.176777f);
   %219 = reshape(%218, newshape=[10, 256, 32]);
-  %220 = strided_slice(%216, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %220 = strided_slice(%216, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %221 = reshape(%220, newshape=[-1, 256, 32]);
   %222 = transpose(%221, axes=[1, 0, 2]);
   %223 = transpose(%222, axes=[0, 2, 1]);
@@ -342,7 +342,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %226 = nn.batch_matmul(%224, %225, meta[relay.attrs.BatchMatmulAttrs][8]);
   %227 = nn.softmax(%226);
   %228 = nn.dropout(%227, rate=0.1f);
-  %229 = strided_slice(%216, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1]);
+  %229 = strided_slice(%216, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %230 = reshape(%229, newshape=[-1, 256, 32]);
   %231 = transpose(%230, axes=[1, 0, 2]);
   %232 = %228.0;
@@ -385,10 +385,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %269 = nn.dense(%267, %268, units=None);
   %270 = reshape(%269, newshape=[10, 32, 768]);
   %271 = add(%270, %encoder_layers_4_self_attn_in_proj_bias);
-  %272 = strided_slice(%271, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %272 = strided_slice(%271, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %273 = multiply(%272, 0.176777f);
   %274 = reshape(%273, newshape=[10, 256, 32]);
-  %275 = strided_slice(%271, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %275 = strided_slice(%271, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %276 = reshape(%275, newshape=[-1, 256, 32]);
   %277 = transpose(%276, axes=[1, 0, 2]);
   %278 = transpose(%277, axes=[0, 2, 1]);
@@ -397,7 +397,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %281 = nn.batch_matmul(%279, %280, meta[relay.attrs.BatchMatmulAttrs][10]);
   %282 = nn.softmax(%281);
   %283 = nn.dropout(%282, rate=0.1f);
-  %284 = strided_slice(%271, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1]);
+  %284 = strided_slice(%271, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %285 = reshape(%284, newshape=[-1, 256, 32]);
   %286 = transpose(%285, axes=[1, 0, 2]);
   %287 = %283.0;
@@ -440,10 +440,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %324 = nn.dense(%322, %323, units=None);
   %325 = reshape(%324, newshape=[10, 32, 768]);
   %326 = add(%325, %encoder_layers_5_self_attn_in_proj_bias);
-  %327 = strided_slice(%326, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %327 = strided_slice(%326, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %328 = multiply(%327, 0.176777f);
   %329 = reshape(%328, newshape=[10, 256, 32]);
-  %330 = strided_slice(%326, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %330 = strided_slice(%326, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %331 = reshape(%330, newshape=[-1, 256, 32]);
   %332 = transpose(%331, axes=[1, 0, 2]);
   %333 = transpose(%332, axes=[0, 2, 1]);
@@ -452,7 +452,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %336 = nn.batch_matmul(%334, %335, meta[relay.attrs.BatchMatmulAttrs][12]);
   %337 = nn.softmax(%336);
   %338 = nn.dropout(%337, rate=0.1f);
-  %339 = strided_slice(%326, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1]);
+  %339 = strided_slice(%326, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %340 = reshape(%339, newshape=[-1, 256, 32]);
   %341 = transpose(%340, axes=[1, 0, 2]);
   %342 = %338.0;
@@ -490,15 +490,15 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %374 = add(%356, %373);
   %375 = nn.layer_norm(%374, %encoder_layers_5_norm2_weight, %encoder_layers_5_norm2_bias);
   %376 = nn.layer_norm(%375, %encoder_norm_weight, %encoder_norm_bias);
-  %377 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1]);
+  %377 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %378 = transpose(%377, axes=[1, 0]);
   %379 = reshape(%376, newshape=[-1, 256]);
   %380 = transpose(%378, axes=[1, 0]);
   %381 = nn.dense(%379, %380, units=None);
   %382 = reshape(%381, newshape=[10, 32, 512]);
-  %383 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1]);
+  %383 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
   %384 = add(%382, %383);
-  %385 = strided_slice(%384, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %385 = strided_slice(%384, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %386 = reshape(%385, newshape=[-1, 256, 32]);
   %387 = transpose(%386, axes=[1, 0, 2]);
   %388 = transpose(%387, axes=[0, 2, 1]);
@@ -507,7 +507,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %391 = nn.batch_matmul(%389, %390, meta[relay.attrs.BatchMatmulAttrs][14]);
   %392 = nn.softmax(%391);
   %393 = nn.dropout(%392, rate=0.1f);
-  %394 = strided_slice(%384, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %394 = strided_slice(%384, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %395 = reshape(%394, newshape=[-1, 256, 32]);
   %396 = transpose(%395, axes=[1, 0, 2]);
   %397 = %393.0;
@@ -550,10 +550,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %434 = nn.dense(%432, %433, units=None);
   %435 = reshape(%434, newshape=[20, 32, 768]);
   %436 = add(%435, %decoder_layers_1_self_attn_in_proj_bias);
-  %437 = strided_slice(%436, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1]);
+  %437 = strided_slice(%436, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %438 = multiply(%437, 0.176777f);
   %439 = reshape(%438, newshape=[20, 256, 32]);
-  %440 = strided_slice(%436, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1]);
+  %440 = strided_slice(%436, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %441 = reshape(%440, newshape=[-1, 256, 32]);
   %442 = transpose(%441, axes=[1, 0, 2]);
   %443 = transpose(%442, axes=[0, 2, 1]);
@@ -562,7 +562,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %446 = nn.batch_matmul(%444, %445, meta[relay.attrs.BatchMatmulAttrs][16]);
   %447 = nn.softmax(%446);
   %448 = nn.dropout(%447, rate=0.1f);
-  %449 = strided_slice(%436, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1]);
+  %449 = strided_slice(%436, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %450 = reshape(%449, newshape=[-1, 256, 32]);
   %451 = transpose(%450, axes=[1, 0, 2]);
   %452 = %448.0;
@@ -580,25 +580,25 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %464 = %463.0;
   %465 = add(%430, %464);
   %466 = nn.layer_norm(%465, %decoder_layers_1_norm1_weight, %decoder_layers_1_norm1_bias);
-  %467 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1]);
+  %467 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %468 = transpose(%467, axes=[1, 0]);
   %469 = reshape(%466, newshape=[-1, 256]);
   %470 = transpose(%468, axes=[1, 0]);
   %471 = nn.dense(%469, %470, units=None);
   %472 = reshape(%471, newshape=[20, 32, 256]);
-  %473 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1]);
+  %473 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
   %474 = add(%472, %473);
   %475 = multiply(%474, 0.176777f);
   %476 = reshape(%475, newshape=[20, 256, 32]);
-  %477 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1]);
+  %477 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %478 = transpose(%477, axes=[1, 0]);
   %479 = reshape(%376, newshape=[-1, 256]);
   %480 = transpose(%478, axes=[1, 0]);
   %481 = nn.dense(%479, %480, units=None);
   %482 = reshape(%481, newshape=[10, 32, 512]);
-  %483 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1]);
+  %483 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
   %484 = add(%482, %483);
-  %485 = strided_slice(%484, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %485 = strided_slice(%484, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %486 = reshape(%485, newshape=[-1, 256, 32]);
   %487 = transpose(%486, axes=[1, 0, 2]);
   %488 = transpose(%487, axes=[0, 2, 1]);
@@ -607,7 +607,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %491 = nn.batch_matmul(%489, %490, meta[relay.attrs.BatchMatmulAttrs][18]);
   %492 = nn.softmax(%491);
   %493 = nn.dropout(%492, rate=0.1f);
-  %494 = strided_slice(%484, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %494 = strided_slice(%484, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %495 = reshape(%494, newshape=[-1, 256, 32]);
   %496 = transpose(%495, axes=[1, 0, 2]);
   %497 = %493.0;
@@ -650,10 +650,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %534 = nn.dense(%532, %533, units=None);
   %535 = reshape(%534, newshape=[20, 32, 768]);
   %536 = add(%535, %decoder_layers_2_self_attn_in_proj_bias);
-  %537 = strided_slice(%536, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1]);
+  %537 = strided_slice(%536, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %538 = multiply(%537, 0.176777f);
   %539 = reshape(%538, newshape=[20, 256, 32]);
-  %540 = strided_slice(%536, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1]);
+  %540 = strided_slice(%536, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %541 = reshape(%540, newshape=[-1, 256, 32]);
   %542 = transpose(%541, axes=[1, 0, 2]);
   %543 = transpose(%542, axes=[0, 2, 1]);
@@ -662,7 +662,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %546 = nn.batch_matmul(%544, %545, meta[relay.attrs.BatchMatmulAttrs][20]);
   %547 = nn.softmax(%546);
   %548 = nn.dropout(%547, rate=0.1f);
-  %549 = strided_slice(%536, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1]);
+  %549 = strided_slice(%536, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %550 = reshape(%549, newshape=[-1, 256, 32]);
   %551 = transpose(%550, axes=[1, 0, 2]);
   %552 = %548.0;
@@ -680,25 +680,25 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %564 = %563.0;
   %565 = add(%530, %564);
   %566 = nn.layer_norm(%565, %decoder_layers_2_norm1_weight, %decoder_layers_2_norm1_bias);
-  %567 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1]);
+  %567 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %568 = transpose(%567, axes=[1, 0]);
   %569 = reshape(%566, newshape=[-1, 256]);
   %570 = transpose(%568, axes=[1, 0]);
   %571 = nn.dense(%569, %570, units=None);
   %572 = reshape(%571, newshape=[20, 32, 256]);
-  %573 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1]);
+  %573 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
   %574 = add(%572, %573);
   %575 = multiply(%574, 0.176777f);
   %576 = reshape(%575, newshape=[20, 256, 32]);
-  %577 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1]);
+  %577 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %578 = transpose(%577, axes=[1, 0]);
   %579 = reshape(%376, newshape=[-1, 256]);
   %580 = transpose(%578, axes=[1, 0]);
   %581 = nn.dense(%579, %580, units=None);
   %582 = reshape(%581, newshape=[10, 32, 512]);
-  %583 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1]);
+  %583 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
   %584 = add(%582, %583);
-  %585 = strided_slice(%584, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %585 = strided_slice(%584, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %586 = reshape(%585, newshape=[-1, 256, 32]);
   %587 = transpose(%586, axes=[1, 0, 2]);
   %588 = transpose(%587, axes=[0, 2, 1]);
@@ -707,7 +707,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %591 = nn.batch_matmul(%589, %590, meta[relay.attrs.BatchMatmulAttrs][22]);
   %592 = nn.softmax(%591);
   %593 = nn.dropout(%592, rate=0.1f);
-  %594 = strided_slice(%584, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %594 = strided_slice(%584, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %595 = reshape(%594, newshape=[-1, 256, 32]);
   %596 = transpose(%595, axes=[1, 0, 2]);
   %597 = %593.0;
@@ -750,10 +750,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %634 = nn.dense(%632, %633, units=None);
   %635 = reshape(%634, newshape=[20, 32, 768]);
   %636 = add(%635, %decoder_layers_3_self_attn_in_proj_bias);
-  %637 = strided_slice(%636, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1]);
+  %637 = strided_slice(%636, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %638 = multiply(%637, 0.176777f);
   %639 = reshape(%638, newshape=[20, 256, 32]);
-  %640 = strided_slice(%636, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1]);
+  %640 = strided_slice(%636, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %641 = reshape(%640, newshape=[-1, 256, 32]);
   %642 = transpose(%641, axes=[1, 0, 2]);
   %643 = transpose(%642, axes=[0, 2, 1]);
@@ -762,7 +762,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %646 = nn.batch_matmul(%644, %645, meta[relay.attrs.BatchMatmulAttrs][24]);
   %647 = nn.softmax(%646);
   %648 = nn.dropout(%647, rate=0.1f);
-  %649 = strided_slice(%636, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1]);
+  %649 = strided_slice(%636, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %650 = reshape(%649, newshape=[-1, 256, 32]);
   %651 = transpose(%650, axes=[1, 0, 2]);
   %652 = %648.0;
@@ -780,25 +780,25 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %664 = %663.0;
   %665 = add(%630, %664);
   %666 = nn.layer_norm(%665, %decoder_layers_3_norm1_weight, %decoder_layers_3_norm1_bias);
-  %667 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1]);
+  %667 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %668 = transpose(%667, axes=[1, 0]);
   %669 = reshape(%666, newshape=[-1, 256]);
   %670 = transpose(%668, axes=[1, 0]);
   %671 = nn.dense(%669, %670, units=None);
   %672 = reshape(%671, newshape=[20, 32, 256]);
-  %673 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1]);
+  %673 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
   %674 = add(%672, %673);
   %675 = multiply(%674, 0.176777f);
   %676 = reshape(%675, newshape=[20, 256, 32]);
-  %677 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1]);
+  %677 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %678 = transpose(%677, axes=[1, 0]);
   %679 = reshape(%376, newshape=[-1, 256]);
   %680 = transpose(%678, axes=[1, 0]);
   %681 = nn.dense(%679, %680, units=None);
   %682 = reshape(%681, newshape=[10, 32, 512]);
-  %683 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1]);
+  %683 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
   %684 = add(%682, %683);
-  %685 = strided_slice(%684, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %685 = strided_slice(%684, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %686 = reshape(%685, newshape=[-1, 256, 32]);
   %687 = transpose(%686, axes=[1, 0, 2]);
   %688 = transpose(%687, axes=[0, 2, 1]);
@@ -807,7 +807,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %691 = nn.batch_matmul(%689, %690, meta[relay.attrs.BatchMatmulAttrs][26]);
   %692 = nn.softmax(%691);
   %693 = nn.dropout(%692, rate=0.1f);
-  %694 = strided_slice(%684, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %694 = strided_slice(%684, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %695 = reshape(%694, newshape=[-1, 256, 32]);
   %696 = transpose(%695, axes=[1, 0, 2]);
   %697 = %693.0;
@@ -850,10 +850,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %734 = nn.dense(%732, %733, units=None);
   %735 = reshape(%734, newshape=[20, 32, 768]);
   %736 = add(%735, %decoder_layers_4_self_attn_in_proj_bias);
-  %737 = strided_slice(%736, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1]);
+  %737 = strided_slice(%736, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %738 = multiply(%737, 0.176777f);
   %739 = reshape(%738, newshape=[20, 256, 32]);
-  %740 = strided_slice(%736, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1]);
+  %740 = strided_slice(%736, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %741 = reshape(%740, newshape=[-1, 256, 32]);
   %742 = transpose(%741, axes=[1, 0, 2]);
   %743 = transpose(%742, axes=[0, 2, 1]);
@@ -862,7 +862,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %746 = nn.batch_matmul(%744, %745, meta[relay.attrs.BatchMatmulAttrs][28]);
   %747 = nn.softmax(%746);
   %748 = nn.dropout(%747, rate=0.1f);
-  %749 = strided_slice(%736, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1]);
+  %749 = strided_slice(%736, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %750 = reshape(%749, newshape=[-1, 256, 32]);
   %751 = transpose(%750, axes=[1, 0, 2]);
   %752 = %748.0;
@@ -880,25 +880,25 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %764 = %763.0;
   %765 = add(%730, %764);
   %766 = nn.layer_norm(%765, %decoder_layers_4_norm1_weight, %decoder_layers_4_norm1_bias);
-  %767 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1]);
+  %767 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %768 = transpose(%767, axes=[1, 0]);
   %769 = reshape(%766, newshape=[-1, 256]);
   %770 = transpose(%768, axes=[1, 0]);
   %771 = nn.dense(%769, %770, units=None);
   %772 = reshape(%771, newshape=[20, 32, 256]);
-  %773 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1]);
+  %773 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
   %774 = add(%772, %773);
   %775 = multiply(%774, 0.176777f);
   %776 = reshape(%775, newshape=[20, 256, 32]);
-  %777 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1]);
+  %777 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %778 = transpose(%777, axes=[1, 0]);
   %779 = reshape(%376, newshape=[-1, 256]);
   %780 = transpose(%778, axes=[1, 0]);
   %781 = nn.dense(%779, %780, units=None);
   %782 = reshape(%781, newshape=[10, 32, 512]);
-  %783 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1]);
+  %783 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
   %784 = add(%782, %783);
-  %785 = strided_slice(%784, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %785 = strided_slice(%784, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %786 = reshape(%785, newshape=[-1, 256, 32]);
   %787 = transpose(%786, axes=[1, 0, 2]);
   %788 = transpose(%787, axes=[0, 2, 1]);
@@ -907,7 +907,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %791 = nn.batch_matmul(%789, %790, meta[relay.attrs.BatchMatmulAttrs][30]);
   %792 = nn.softmax(%791);
   %793 = nn.dropout(%792, rate=0.1f);
-  %794 = strided_slice(%784, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %794 = strided_slice(%784, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %795 = reshape(%794, newshape=[-1, 256, 32]);
   %796 = transpose(%795, axes=[1, 0, 2]);
   %797 = %793.0;
@@ -950,10 +950,10 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %834 = nn.dense(%832, %833, units=None);
   %835 = reshape(%834, newshape=[20, 32, 768]);
   %836 = add(%835, %decoder_layers_5_self_attn_in_proj_bias);
-  %837 = strided_slice(%836, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1]);
+  %837 = strided_slice(%836, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %838 = multiply(%837, 0.176777f);
   %839 = reshape(%838, newshape=[20, 256, 32]);
-  %840 = strided_slice(%836, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1]);
+  %840 = strided_slice(%836, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %841 = reshape(%840, newshape=[-1, 256, 32]);
   %842 = transpose(%841, axes=[1, 0, 2]);
   %843 = transpose(%842, axes=[0, 2, 1]);
@@ -962,7 +962,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %846 = nn.batch_matmul(%844, %845, meta[relay.attrs.BatchMatmulAttrs][32]);
   %847 = nn.softmax(%846);
   %848 = nn.dropout(%847, rate=0.1f);
-  %849 = strided_slice(%836, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1]);
+  %849 = strided_slice(%836, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %850 = reshape(%849, newshape=[-1, 256, 32]);
   %851 = transpose(%850, axes=[1, 0, 2]);
   %852 = %848.0;
@@ -980,25 +980,25 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %864 = %863.0;
   %865 = add(%830, %864);
   %866 = nn.layer_norm(%865, %decoder_layers_5_norm1_weight, %decoder_layers_5_norm1_bias);
-  %867 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1]);
+  %867 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %868 = transpose(%867, axes=[1, 0]);
   %869 = reshape(%866, newshape=[-1, 256]);
   %870 = transpose(%868, axes=[1, 0]);
   %871 = nn.dense(%869, %870, units=None);
   %872 = reshape(%871, newshape=[20, 32, 256]);
-  %873 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1]);
+  %873 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
   %874 = add(%872, %873);
   %875 = multiply(%874, 0.176777f);
   %876 = reshape(%875, newshape=[20, 256, 32]);
-  %877 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1]);
+  %877 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
   %878 = transpose(%877, axes=[1, 0]);
   %879 = reshape(%376, newshape=[-1, 256]);
   %880 = transpose(%878, axes=[1, 0]);
   %881 = nn.dense(%879, %880, units=None);
   %882 = reshape(%881, newshape=[10, 32, 512]);
-  %883 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1]);
+  %883 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
   %884 = add(%882, %883);
-  %885 = strided_slice(%884, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1]);
+  %885 = strided_slice(%884, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %886 = reshape(%885, newshape=[-1, 256, 32]);
   %887 = transpose(%886, axes=[1, 0, 2]);
   %888 = transpose(%887, axes=[0, 2, 1]);
@@ -1007,7 +1007,7 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
   %891 = nn.batch_matmul(%889, %890, meta[relay.attrs.BatchMatmulAttrs][34]);
   %892 = nn.softmax(%891);
   %893 = nn.dropout(%892, rate=0.1f);
-  %894 = strided_slice(%884, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1]);
+  %894 = strided_slice(%884, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
   %895 = reshape(%894, newshape=[-1, 256, 32]);
   %896 = transpose(%895, axes=[1, 0, 2]);
   %897 = %893.0;
@@ -1104,147 +1104,147 @@ def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 25
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a": "0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }, 
     {
       "type_key": "relay.attrs.BatchMatmulAttrs", 
-      "attrs": {"out_dtype": ""}
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
     }
   ], 
   "b64ndarrays": [], 
