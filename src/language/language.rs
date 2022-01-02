@@ -10,11 +10,6 @@ use std::str::FromStr;
 
 define_language! {
     pub enum Language {
-        // (concatenate <t0> <t1> <axis (usize)>)
-        // Concatenate tensors <t0> and <t1> along <axis>.
-        "concatenate" = Concatenate([Id; 3]),
-
-
         // (elementwise-add <t0> <t1>)
         // TODO(@gussmith23) this will probably need to be signed at some point?
         // TODO(@gussmith23) ^^ what did I mean by this?
@@ -2663,18 +2658,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                     item_shape: IxDyn(&[]),
                 })
-            }
-            &Concatenate([t0_id, t1_id, axis_id]) => {
-                let axis = Self::get_usize(axis_id, egraph);
-                let mut new_shape = Self::get_shape(t0_id, egraph).clone();
-                let t1_shape = Self::get_shape(t1_id, egraph).clone();
-                assert_eq!(
-                    new_shape.as_array_view().len(),
-                    t1_shape.as_array_view().len()
-                );
-                assert!(axis < t1_shape.as_array_view().len());
-                new_shape[axis] += t1_shape[axis];
-                MyAnalysisData::Shape(ShapeData { shape: new_shape })
             }
             &ElementwiseAdd([t0_id, t1_id]) => {
                 assert_eq!(

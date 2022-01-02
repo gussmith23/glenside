@@ -954,8 +954,7 @@ where
         ),
         &Language::Usize(u) => Value::Usize(u),
 
-        &Language::Concatenate(_)
-        | &Language::ElementwiseAdd(_)
+        &Language::ElementwiseAdd(_)
         | &Language::SystolicArray(_)
         | &Language::SystolicArrayWithBlocking(_)
         | &Language::AccessReshape(_)

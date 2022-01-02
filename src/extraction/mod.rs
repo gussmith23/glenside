@@ -119,8 +119,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             }
 
             // Old constructs.
-            Language::ElementwiseAdd(_)
-            | Language::Concatenate(_) => panic!(),
+            Language::ElementwiseAdd(_) => panic!(),
 
             Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
@@ -212,8 +211,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             | List(_) | AccessShape(_) | Usize(_) | PadType(_) | ComputeType(_) | Symbol(_)
             | Literal(_) | NotNanFloat64(_) => 1,
             // Old constructs that are no longer used
-            Concatenate(_)
-            | ElementwiseAdd(_) => std::usize::MAX,
+            ElementwiseAdd(_) => std::usize::MAX,
         };
 
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
