@@ -10,11 +10,6 @@ use std::str::FromStr;
 
 define_language! {
     pub enum Language {
-        // (elementwise-add <t0> <t1>)
-        // TODO(@gussmith23) this will probably need to be signed at some point?
-        // TODO(@gussmith23) ^^ what did I mean by this?
-        "elementwise-add" = ElementwiseAdd([Id; 2]),
-
         // (systolic-array <rows (usize)> <cols (usize)> <access-0> <access-1>)
         // Represents a systolic array of size rows X cols, fed with two
         // accesses.
@@ -2659,16 +2654,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     item_shape: IxDyn(&[]),
                 })
             }
-            &ElementwiseAdd([t0_id, t1_id]) => {
-                assert_eq!(
-                    Self::get_shape(t0_id, egraph),
-                    Self::get_shape(t1_id, egraph)
-                );
-                MyAnalysisData::Shape(ShapeData {
-                    shape: Self::get_shape(t0_id, egraph).clone(),
-                })
-            }
-
             Usize(u) => MyAnalysisData::Usize(*u),
             Symbol(name) => {
                 MyAnalysisData::Shape(ShapeData {
