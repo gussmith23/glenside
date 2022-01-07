@@ -302,6 +302,17 @@ pub fn conv2d(
             let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
             let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
 
+            // TODO(@gussmith23) Remove this note if/when it's no longer true.
+            // NOTE: We need to make sure that the Glenside expression (and not
+            // the RelayOperatorCall) is the last thing added to expr. This is
+            // important, as we use this conv2d() helper function in the new
+            // Relay->Glenside rewrites; we use conv2d() to construct a RecExpr
+            // containing the Glenside expression representing conv2d, and then
+            // we insert it into the egraph using add(). However, add() has the
+            // restriction that it returns the new id of the LAST expression in
+            // the RecExpr. Thus, we must ensure that the last expression is the
+            // one we care about in the rewrite, i.e. the Glenside expression
+            // and not the Relay expression.
             let data_id = access_transpose(expr, data_id, &[1, 0, 2, 3]);
 
             (data_id, Some(operator_call_id))
