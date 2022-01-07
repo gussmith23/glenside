@@ -403,7 +403,10 @@ pub enum RelayOperator {
     /// (relay-operator relay-minimum <a:access> <b: access>)
     RelayMinimum,
 
-    /// (relay-opeartor relay-conv2d <data: access> <kernel: access> <strides: shape> <padding: shape>)
+    /// (relay-operator relay-conv2d <data: access> <kernel: access>
+    ///  <strides: shape> <padding: shape> <group: usize>
+    ///  <channels: usize> <kernel_size: shape> <activation_layout>
+    ///  <kernel_layout>)
     RelayConv2D,
 
     /// (relay-operator relay-split <data: access> <indices_or_sections: usize> <axis: usize>)
