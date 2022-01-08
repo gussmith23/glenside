@@ -1,7 +1,12 @@
 use std::str::FromStr;
 
+use crate::language::from_relay;
+
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
-use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
+use egg::{
+    rewrite, Applier, ConditionalApplier, EGraph, ENodeOrVar, Id, Pattern, Rewrite, Subst, Var,
+};
+use egg::{PatternAst, RecExpr};
 use itertools::Itertools;
 use ndarray::Dimension;
 use ndarray::IxDyn;
@@ -2848,6 +2853,136 @@ pub fn simplify_reduce_max() -> RW {
 pub fn simplify_multiple_access_reshapes() -> RW {
     rewrite!("simplify-multiple-access-reshapes";
      "(access-reshape (access-reshape ?a ?s0) ?s1)" => "(access-reshape ?a ?s1)")
+}
+
+pub fn conv2d_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        weights: Var,
+        strides: Var,
+        padding: Var,
+        group: Var,
+        channel: Var,
+        kernel_size: Var,
+        activation_layout: Var,
+        kernel_layout: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let (
+                data,
+                weight,
+                strides,
+                padding,
+                group,
+                _channels,
+                _kernel_size,
+                activation_layout,
+                kernel_layout,
+            ) = match vec![
+                &self.data,
+                &self.weights,
+                &self.strides,
+                &self.padding,
+                &self.group,
+                &self.channel,
+                &self.kernel_size,
+                &self.activation_layout,
+                &self.kernel_layout,
+            ]
+            .drain(..)
+            .map(|v| &egraph[subst[*v]].data)
+            .collect::<Vec<_>>()[..]
+            {
+                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
+                    (
+                        data,
+                        weight,
+                        strides,
+                        padding,
+                        *group,
+                        channels,
+                        kernel_size,
+                        act_layout,
+                        _ker_layout,
+                    )
+                }
+                _ => todo!(),
+            };
+
+            assert_eq!(group, 1);
+            assert_eq!(strides.shape.ndim(), 3);
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let weights_id = expr.add(Language::Symbol("weights_PLACEHOLDER".to_string()));
+            from_relay::conv2d(
+                &mut expr,
+                data_id,
+                data.as_vec().as_slice(),
+                weights_id,
+                weight.as_vec().as_slice(),
+                &strides.shape.slice()[1..3],
+                padding.shape.slice(),
+                &[1, 1],
+                group,
+                match activation_layout {
+                    crate::language::RelayActivationLayout::NCHW => "NCHW",
+                    crate::language::RelayActivationLayout::NHWC => "NHWC",
+                },
+                match kernel_layout {
+                    crate::language::RelayKernelLayout::OIHW => "OIHW",
+                    crate::language::RelayKernelLayout::HWIO => "HWIO",
+                },
+                "",
+            );
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data)
+                        }
+                        Language::Symbol(s) if s == "weights_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.weights)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            vec![egraph.add_instantiation(&pattern_ast, subst)]
+        }
+    }
+    rewrite!("conv2d-relay-to-glenside";
+    "(relay-operator-call relay-conv2d
+       ?data
+       ?weights
+       ?strides
+       ?padding
+       ?group
+       ?channel
+       ?kernel-size
+       ?activation-layout
+       ?kernel-layout)" => {
+          Impl {
+            data: "?data".parse().unwrap(),
+            weights: "?weights".parse().unwrap(),
+            strides: "?strides".parse().unwrap(),
+            padding: "?padding".parse().unwrap(),
+            group: "?group".parse().unwrap(),
+            channel: "?channel".parse().unwrap(),
+            kernel_size: "?kernel-size".parse().unwrap(),
+            activation_layout: "?activation-layout".parse().unwrap(),
+            kernel_layout: "?kernel-layout".parse().unwrap(),
+          }
+      })
 }
 
 #[cfg(test)]
@@ -5845,5 +5980,74 @@ mod tests {
             .unwrap()
             .search_eclass(&runner.egraph, id)
             .is_none());
+    }
+
+    #[test]
+    fn conv2d_relay_to_glenside() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![1, 3, 32, 32]);
+        map.insert("weights".to_string(), vec![8, 3, 3, 3]);
+
+        let program = "
+         (relay-operator-call relay-conv2d
+           (access-tensor data)
+           (access-tensor weights)
+           (shape 1 2 3)
+           (shape 1 2 3 4)
+           1
+           8
+           (shape 3 3 3)
+           relay-activation-layout-nchw 
+           relay-kernel-layout-oihw)"
+            .parse()
+            .unwrap();
+
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::conv2d_relay_to_glenside()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "(access-transpose
+            (compute dot-product
+             (access-cartesian-product
+              (access (access-tensor weights) 1)
+              (access
+               (access-squeeze
+                (access-windows
+                 (access
+                  (access-pad
+                   (access-pad
+                    (access-tensor data)
+                    zero-padding
+                    2 1 3
+                   )
+                   zero-padding
+                   3 2 4
+                  )
+                  1
+                 )
+                 (shape 3 3 3)
+                 (shape 1 2 3)
+                )
+                1
+               )
+               3
+              )
+             )
+            )
+            (list 1 0 2 3)
+           )"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .expect("Did not find expected rewritten program.");
+        assert_eq!(matches.substs.len(), 1);
     }
 }

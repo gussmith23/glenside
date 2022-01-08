@@ -3245,7 +3245,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             &AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
                 let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
-                    _ => panic!(),
+                    _ => panic!("Expected AccessPattern, got {:#?}", &egraph[access_id].data),
                 };
                 let pad_type = match &egraph[pad_type_id].data {
                     MyAnalysisData::PadType(t) => t,
