@@ -128,25 +128,6 @@ pub fn is_symbol(
         }
     }
 }
-fn has_axis(var: &'static str, axis: usize) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-    let var = var.parse().unwrap();
-    move |egraph, _, subst| axis < MyAnalysis::get_shape(subst[var], egraph).ndim()
-}
-fn dimension_greater_than(
-    var: &'static str,
-    axis: usize,
-    greater_than: usize,
-) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-    let var = var.parse().unwrap();
-    move |egraph, _, subst| MyAnalysis::get_shape(subst[var], egraph)[axis] > greater_than
-}
-fn dimension_is_even(
-    var: &'static str,
-    axis: usize,
-) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-    let var = var.parse().unwrap();
-    move |egraph, _, subst| MyAnalysis::get_shape(subst[var], egraph)[axis] % 2 == 0
-}
 
 // TODO(@gussmith23) not sure all this should be public.
 pub struct RewriteNonMatchingCartConcatenateApplier {
