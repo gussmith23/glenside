@@ -35,17 +35,10 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
         | Language::TupleGetItem(_) => todo!(),
 
                 // Things we should never see.
-                Language::CartesianProduct(_)
-                    | Language::MapDotProduct(_)
-                    | Language::Slice(_)
-                    | Language::Concatenate(_)
-                    | Language::ElementwiseAdd(_)
-                    | Language::BsgSystolicArray(_)
-                    | Language::ShapeOf(_)
+                    Language::ShapeOf(_)
                     | Language::SliceShape(_)
                     | Language::ShapeInsertAxis(_)
-                    | Language::ShapeRemoveAxis(_)
-                    | Language::MoveAxis(_) => panic!(),
+                    | Language::ShapeRemoveAxis(_) => panic!(),
 
                 // Things that should always pass through.
                 Language::SystolicArray(_)
@@ -114,17 +107,10 @@ pub fn filter_obviously_less_preferable_nodes(
             Language::ConstructTuple(_) | Language::TupleGetItem(_) => todo!(),
 
             // Things we should never see.
-            Language::CartesianProduct(_)
-            | Language::MapDotProduct(_)
-            | Language::Slice(_)
-            | Language::Concatenate(_)
-            | Language::ElementwiseAdd(_)
-            | Language::BsgSystolicArray(_)
-            | Language::ShapeOf(_)
+            Language::ShapeOf(_)
             | Language::SliceShape(_)
             | Language::ShapeInsertAxis(_)
-            | Language::ShapeRemoveAxis(_)
-            | Language::MoveAxis(_) => panic!(),
+            | Language::ShapeRemoveAxis(_) => panic!(),
 
             Language::SystolicArray(_)
             | Language::SystolicArrayConv2dNchwOihwWithBlocking(_)

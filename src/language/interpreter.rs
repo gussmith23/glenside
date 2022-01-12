@@ -954,14 +954,7 @@ where
         ),
         &Language::Usize(u) => Value::Usize(u),
 
-        &Language::MoveAxis(_)
-        | &Language::CartesianProduct(_)
-        | &Language::MapDotProduct(_)
-        | &Language::Slice(_)
-        | &Language::Concatenate(_)
-        | &Language::ElementwiseAdd(_)
-        | &Language::BsgSystolicArray(_)
-        | &Language::SystolicArray(_)
+        &Language::SystolicArray(_)
         | &Language::SystolicArrayWithBlocking(_)
         | &Language::AccessReshape(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
