@@ -2989,9 +2989,17 @@ pub fn conv2d_relay_to_glenside() -> RW {
 mod tests {
 
     use super::*;
-    use egg::{Pattern, RecExpr, Runner, Searcher};
+    use crate::language::interpreter::interpret;
+    use crate::language::{Language, MyAnalysis};
+    use approx::AbsDiffEq;
+    use egg::{EGraph, Pattern, RecExpr, Runner, Searcher};
     use ndarray::IxDyn;
+    use ndarray_npy::{read_npy, write_npy};
+    use ndarray_rand::{rand_distr::Uniform, RandomExt};
+    use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::collections::HashMap;
+    use std::io::Write;
+    use std::process::Command;
     use std::str::FromStr;
 
     #[test]
@@ -5982,72 +5990,219 @@ mod tests {
             .is_none());
     }
 
-    #[test]
-    fn conv2d_relay_to_glenside() {
-        let mut map = HashMap::default();
-        map.insert("data".to_string(), vec![1, 3, 32, 32]);
-        map.insert("weights".to_string(), vec![8, 3, 3, 3]);
+    /// Creates a Relay-to-Glenside test
+    /// The test does the following:
+    ///  1. Converts $relay_str to glenside by running the from_relay.py script
+    ///  2. Inserts the resulting Glenside code into an egraph
+    ///  3. Searches the egraph for $glenside_str to ensure the expected program
+    ///     exists
+    /// $test_name: the name of the created test
+    /// $relay_str: A string containing the Relay program to be converted
+    /// $glenside_str: A string containing the expected resulting Glenside
+    ///     expression
+    /// $tol: Tolerance value.
+    /// $rws: Expression evaluating to a vector of rewrites.
+    macro_rules! test {
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                "",
+                Uniform::new(-1f32, 1f32),
+                $rws
+            );
+        };
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $rws: expr) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                $optional_arg,
+                Uniform::new(-1f32, 1f32),
+                $rws
+            );
+        };
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr, $rws: expr) => {
+            #[test]
+            fn $test_name() {
+                // The number of times to run each program and compare their
+                // outputs.
+                // TODO(@gussmith23) # random samples chosen arbitrarily
+                const SAMPLES: usize = 3;
 
-        let program = "
-         (relay-operator-call relay-conv2d
-           (access-tensor data)
-           (access-tensor weights)
-           (shape 1 2 3)
-           (shape 1 2 3 4)
-           1
-           8
-           (shape 3 3 3)
-           relay-activation-layout-nchw 
-           relay-kernel-layout-oihw)"
-            .parse()
-            .unwrap();
+                // Random number generator for generating random tensors.
+                const SEED: u64 = 23;
+                let mut tensor_rng = SmallRng::seed_from_u64(SEED);
 
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
-            name_to_shape: map,
-            name_to_dtype: HashMap::default(),
-        });
-        let id = egraph.add_expr(&program);
+                let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
-        let rws = vec![super::conv2d_relay_to_glenside()];
+                let (expr, shapes_vec, dtypes_vec, _) =
+                    from_relay::from_relay(&module, false, &vec![]);
 
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
+                let mut env = HashMap::default();
+                for (k, v) in &shapes_vec {
+                    env.insert(k.clone(), v.clone());
+                }
 
-        let matches = "(access-transpose
-            (compute dot-product
-             (access-cartesian-product
-              (access (access-tensor weights) 1)
-              (access
-               (access-squeeze
-                (access-windows
-                 (access
-                  (access-pad
-                   (access-pad
-                    (access-tensor data)
-                    zero-padding
-                    2 1 3
-                   )
-                   zero-padding
-                   3 2 4
-                  )
-                  1
-                 )
-                 (shape 3 3 3)
-                 (shape 1 2 3)
-                )
-                1
-               )
-               3
-              )
-             )
-            )
-            (list 1 0 2 3)
-           )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
-        .expect("Did not find expected rewritten program.");
-        assert_eq!(matches.substs.len(), 1);
+                // TODO(@gussmith23) Include some simple simplifying rewrites
+                // If we add some very basic rewrites here, then $glenside_str
+                // won't need to exactly match what's actually produced by
+                // from_relay.py. It can be simpler (e.g. collapsing accesses).
+                let mut egraph = EGraph::new(MyAnalysis {
+                    name_to_shape: env.clone(),
+                    name_to_dtype: dtypes_vec.into_iter().collect(),
+                });
+                let id = egraph.add_expr(&expr);
+
+                let pattern = $glenside_str.parse::<Pattern<Language>>().unwrap();
+                // The program should not be found at first.
+                assert!(pattern.search_eclass(&egraph, id).is_none());
+
+                // Run compilation rewrites.
+                let runner = Runner::default().with_egraph(egraph).run($rws);
+
+                // Program should now be found.
+                assert!(pattern.search_eclass(&runner.egraph, id).is_some());
+
+                let expr_to_interpret = RecExpr::from_str($glenside_str).unwrap();
+
+                for _ in (0..SAMPLES) {
+                    // Run interpreters and compare output.
+                    let script_filepath = format!(
+                        "{}/src/language/from_relay/run_relay.py",
+                        env!("CARGO_MANIFEST_DIR")
+                    );
+                    // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
+                    // Output filename
+                    // TODO(@gussmith23) Do we want this RNG to use SEED?
+                    // I initially attempted to do this, but was running into issues
+                    // (I think the same filename kept being generated b/c I wasn't
+                    // using the RNG carefully...but maybe there's also something
+                    // wrong w/ how I'm reading files!)
+                    let output_filepath = std::env::temp_dir().join(format!(
+                        "output-{}.npy",
+                        rand::thread_rng()
+                            .sample_iter(&rand::distributions::Alphanumeric)
+                            .take(30)
+                            .collect::<String>()
+                    ));
+
+                    let mut cmd = Command::new("python3");
+                    cmd.arg(script_filepath);
+                    if $optional_arg.len() > 0 {
+                        cmd.arg($optional_arg);
+                    }
+                    cmd.arg("--npy_out_filepath");
+                    cmd.arg(&output_filepath);
+                    cmd.arg("--npy_arg_filepath");
+                    cmd.stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped());
+                    let mut env = HashMap::default();
+                    for (name, shape) in shapes_vec.iter() {
+                        // TODO(@gussmith23) output type assumption
+                        let value = ndarray::ArrayD::<f32>::random_using(
+                            shape.clone(),
+                            $distribution,
+                            &mut tensor_rng,
+                        );
+                        env.insert(name.as_str(), value.clone());
+                        let filepath = std::env::temp_dir().join(format!(
+                            "arg-{}.npy",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        ));
+                        write_npy(&filepath, &value).unwrap();
+                        cmd.arg(filepath);
+                    }
+
+                    let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
+                    proc.stdin
+                        .as_mut()
+                        .unwrap()
+                        .write_all($relay_str.as_bytes())
+                        .unwrap();
+                    let output = proc.wait_with_output().unwrap();
+                    // Check that it ran.
+                    assert!(
+                        output.status.success(),
+                        "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+                        output.status.code(),
+                        std::str::from_utf8(output.stdout.as_slice())
+                            .expect("Could not convert stderr to UTF8"),
+                        std::str::from_utf8(output.stderr.as_slice())
+                            .expect("Could not convert stderr to UTF8")
+                    );
+
+                    // TODO(@gussmith23) output type assumption
+                    let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+                    let interpreter_output = match interpret(
+                        &expr_to_interpret,
+                        expr_to_interpret.as_ref().len() - 1,
+                        &env,
+                    ) {
+                        crate::language::interpreter::Value::Access(a) => a.tensor,
+                        _ => panic!(),
+                    };
+                    assert!(
+                        relay_output.abs_diff_eq(&interpreter_output, $tol),
+                        "{:?}\nvs.\n{:?}",
+                        relay_output,
+                        interpreter_output
+                    );
+                }
+            }
+        };
     }
+
+    test!(
+        conv2d_relay_to_glenside,
+        1e-5,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3), float32]) -> Tensor[(1, 8, 17, 12), float32] {
+  nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 8, 17, 12), float32] */
+}
+"#,
+        r#"
+(access-transpose
+ (compute dot-product
+  (access-cartesian-product
+   (access (access-tensor weights) 1)
+   (access
+    (access-squeeze
+     (access-windows
+      (access
+       (access-pad
+        (access-pad
+         (access-tensor data)
+         zero-padding
+         2 1 3
+        )
+        zero-padding
+        3 2 4
+       )
+       1
+      )
+      (shape 3 3 3)
+      (shape 1 2 3)
+     )
+     1
+    )
+    3
+   )
+  )
+ )
+ (list 1 0 2 3)
+)
+"#,
+        &vec![super::conv2d_relay_to_glenside()]
+    );
 }
