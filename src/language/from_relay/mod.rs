@@ -1297,7 +1297,7 @@ fn compile_expression(
                         attrs.axis.into()
                     };
                     assert!(axis >= 0 && i64::from(axis) < ndims);
-                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let axis_id = glenside_expr.add(Language::Int32(attrs.axis));
                     let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
                         vec![softmax_id, data_id, axis_id].into_boxed_slice(),
                     ));
