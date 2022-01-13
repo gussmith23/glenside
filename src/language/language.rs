@@ -339,7 +339,7 @@ pub enum RelayOperator {
     /// TODO(@gussmith23) How to handle batch norms?
     RelayBatchNormInference,
 
-    /// (relay-operator relay-softmax <data: access> <axis: usize>)
+    /// (relay-operator relay-softmax <data: access> <axis: int>)
     RelaySoftmax,
 
     /// (relay-operator relay-relu <data: access>)
