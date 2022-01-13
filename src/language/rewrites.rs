@@ -3063,11 +3063,63 @@ pub fn conv1d_relay_to_glenside() -> RW {
             .parse::<Pattern<_>>().unwrap() } => { i })
 }
 
+pub fn softmax_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let data = match &egraph[subst[self.data]].data {
+                MyAnalysisData::AccessPattern(data) => data,
+                _ => panic!(),
+            };
+            let axis: i64 = match &egraph[subst[self.axis]].data {
+                MyAnalysisData::Usize(u) => *u as i64,
+                MyAnalysisData::Int32(i) => *i as i64,
+                MyAnalysisData::Int64(i) => *i as i64,
+                _ => panic!(),
+            };
+
+            assert_eq!(
+                axis, -1,
+                "We only support an axis value of -1 at the moment"
+            );
+
+            let axis: i64 = if axis < 0 {
+                data.as_vec().len() as i64 + axis
+            } else {
+                axis
+            };
+            assert!(axis >= 0 && axis < data.as_vec().len() as i64);
+
+            format!("(compute softmax (access {} {}))", self.data, axis)
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, _eclass, subst)
+        }
+    }
+    let i = Impl {
+        data: "?data".parse().unwrap(),
+        axis: "?axis".parse().unwrap(),
+    };
+    rewrite!("softmax-relay-to-glenside";
+        { format!("(relay-operator-call relay-softmax {} {})",
+                    i.data, i.axis)
+            .parse::<Pattern<_>>().unwrap() } => { i })
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
     use crate::language::interpreter::interpret;
+    use crate::language::RelayOperator;
     use crate::language::{Language, MyAnalysis};
     use approx::AbsDiffEq;
     use egg::{EGraph, Pattern, RecExpr, Runner, Searcher};
@@ -6090,10 +6142,24 @@ mod tests {
                 $glenside_str,
                 "",
                 Uniform::new(-1f32, 1f32),
-                $rws
+                $rws,
+                &vec![]
             );
         };
-        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $rws: expr) => {
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr, $use_opaque_operators_for: expr) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                "",
+                Uniform::new(-1f32, 1f32),
+                $rws,
+                $use_opaque_operators_for
+            );
+        };
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $rws: expr, $use_opaque_operators_for: expr) => {
             // TODO(@gussmith23) Hardcoding to f32
             test!(
                 $test_name,
@@ -6102,10 +6168,11 @@ mod tests {
                 $glenside_str,
                 $optional_arg,
                 Uniform::new(-1f32, 1f32),
-                $rws
+                $rws,
+                $use_opaque_operators_for
             );
         };
-        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr, $rws: expr) => {
+        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr, $rws: expr, $use_opaque_operators_for: expr) => {
             #[test]
             fn $test_name() {
                 // The number of times to run each program and compare their
@@ -6120,7 +6187,7 @@ mod tests {
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
                 let (expr, shapes_vec, dtypes_vec, _) =
-                    from_relay::from_relay(&module, false, &vec![]);
+                    from_relay::from_relay(&module, false, $use_opaque_operators_for);
 
                 let mut env = HashMap::default();
                 for (k, v) in &shapes_vec {
@@ -6319,5 +6386,38 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
 )
 "#,
         &vec![super::conv1d_relay_to_glenside()]
+    );
+
+    test!(
+        softmax_relay_to_glenside_0,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
+  nn.softmax(%x) /* ty=Tensor[(3), float32] */
+}
+"#,
+        r#"
+(compute softmax (access (access-tensor x) 0))
+"#,
+        &vec![super::softmax_relay_to_glenside()],
+        &vec![RelayOperator::RelaySoftmax]
+    );
+
+    test!(
+        softmax_relay_to_glenside_1,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
+  %0 = nn.softmax(%x); /* ty=Tensor[(3), float32] */
+  nn.softmax(%0) /* ty=Tensor[(3), float32] */
+}
+"#,
+        r#"
+(compute softmax (access (compute softmax (access (access-tensor x) 0)) 0))
+"#,
+        &vec![super::softmax_relay_to_glenside()],
+        &vec![RelayOperator::RelaySoftmax]
     );
 }
