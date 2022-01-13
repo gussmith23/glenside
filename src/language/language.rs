@@ -379,7 +379,8 @@ pub enum RelayOperator {
     /// (relay-operator relay-reshape <data: access> <shape: shape>)
     RelayReshape,
 
-    /// (relay-operator relay-conv1d <data: access> <kernel: access>)
+    /// (relay-operator-call relay-conv1d <data: access> <kernel: access>
+    ///  <strides: shape> <padding: shape>)
     RelayConv1D,
 
     /// (relay-operator relay-erf <data: access>)
@@ -2401,7 +2402,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(ShapeData { shape: strides, .. }), MyAnalysisData::Shape(ShapeData { shape: padding, .. })] =>
                             {
                                 let data_shape = data
                                     .shape
@@ -2420,10 +2421,29 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 assert_eq!(data_shape.len(), 3);
                                 assert_eq!(weight_shape.len(), 3);
                                 assert_eq!(data_shape[1], weight_shape[1]);
+                                assert_eq!(strides.ndim(), 1);
+                                assert_eq!(padding.ndim(), 2);
                                 let output_shape = IxDyn(&[
                                     data_shape[0],
                                     weight_shape[0],
-                                    data_shape[2] - weight_shape[2] + 1,
+                                    // Here we just compute the new shape of the
+                                    // dimension after the convolution. I
+                                    // realize it looks convoluted. I wanted to
+                                    // use the following function because we
+                                    // repeat this calculation all over the
+                                    // codebase, and I want one central place
+                                    // where we implement the calculation. I
+                                    // match on the result just to make sure
+                                    // it's the expected length.
+                                    match access_windows_resulting_shape(
+                                        &IxDyn(&[padding[0] + data_shape[2] + padding[1]]),
+                                        &IxDyn(&[weight_shape[2]]),
+                                        strides,
+                                    )[..]
+                                    {
+                                        [result] => result,
+                                        _ => panic!("unexpected length result"),
+                                    },
                                 ]);
                                 AccessPatternData {
                                     shape: IxDyn(&[]),
@@ -2434,7 +2454,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         || weight.contains_accelerator_calls,
                                 }
                             }
-                            _ => panic!("Conv1D can only accept 2 params"),
+                            _ => panic!("Incorrect conv1d arguments"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }

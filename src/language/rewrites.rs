@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::language::from_relay;
+use crate::language::{from_relay, ShapeData};
 
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{
@@ -2983,6 +2983,84 @@ pub fn conv2d_relay_to_glenside() -> RW {
             kernel_layout: "?kernel-layout".parse().unwrap(),
           }
       })
+}
+
+pub fn conv1d_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        weights: Var,
+        strides: Var,
+        padding: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let (data, weights, strides, padding) = match vec![
+                self.data,
+                self.weights,
+                self.strides,
+                self.padding,
+            ]
+            .drain(..)
+            .map(|v| &egraph[subst[v]].data)
+            .collect::<Vec<_>>()[..]
+            {
+                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weights), MyAnalysisData::Shape(ShapeData { shape: strides, .. }), MyAnalysisData::Shape(ShapeData { shape: padding, .. })] => {
+                    (data, weights, strides, padding)
+                }
+                _ => todo!(),
+            };
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let weights_id = expr.add(Language::Symbol("weights_PLACEHOLDER".to_string()));
+            from_relay::conv1d(
+                &mut expr,
+                data_id,
+                data.as_vec().as_slice(),
+                weights_id,
+                weights.as_vec().as_slice(),
+                &strides.slice(),
+                padding.slice(),
+                &[1],
+                1,
+                "NCW",
+                "OIW",
+                "",
+            );
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data)
+                        }
+                        Language::Symbol(s) if s == "weights_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.weights)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            vec![egraph.add_instantiation(&pattern_ast, subst)]
+        }
+    }
+    let i = Impl {
+        data: "?data".parse().unwrap(),
+        weights: "?weights".parse().unwrap(),
+        strides: "?strides".parse().unwrap(),
+        padding: "?padding".parse().unwrap(),
+    };
+    rewrite!("conv1d-relay-to-glenside";
+        { format!("(relay-operator-call relay-conv1d {} {} {} {})",
+                    i.data, i.weights, i.strides, i.padding)
+            .parse::<Pattern<_>>().unwrap() } => { i })
 }
 
 #[cfg(test)]
@@ -6204,5 +6282,42 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
 )
 "#,
         &vec![super::conv2d_relay_to_glenside()]
+    );
+
+    test!(
+        conv1d_relay_to_glenside,
+        1e-6,
+        r#"
+    #[version = "0.0.5"]
+    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 19), float32] {
+        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 19), float32] */
+    }
+"#,
+        r#"
+(access-transpose
+ (compute dot-product
+   (access-cartesian-product
+    (access (access-tensor weights) 1)
+    (access-squeeze
+     (access-windows
+      (access
+       (access-pad
+        (access-tensor data)
+        zero-padding
+        2 3 4
+       )
+       1
+      )
+      (shape 3 3)
+      (shape 1 2)
+     )
+     1
+    )
+   )
+ )
+ (list 1 0 2)
+)
+"#,
+        &vec![super::conv1d_relay_to_glenside()]
     );
 }

@@ -7,10 +7,10 @@ use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use tvm::ir::module::*;
 use tvm::ir::relay::*;
 use tvm::ir::tir::*;
 use tvm::ir::ty::*;
+use tvm::ir::{module::*, PrimExpr};
 use tvm::runtime::array::Array;
 use tvm::runtime::IsObjectRef;
 
@@ -2057,9 +2057,18 @@ fn compile_expression(
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
                     let weights_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+
                     assert_eq!(attrs.padding.len(), 2);
                     assert_eq!(attrs.dilation.len(), 1);
-
+                    assert_eq!(data_shape.len(), 3);
+                    assert_eq!(weights_shape.len(), 3);
+                    assert_eq!(attrs.strides.len(), 1);
+                    assert_eq!(attrs.padding.len(), 2);
+                    assert_eq!(attrs.dilation.len(), 1);
+                    assert_eq!(attrs.groups, 1);
+                    assert_eq!(attrs.data_layout, "NCW");
+                    assert_eq!(attrs.kernel_layout, "OIW");
+                    assert_eq!(attrs.out_layout, "");
                     assert_eq!(
                         attrs
                             .dilation
@@ -2070,66 +2079,36 @@ fn compile_expression(
                             .value,
                         1
                     );
+
+                    // Adds an Array of PrimExpr into the egraph as a Shape.
+                    // Should probably be moved out as a more general helper
+                    // function.
+                    let mut f = |l: Array<PrimExpr>| -> Id {
+                        let ids = l
+                            .into_iter()
+                            .map(|v| {
+                                glenside_expr.add(Language::Usize(
+                                    v.downcast::<tvm::ir::tir::IntImm>()
+                                        .unwrap()
+                                        .value
+                                        .try_into()
+                                        .unwrap(),
+                                ))
+                            })
+                            .collect::<Vec<_>>();
+                        glenside_expr.add(Language::Shape(ids.into_boxed_slice()))
+                    };
+                    let strides_id = f(attrs.strides.clone());
+                    let padding_id = f(attrs.padding.clone());
+
                     let op_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayConv1D,
                     ));
                     let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
-                        vec![op_id, data_id, weights_id].into_boxed_slice(),
+                        vec![op_id, data_id, weights_id, strides_id, padding_id].into_boxed_slice(),
                     ));
-                    //Might need some more asserts for dilation, output layout (see Conv2d)
-                    // assert_eq!(attrs.out_layout, "");
-                    // println!("Checked layout");
-                    // println!("{:?}", attrs.out_dtype);
-                    // assert_eq!(
-                    //     attrs.out_dtype,
-                    //     // TODO(@gussmith23) How to actually constrain this?
-                    //     tvm::DataType::new(3, 0, 0)
-                    // );
-                    // println!("Attr checked");
-                    (
-                        conv1d(
-                            glenside_expr,
-                            data_id,
-                            &data_shape,
-                            weights_id,
-                            &weights_shape,
-                            &[attrs
-                                .strides
-                                .get(0)
-                                .unwrap()
-                                .downcast::<IntImm>()
-                                .unwrap()
-                                .value as usize],
-                            &[
-                                attrs
-                                    .padding
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                            &[attrs
-                                .dilation
-                                .get(0)
-                                .unwrap()
-                                .downcast::<IntImm>()
-                                .unwrap()
-                                .value as usize],
-                            attrs.groups.try_into().unwrap(),
-                            "NCW",
-                            "OIW",
-                            "",
-                        ),
-                        Some(conv1d_opcall),
-                    )
+
+                    (conv1d_opcall, None)
                 }
                 "nn.conv2d" => {
                     assert_eq!(call.args.len(), 2);
@@ -3139,42 +3118,6 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
   (shape 3 4)
   (shape 2 3)
  )
-)
-"#
-    );
-
-    test!(
-        conv1d,
-        1e-6,
-        r#"
-    #[version = "0.0.5"]
-    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 19), float32] {
-        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 19), float32] */
-    }
-"#,
-        r#"
-(access-transpose
- (compute dot-product
-   (access-cartesian-product
-    (access (access-tensor weights) 1)
-    (access-squeeze
-     (access-windows
-      (access
-       (access-pad
-        (access-tensor data)
-        zero-padding
-        2 3 4
-       )
-       1
-      )
-      (shape 3 3)
-      (shape 1 2)
-     )
-     1
-    )
-   )
- )
- (list 1 0 2)
 )
 "#
     );
