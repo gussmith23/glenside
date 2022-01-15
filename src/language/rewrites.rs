@@ -3114,6 +3114,34 @@ pub fn softmax_relay_to_glenside() -> RW {
             .parse::<Pattern<_>>().unwrap() } => { i })
 }
 
+pub fn max_pool2d_relay_to_glenside_nchw() -> RW {
+    rewrite!("max-pool2d-relay-to-glenside-nchw";
+        "(relay-operator-call relay-max-pool2d
+            ?data
+            ?pool-size
+            ?strides
+            (shape ?padding0 ?padding1 ?padding2 ?padding3)
+            relay-activation-layout-nchw)" =>
+        "(compute reduce-max
+          (access-windows
+           (access
+            (access-pad
+             (access-pad
+              (access-tensor data)
+              min-padding
+              2 ?padding0 ?padding2
+             )
+             min-padding
+             3 ?padding1 ?padding3
+            )
+            2
+           )
+           ?pool-size
+           ?strides
+          )
+         )")
+}
+
 macro_rules! relay_to_glenside_simple {
     ($fn_name: ident, $rw_name: expr, $from: expr, $to: expr) => {
         pub fn $fn_name() -> RW {
@@ -6498,5 +6526,38 @@ def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32
         Uniform::new(0f32, 1f32),
         &vec![super::sqrt_relay_to_glenside()],
         &vec![RelayOperator::RelaySqrt]
+    );
+
+    test!(
+        max_pool2d_nchw_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), float32] {
+  nn.max_pool2d(%data, pool_size=[3, 4], strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 3, 17, 12), float32] */
+}
+"#,
+        r#"
+(compute reduce-max
+ (access-windows
+  (access
+   (access-pad
+    (access-pad
+     (access-tensor data)
+     min-padding
+     2 1 3
+    )
+    min-padding
+    3 2 4
+   )
+   2
+  )
+  (shape 3 4)
+  (shape 2 3)
+ )
+)
+"#,
+        &vec![super::max_pool2d_relay_to_glenside_nchw()],
+        &vec![RelayOperator::RelayMaxPool2D]
     );
 }
