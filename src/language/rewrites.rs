@@ -3142,6 +3142,24 @@ pub fn max_pool2d_relay_to_glenside_nchw() -> RW {
          )")
 }
 
+pub fn global_avg_pool2d_relay_to_glenside_nchw() -> RW {
+    rewrite!("global-avg-pool2d-relay-to-glenside-nchw";
+        "(relay-operator-call relay-global-avg-pool2d
+            ?data
+            relay-activation-layout-nchw)" =>
+        "(access
+          (access-insert-axis
+           (access-insert-axis
+            (compute reduce-mean (access ?data 2))
+            2
+           )
+           3
+          )
+          2
+         )")
+}
+
+// TODO(gussmith23) on second thought, remove this; doesn't really do anything.
 macro_rules! relay_to_glenside_simple {
     ($fn_name: ident, $rw_name: expr, $from: expr, $to: expr) => {
         pub fn $fn_name() -> RW {
@@ -6559,5 +6577,30 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 "#,
         &vec![super::max_pool2d_relay_to_glenside_nchw()],
         &vec![RelayOperator::RelayMaxPool2D]
+    );
+
+    test!(
+        global_avg_pool2d_nchw_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1), float32] {
+  nn.global_avg_pool2d(%x) /* ty=Tensor[(1, 3, 1, 1), float32] */
+}
+"#,
+        r#"
+(access
+ (access-insert-axis
+  (access-insert-axis
+   (compute reduce-mean (access (access-tensor x) 2))
+   2
+  )
+  3
+ )
+ 2
+)
+"#,
+        &vec![super::global_avg_pool2d_relay_to_glenside_nchw()],
+        &vec![RelayOperator::RelayGlobalAvgPool2D]
     );
 }
