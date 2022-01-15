@@ -1,3 +1,4 @@
+use crate::language::RelayOperator::*;
 use egg::{define_language, EGraph, Id};
 use itertools::{any, multizip, EitherOrBoth::*, Itertools};
 use log::{debug, warn};
@@ -451,6 +452,10 @@ pub enum RelayOperator {
     RelayBatchMatmul,
 
     RelayZeros,
+
+    RelaySqrt,
+
+    RelayNegative,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -491,6 +496,8 @@ impl FromStr for RelayOperator {
             "relay-layer-norm" => Ok(RelayOperator::RelayLayerNorm),
             "relay-batch-matmul" => Ok(RelayOperator::RelayBatchMatmul),
             "relay-zeros" => Ok(RelayOperator::RelayZeros),
+            "relay-negative" => Ok(RelayOperator::RelayNegative),
+            "relay-sqrt" => Ok(RelayOperator::RelaySqrt),
             _ => Err(()),
         }
     }
@@ -537,6 +544,8 @@ impl Display for RelayOperator {
                 RelayOperator::RelayLayerNorm => "relay-layer-norm",
                 RelayOperator::RelayBatchMatmul => "relay-batch-matmul",
                 RelayOperator::RelayZeros => "relay-zeros",
+                RelayOperator::RelaySqrt => "relay-sqrt",
+                RelayOperator::RelayNegative => "relay-negative",
             }
         )
     }
@@ -2817,7 +2826,7 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::RelayReLU => {
+                    crate::language::RelayOperator::RelayReLU | RelayNegative | RelaySqrt => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)

@@ -698,6 +698,8 @@ fn codegen_helper(
             };
 
             match relay_op {
+                RelayOperator::RelayNegative => todo!(),
+                RelayOperator::RelaySqrt => todo!(),
                 RelayOperator::RelayZeros => todo!(),
                 RelayOperator::RelayBatchMatmul => todo!(),
                 RelayOperator::RelayLayerNorm => todo!(),

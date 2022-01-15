@@ -1,7 +1,9 @@
 // TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
 #![cfg(feature = "tvm")]
 
-use crate::language::{Language, RelayActivationLayout, RelayKernelLayout};
+use crate::language::{
+    Language, Language::*, RelayActivationLayout, RelayKernelLayout, RelayOperator::*,
+};
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
@@ -1377,9 +1379,48 @@ fn compile_expression(
                         todo!();
                     }
                 }
-                "sqrt" | "negative" => {
+                "sqrt" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for.contains(&RelaySqrt) {
+                        let operator_id = glenside_expr.add(RelayOperator(RelaySqrt));
+                        return (
+                            glenside_expr.add(RelayOperatorCall(
+                                vec![operator_id, data_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
+                    }
+
+                    (
+                        compute(
+                            glenside_expr,
+                            match primitive_op.name.as_str().unwrap() {
+                                "nn.relu" => ComputeType::ReLU,
+                                "sqrt" => ComputeType::Sqrt,
+                                "negative" => ComputeType::Negative,
+                                _ => unreachable!(),
+                            },
+                            data_id,
+                        ),
+                        None,
+                    )
+                }
+                "negative" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for.contains(&RelayNegative) {
+                        let operator_id = glenside_expr.add(RelayOperator(RelayNegative));
+                        return (
+                            glenside_expr.add(RelayOperatorCall(
+                                vec![operator_id, data_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
+                    }
+
                     (
                         compute(
                             glenside_expr,

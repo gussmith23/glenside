@@ -3114,11 +3114,34 @@ pub fn softmax_relay_to_glenside() -> RW {
             .parse::<Pattern<_>>().unwrap() } => { i })
 }
 
-pub fn relu_relay_to_glenside() -> RW {
-    rewrite!("relu-relay-to-glenside";
-                "(relay-operator-call relay-relu ?data)" => "(compute relu ?data)")
+macro_rules! relay_to_glenside_simple {
+    ($fn_name: ident, $rw_name: expr, $from: expr, $to: expr) => {
+        pub fn $fn_name() -> RW {
+            rewrite!($rw_name; $from => $to)
+        }
+    }
 }
 
+relay_to_glenside_simple!(
+    relu_relay_to_glenside,
+    "relu-relay-to-glenside",
+    "(relay-operator-call relay-relu ?data)",
+    "(compute relu ?data)"
+);
+
+relay_to_glenside_simple!(
+    negative_relay_to_glenside,
+    "negative-relay-to-glenside",
+    "(relay-operator-call relay-negative ?data)",
+    "(compute negative ?data)"
+);
+
+relay_to_glenside_simple!(
+    sqrt_relay_to_glenside,
+    "sqrt-relay-to-glenside",
+    "(relay-operator-call relay-sqrt ?data)",
+    "(compute sqrt ?data)"
+);
 #[cfg(test)]
 mod tests {
 
@@ -6440,5 +6463,40 @@ def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32
 "#,
         &vec![super::relu_relay_to_glenside()],
         &vec![RelayOperator::RelayReLU]
+    );
+
+    test!(
+        negative_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  negative(%x)
+}
+"#,
+        r#"
+(compute negative (access-tensor x))
+"#,
+        &vec![super::negative_relay_to_glenside()],
+        &vec![RelayOperator::RelayNegative]
+    );
+
+    test!(
+        sqrt_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  sqrt(%x)
+}
+"#,
+        r#"
+(compute sqrt (access-tensor x))
+"#,
+        "",
+        // TODO(@gussmith23) Hardcoding test to f32
+        Uniform::new(0f32, 1f32),
+        &vec![super::sqrt_relay_to_glenside()],
+        &vec![RelayOperator::RelaySqrt]
     );
 }
