@@ -3114,6 +3114,11 @@ pub fn softmax_relay_to_glenside() -> RW {
             .parse::<Pattern<_>>().unwrap() } => { i })
 }
 
+pub fn relu_relay_to_glenside() -> RW {
+    rewrite!("relu-relay-to-glenside";
+                "(relay-operator-call relay-relu ?data)" => "(compute relu ?data)")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6419,5 +6424,21 @@ def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
 "#,
         &vec![super::softmax_relay_to_glenside()],
         &vec![RelayOperator::RelaySoftmax]
+    );
+
+    test!(
+        relu_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  nn.relu(%x)
+}
+"#,
+        r#"
+(compute relu (access-tensor x))
+"#,
+        &vec![super::relu_relay_to_glenside()],
+        &vec![RelayOperator::RelayReLU]
     );
 }
