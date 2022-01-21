@@ -456,6 +456,9 @@ pub enum RelayOperator {
     RelaySqrt,
 
     RelayNegative,
+
+    /// (relay-operator-call relay-expand-dims <data: access> <axis: int> <num_newaxis: int>)
+    RelayExpandDims,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -498,6 +501,7 @@ impl FromStr for RelayOperator {
             "relay-zeros" => Ok(RelayOperator::RelayZeros),
             "relay-negative" => Ok(RelayOperator::RelayNegative),
             "relay-sqrt" => Ok(RelayOperator::RelaySqrt),
+            "relay-expand-dims" => Ok(RelayOperator::RelayExpandDims),
             _ => Err(()),
         }
     }
@@ -546,6 +550,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayZeros => "relay-zeros",
                 RelayOperator::RelaySqrt => "relay-sqrt",
                 RelayOperator::RelayNegative => "relay-negative",
+                RelayOperator::RelayExpandDims => "relay-expand-dims",
             }
         )
     }
@@ -1933,6 +1938,62 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayExpandDims => {
+                        assert_eq!(params.len(), 4);
+
+                        let mut a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a.clone(),
+                            _ => panic!(),
+                        };
+                        // TODO(@gussmith23) This pattern appears a lot, and it's annoying.
+                        let axis: i64 = match &egraph[params[2]].data {
+                            MyAnalysisData::Int64(v) => *v,
+                            _ => panic!(),
+                        };
+                        let num_axis: i64 = match &egraph[params[3]].data {
+                            MyAnalysisData::Int64(v) => *v,
+                            MyAnalysisData::Usize(v) => *v as i64,
+                            _ => panic!(),
+                        };
+
+                        // From the TVM docs.
+                        assert!(-(a.as_vec().len() as i64) - 1 <= axis);
+                        assert!(axis <= a.as_vec().len() as i64);
+
+                        // Convert negative axis.
+                        let axis: usize = if axis < 0 {
+                            (axis + (a.as_vec().len() as i64 + 1)) as usize
+                        } else {
+                            axis as usize
+                        };
+
+                        if axis < a.shape.ndim() {
+                            a.shape = IxDyn(
+                                &a.shape
+                                    .slice()
+                                    .iter()
+                                    .take(axis)
+                                    .chain(std::iter::repeat(&1).take(num_axis as usize))
+                                    .chain(a.shape.slice().iter().skip(axis))
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            );
+                        } else {
+                            let axis = axis - a.shape.ndim();
+                            a.item_shape = IxDyn(
+                                &a.item_shape
+                                    .slice()
+                                    .iter()
+                                    .take(axis)
+                                    .chain(std::iter::repeat(&1).take(num_axis as usize))
+                                    .chain(a.item_shape.slice().iter().skip(axis))
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(a)
+                    }
                     crate::language::RelayOperator::RelayZeros => {
                         let s = match params[1..]
                             .iter()
@@ -3211,7 +3272,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                     );
                     access.zero_regions = HashMap::default();
                 }
-                let axis = MyAnalysis::get_usize(axis_id, egraph);
+                let axis = match egraph[axis_id].data {
+                    MyAnalysisData::Int64(v) => v as usize,
+                    MyAnalysisData::Usize(v) => v,
+                    _ => panic!(),
+                };
 
                 assert!(axis <= access.shape.ndim() + access.item_shape.ndim());
 

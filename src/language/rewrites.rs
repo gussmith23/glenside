@@ -3188,6 +3188,54 @@ relay_to_glenside_simple!(
     "(relay-operator-call relay-sqrt ?data)",
     "(compute sqrt ?data)"
 );
+
+pub fn expand_dims_relay_to_glenside() -> RW {
+    #[derive(Clone)]
+    struct Impl {
+        num_newaxis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let num_newaxis: i64 = match &egraph[subst[self.num_newaxis]].data {
+                MyAnalysisData::Usize(u) => *u as i64,
+                MyAnalysisData::Int32(i) => *i as i64,
+                MyAnalysisData::Int64(i) => *i as i64,
+                _ => panic!(),
+            };
+
+            format!(
+                "(relay-operator-call relay-expand-dims (access-insert-axis ?data ?axis) ?axis {})",
+                num_newaxis - 1
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, _eclass, subst)
+        }
+    }
+    let i = Impl {
+        num_newaxis: "?num-newaxis".parse().unwrap(),
+    };
+    rewrite!("expand-dims-relay-to-glenside";
+    { format!("(relay-operator-call relay-expand-dims ?data ?axis {})",
+                i.num_newaxis)
+        .parse::<Pattern<_>>().unwrap() } => { i.clone() }
+    if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst[i.num_newaxis]].data {
+        MyAnalysisData::Int64(v) => v > &0,
+        MyAnalysisData::Usize(v) => v > &0,
+        _ => panic!(),
+    })
+}
+
+fn eliminate_expand_dims_zero_num_newaxis() -> RW {
+    rewrite!("eliminate-expand-dims-zero-num-newaxis";
+             "(relay-operator-call relay-expand-dims ?data ?axis 0)" => "?data")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6207,9 +6255,10 @@ mod tests {
     /// $tol: Tolerance value.
     /// $rws: Expression evaluating to a vector of rewrites.
     macro_rules! test {
-        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr) => {
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr) => {
             // TODO(@gussmith23) Hardcoding to f32
             test!(
+                $(#[$meta])*
                 $test_name,
                 $tol,
                 $relay_str,
@@ -6220,9 +6269,10 @@ mod tests {
                 &vec![]
             );
         };
-        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr, $use_opaque_operators_for: expr) => {
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr, $use_opaque_operators_for: expr) => {
             // TODO(@gussmith23) Hardcoding to f32
             test!(
+                $(#[$meta])*
                 $test_name,
                 $tol,
                 $relay_str,
@@ -6233,9 +6283,10 @@ mod tests {
                 $use_opaque_operators_for
             );
         };
-        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $rws: expr, $use_opaque_operators_for: expr) => {
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $rws: expr, $use_opaque_operators_for: expr) => {
             // TODO(@gussmith23) Hardcoding to f32
             test!(
+                $(#[$meta])*
                 $test_name,
                 $tol,
                 $relay_str,
@@ -6246,9 +6297,11 @@ mod tests {
                 $use_opaque_operators_for
             );
         };
-        ($test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr, $rws: expr, $use_opaque_operators_for: expr) => {
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr, $rws: expr, $use_opaque_operators_for: expr) => {
+            $(#[$meta])*
             #[test]
             fn $test_name() {
+
                 // The number of times to run each program and compare their
                 // outputs.
                 // TODO(@gussmith23) # random samples chosen arbitrarily
@@ -6602,5 +6655,28 @@ def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1), float32] 
 "#,
         &vec![super::global_avg_pool2d_relay_to_glenside_nchw()],
         &vec![RelayOperator::RelayGlobalAvgPool2D]
+    );
+
+    // TODO(@gussmith23) ?axis should be 2 here, but we can't match an Int64
+    // literal. We need to fix the confusion over all of the literals in
+    // Glenside, and then once we do, we need to fix this.
+    test!(
+        #[should_panic = "Symbol ?axis not in environment"]
+        expand_dims_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1, 1, 32, 32), float32] {
+  expand_dims(%data, axis=2, num_newaxis=3) /* ty=Tensor[(1, 3, 1, 1, 1, 32, 32), float32] */
+}
+"#,
+        r#"
+(access-insert-axis (access-insert-axis (access-insert-axis (access-tensor data) ?axis) ?axis) ?axis)
+"#,
+        &vec![
+            super::expand_dims_relay_to_glenside(),
+            super::eliminate_expand_dims_zero_num_newaxis()
+        ],
+        &vec![RelayOperator::RelayExpandDims]
     );
 }

@@ -1715,6 +1715,16 @@ fn compile_expression(
 
                     let mut data_id = get_compiled_expression(call.args.get(0).unwrap());
 
+                    if use_opaque_operators_for.contains(&RelayExpandDims) {
+                        let relay_op_id = glenside_expr.add(RelayOperator(RelayExpandDims));
+                        let axis_id = glenside_expr.add(Int64(attrs.axis.into()));
+                        let num_axis_id = glenside_expr.add(Int64(attrs.num_newaxis.into()));
+                        let data_id = glenside_expr.add(RelayOperatorCall(
+                            vec![relay_op_id, data_id, axis_id, num_axis_id].into_boxed_slice(),
+                        ));
+                        return (data_id, None);
+                    }
+
                     for _ in 0..attrs.num_newaxis {
                         data_id = access_insert_axis(
                             glenside_expr,
