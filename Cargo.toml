@@ -43,12 +43,8 @@ git = "https://github.com/gussmith23/rplex"
 
 
 [dependencies.tvm]
-# TODO(@gussmith23) Change this to tvm mainline once we figure out include path
-# issue.
-# NOTE Keep glenside-evaluation in sync with this
-# If the versions get out of whack, we'll probably have some weird errors.
-rev = "4ed759f6b6cafbab707f95b57762913a1f57c021"
-git = "https://github.com/hypercubestart/incubator-tvm"
+rev = "73bbfbb47819bb9f2f5015193533b4e01900fa4b"
+git = "https://github.com/apache/tvm"
 optional = true
 
 [dependencies.egg]
