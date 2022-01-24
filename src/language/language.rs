@@ -459,7 +459,15 @@ pub enum RelayOperator {
 
     /// (relay-operator-call relay-expand-dims <data: access> <axis: int> <num_newaxis: int>)
     RelayExpandDims,
+
+    /// (relay-operator-call relay-pad <data: access>
+    ///                                <pad_width: shape>
+    ///                                <pad_value: int>)
+    /// Note that the pad_width is a flattened version of the list of tuples
+    /// which is used in Relay.
+    RelayPad,
 }
+
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
@@ -502,6 +510,7 @@ impl FromStr for RelayOperator {
             "relay-negative" => Ok(RelayOperator::RelayNegative),
             "relay-sqrt" => Ok(RelayOperator::RelaySqrt),
             "relay-expand-dims" => Ok(RelayOperator::RelayExpandDims),
+            "relay-pad" => Ok(RelayOperator::RelayPad),
             _ => Err(()),
         }
     }
@@ -551,6 +560,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelaySqrt => "relay-sqrt",
                 RelayOperator::RelayNegative => "relay-negative",
                 RelayOperator::RelayExpandDims => "relay-expand-dims",
+                RelayOperator::RelayPad => "relay-pad",
             }
         )
     }
@@ -1938,6 +1948,25 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayPad => {
+                        assert_eq!(params.len(), 4);
+
+                        let mut a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a.clone(),
+                            _ => panic!(),
+                        };
+                        let pad_width = match &egraph[params[2]].data {
+                            MyAnalysisData::Shape(ShapeData { shape, .. }) => shape,
+                            _ => panic!(),
+                        };
+                        assert_eq!(
+                            pad_width.ndim(),
+                            2 * a.as_vec().len(),
+                            "There should be two padding values per tensor dimension."
+                        );
+
+                        todo!()
+                    }
                     crate::language::RelayOperator::RelayExpandDims => {
                         assert_eq!(params.len(), 4);
 

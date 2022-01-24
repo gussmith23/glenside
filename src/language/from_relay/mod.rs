@@ -1756,6 +1756,12 @@ fn compile_expression(
                     };
                     assert_eq!(pad_value, 0);
                     let mut data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for.contains(&RelayPad) {
+                        let relay_op_id = glenside_expr.add(RelayOperator(RelayPad));
+                        todo!();
+                    }
+
                     let pad_type_id = glenside_expr.add(Language::PadType(PadType::ZeroPadding));
                     for axis in 0..attrs.pad_width.len() {
                         let padding = attrs.pad_width.get(axis as isize).unwrap();
