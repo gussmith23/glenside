@@ -1785,7 +1785,11 @@ mod tests {
     use std::path::PathBuf;
     use std::process::Command;
     use std::str::FromStr;
-
+    // for macro call
+    use ndarray::ArrayBase;
+    use ndarray::Dim;
+    use ndarray::IxDynImpl;
+    use ndarray::OwnedRepr;
     fn run_relay(
         env: &HashMap<String, ArrayD<f32>>,
         shapes_vec: &Vec<(String, Vec<usize>)>,
@@ -1939,14 +1943,77 @@ mod tests {
         relay_outputs
     }
     macro_rules! relay_op_test {
-        ($name : expr, $relay_code : expr, $relay_op : expr, 2, $parameters : expr) => {
+        // Macro for calling relay_op tests. There are several pattern matches here. In order, here is how to use them
+        // The first pattern match is for tests that utilize a `value_env`. The user inputs the required fields. For tests
+        // where the relay code used to form the module and the result are the same, use the same relay code expression for
+        // `relay_code` and `run_relay`
+        ($name: expr, $relay_code : expr, $run_relay : expr, $relay_op : expr, $seed : expr, $lower_bound : expr, $upper_bound : expr, $parameters : expr) => {
+            let relay = $relay_code;
+            const SEED: u64 = $seed;
+            let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+            let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+            let (expr, shapes_vec) =
+                crate::language::from_relay::from_relay(&module, true, &vec![$relay_op]);
+            let mut env: HashMap<String, Vec<usize>> = HashMap::default();
+            let mut value_env: HashMap<String, ArrayBase<OwnedRepr<f32>, Dim<IxDynImpl>>> =
+                HashMap::default();
+            for (k, v) in &shapes_vec {
+                env.insert(k.clone(), v.clone());
+                value_env.insert(
+                    k.clone(),
+                    ndarray::ArrayD::<f32>::random_using(
+                        v.clone(),
+                        Uniform::new($lower_bound, $upper_bound), // prevent NaN results
+                        &mut tensor_rng,
+                    ),
+                );
+            }
+            let mut egraph = EGraph::new(MyAnalysis {
+                name_to_shape: env.clone(),
+            });
+
+            let id = egraph.add_expr(&expr);
+            let result = run_relay(&value_env, &shapes_vec, $run_relay);
+            let parameters = $parameters;
+            let code = codegen(
+                &egraph,
+                id,
+                &HashMap::default(),
+                "compiled_function",
+                "",
+                &parameters,
+                &generate_worklist_for_codegen(&egraph, id),
+                true,
+            );
+            relay_op_test!($name, value_env, parameters, code, result);
+        };
+        ($name : expr, $value_env : expr, $parameters : expr, $c_code : expr, $result : expr) => {
+            let mut var_assignment_str = "".to_string();
+            let mut var = "".to_string();
+            for i in 0..($parameters.len()) {
+                let cur = c_assignment_string(
+                    "",
+                    $parameters[i],
+                    DType::Fp32,
+                    &$value_env.get($parameters[i]).unwrap().view(),
+                );
+                var_assignment_str = format!("{}{}", var_assignment_str, cur);
+                var = format!("{}{}{}", var, ", ", $parameters[i]);
+            }
+            relay_op_test!(
+                $name,
+                var_assignment_str,
+                var,
+                "fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001",
+                $c_code,
+                $result
+            );
+        };
+        ($name : expr, $relay_code : expr, $relay_op : expr) => {
             let relay = $relay_code;
             let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-            let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-                &module,
-                true,
-                &vec![$relay_op],
-            );
+            let (expr, shapes_vec) =
+                crate::language::from_relay::from_relay(&module, true, &vec![$relay_op]);
             let mut env: HashMap<String, Vec<usize>> = HashMap::default();
             for (k, v) in &shapes_vec {
                 env.insert(k.clone(), v.clone());
@@ -1954,7 +2021,7 @@ mod tests {
             let mut egraph = EGraph::new(MyAnalysis {
                 name_to_shape: env.clone(),
             });
-            
+
             let id = egraph.add_expr(&expr);
 
             let x_input = ndarray::ArrayD::from_shape_vec(
@@ -1972,12 +2039,27 @@ mod tests {
                 &egraph,
                 id,
                 &HashMap::default(),
-                "relay_biasadd",
+                "compiled_function",
                 "",
-                &$parameters,
+                &vec!["x", "y"],
                 &generate_worklist_for_codegen(&egraph, id),
                 true,
             );
+            let var_assignment_str = format!(
+                "{}{}",
+                c_assignment_string("", "x", DType::Fp32, &x_input.into_dyn().view()),
+                c_assignment_string("", "y", DType::Fp32, &y_input.into_dyn().view())
+            );
+            relay_op_test!(
+                $name,
+                var_assignment_str,
+                ", x, y",
+                "((float*)result)[i] == ((float*)out)[i]",
+                code,
+                result
+            );
+        };
+        ($name : expr, $var_assignment_str: expr, $var : expr, $c_string: expr, $c_code : expr, $result : expr) => {
             let main_code = format!(
                 "
     #include <assert.h>
@@ -1987,13 +2069,12 @@ mod tests {
     {}
     {}
     {}
-    {}
     
     int main() {{
-        relay_biasadd(out, x, y);
+        compiled_function(out {});
     
       for (int i = 0; i < {}; i++) {{
-        assert(((float*)result)[i] == ((float*)out)[i]);
+        assert({});
       }}
     }}
     ",
@@ -2008,38 +2089,39 @@ mod tests {
                 )
                 .unwrap()
                 .to_string_lossy(),
-                c_assignment_string("", "x", DType::Fp32, &x_input.into_dyn().view()),
-                c_assignment_string("", "y", DType::Fp32, &y_input.into_dyn().view()),
-                c_assignment_string("", "result", DType::Fp32, &result.view()),
+                $var_assignment_str,
+                c_assignment_string("", "result", DType::Fp32, &$result.view()),
                 c_assignment_string(
                     "",
                     "out",
                     DType::Fp32,
-                    &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
+                    &ndarray::ArrayD::<f32>::zeros($result.shape()).view()
                 ),
-                code,
-                result.shape().iter().product::<usize>()
+                $c_code,
+                $var,
+                $result.shape().iter().product::<usize>(),
+                $c_string
             );
-    
+
             let main_c_filepath = std::env::temp_dir().with_file_name(format!(
                 "relay-op-{}-test-{}.c",
-                $name, 
+                $name,
                 std::time::SystemTime::now().elapsed().unwrap().as_nanos()
             ));
             println!("{}", main_c_filepath.to_string_lossy());
-    
+
             let binary_filepath = std::env::temp_dir().with_file_name(format!(
                 "relay-op-{}-test-{}",
                 $name,
                 std::time::SystemTime::now().elapsed().unwrap().as_nanos()
             ));
             println!("{}", binary_filepath.to_string_lossy());
-    
+
             File::create(&main_c_filepath)
                 .unwrap()
                 .write_all(main_code.as_bytes())
                 .unwrap();
-    
+
             let result = Command::new("gcc")
                 .arg("-Werror")
                 .arg("-g")
@@ -2049,23 +2131,23 @@ mod tests {
                 .arg("-lm")
                 .output()
                 .unwrap();
-    
+
             assert!(
                 result.status.success(),
                 "{}",
                 std::str::from_utf8(result.stderr.as_slice())
                     .expect("Could not convert stderr to UTF8")
             );
-    
+
             let result = Command::new(&binary_filepath).output().unwrap();
-    
+
             assert!(
                 result.status.success(),
                 "{}",
                 std::str::from_utf8(result.stderr.as_slice())
                     .expect("Could not convert stderr to UTF8")
             );
-        }
+        };
     }
     macro_rules! codegen_test {
         ($env : expr, $code_expr : expr, $hw_map : expr, $ground_truth : expr, $c_code : expr) => {
@@ -2324,7 +2406,6 @@ mod tests {
             codegen_test!($env, $code_expr, HashMap::default(), $ground_truth, "");
         };
     }
-    
 
     #[test]
     fn tranpose() {
@@ -2466,7 +2547,8 @@ mod tests {
                 input_list[0].1.view(),
                 ndarray::ArrayD::zeros(pad_after_shape).view(),
             ],
-        ).unwrap();
+        )
+        .unwrap();
         codegen_test!(
             input_list.clone(),
             format!(
@@ -2707,142 +2789,17 @@ mod tests {
             .to_string_lossy()
         );
     }
-
     #[test]
     fn relay_op_add() {
-        let relay = r#"
-#[version = "0.0.5"]
-def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
-  add(%x, %y)
-}
-"#;
-
-        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-            &module,
-            true,
-            &vec![crate::language::RelayOperator::RelayAdd],
-        );
-
-        let mut env = HashMap::default();
-        for (k, v) in &shapes_vec {
-            env.insert(k.clone(), v.clone());
-        }
-
-        let mut egraph = EGraph::new(MyAnalysis {
-            name_to_shape: env.clone(),
-        });
-
-        let id = egraph.add_expr(&expr);
-
-        let x_input = ndarray::ArrayD::from_shape_vec(
-            env.get("x").unwrap().clone(),
-            (0..env.get("x").unwrap().iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-        let y_input = ndarray::ArrayD::from_shape_vec(
-            env.get("y").unwrap().clone(),
-            (0..env.get("y").unwrap().iter().product::<usize>()).collect(),
-        )
-        .unwrap();
-        let result = (&x_input + &y_input).into_dyn();
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "relay_add",
-            "",
-            &vec!["x", "y"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-{}
-
-int main() {{
-    relay_add(out, x, y);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(((float*)result)[i] == ((float*)out)[i]);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string("", "x", DType::Fp32, &x_input.into_dyn().view()),
-            c_assignment_string("", "y", DType::Fp32, &y_input.into_dyn().view()),
-            c_assignment_string("", "result", DType::Fp32, &result.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-            ),
-            code,
-            result.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-add-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-add-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+        relay_op_test!(
+            "relay_op_add",
+            r#"
+            #[version = "0.0.5"]
+            def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
+            add(%x, %y)
+            }
+            "#,
+            crate::language::RelayOperator::RelayAdd
         );
     }
     #[test]
@@ -2855,205 +2812,48 @@ int main() {{
             nn.bias_add(%x, %y)
             }
             "#,
-            crate::language::RelayOperator::RelayBiasAdd,
-            2,
-            vec!["x", "y"]
+            crate::language::RelayOperator::RelayBiasAdd
         );
     }
-
     #[test]
     fn relay_op_batchnorm() {
-        let relay = r#"
-#[version = "0.0.5"]
-def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> (Tensor[(1, 2, 2, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) {
-  nn.batch_norm(%data, %bn_gamma, %bn_beta, %bn_mean, %bn_var, axis=3) /* ty=(Tensor[(1, 2, 2, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) */
-}
-"#;
-        let relay_to_run = r#"
-#[version = "0.0.5"]
-def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> Tensor[(1, 2, 2, 16), float32] {
-  %0 = add(%bn_var, 1e-05f /* ty=float32 */) /* ty=Tensor[(16), float32] */;
-  %1 = sqrt(%0) /* ty=Tensor[(16), float32] */;
-  %2 = divide(1f /* ty=float32 */, %1) /* ty=Tensor[(16), float32] */;
-  %3 = multiply(%2, %bn_gamma) /* ty=Tensor[(16), float32] */;
-  %4 = multiply(%data, %3) /* ty=Tensor[(1, 2, 2, 16), float32] */;
-  %5 = negative(%bn_mean) /* ty=Tensor[(16), float32] */;
-  %6 = multiply(%5, %3) /* ty=Tensor[(16), float32] */;
-  %7 = add(%6, %bn_beta) /* ty=Tensor[(16), float32] */;
-  add(%4, %7) /* ty=Tensor[(1, 2, 2, 16), float32] */
-}      
-"#;
-        // Random number generator for generating random tensors.
-        const SEED: u64 = 23;
-        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
-
-        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-            &module,
-            true,
-            &vec![crate::language::RelayOperator::RelayBatchNormInference],
-        );
-
-        let mut env = HashMap::default();
-        let mut value_env = HashMap::default();
-        for (k, v) in &shapes_vec {
-            env.insert(k.clone(), v.clone());
-            value_env.insert(
-                k.clone(),
-                ndarray::ArrayD::<f32>::random_using(
-                    v.clone(),
-                    Uniform::new(1f32, 2f32), // prevent NaN results
-                    &mut tensor_rng,
-                ),
-            );
-        }
-
-        let mut egraph = EGraph::new(MyAnalysis {
-            name_to_shape: env.clone(),
-        });
-
-        let id = egraph.add_expr(&expr);
-
-        let result = run_relay(&value_env, &shapes_vec, relay_to_run);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "relay_batchnorm",
-            "",
-            &vec!["data", "bn_gamma", "bn_beta", "bn_mean", "bn_var"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-        let main_code = format!(
-            "
-#include <assert.h>
-#include <math.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-{}
-{}
-{}
-{}
-
-int main() {{
-  relay_batchnorm(out, data, bn_gamma, bn_beta, bn_mean, bn_var);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string(
-                "",
-                "data",
-                DType::Fp32,
-                &value_env.get("data").unwrap().view()
-            ),
-            c_assignment_string(
-                "",
-                "bn_gamma",
-                DType::Fp32,
-                &value_env.get("bn_gamma").unwrap().view()
-            ),
-            c_assignment_string(
-                "",
-                "bn_beta",
-                DType::Fp32,
-                &value_env.get("bn_beta").unwrap().view()
-            ),
-            c_assignment_string(
-                "",
-                "bn_mean",
-                DType::Fp32,
-                &value_env.get("bn_mean").unwrap().view()
-            ),
-            c_assignment_string(
-                "",
-                "bn_var",
-                DType::Fp32,
-                &value_env.get("bn_var").unwrap().view()
-            ),
-            c_assignment_string("", "result", DType::Fp32, &result.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-            ),
-            code,
-            result.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-batchnorm-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-batchnorm-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+        relay_op_test!(
+            "relay_op_batchnorm",
+            r#"
+            #[version = "0.0.5"]
+            def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> (Tensor[(1, 2, 2, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) {
+            nn.batch_norm(%data, %bn_gamma, %bn_beta, %bn_mean, %bn_var, axis=3) /* ty=(Tensor[(1, 2, 2, 16), float32], Tensor[(16), float32], Tensor[(16), float32]) */
+            }
+            "#,
+            r#"
+            #[version = "0.0.5"]
+            def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32], %bn_beta: Tensor[(16), float32], %bn_mean: Tensor[(16), float32], %bn_var: Tensor[(16), float32]) -> Tensor[(1, 2, 2, 16), float32] {
+            %0 = add(%bn_var, 1e-05f /* ty=float32 */) /* ty=Tensor[(16), float32] */;
+            %1 = sqrt(%0) /* ty=Tensor[(16), float32] */;
+            %2 = divide(1f /* ty=float32 */, %1) /* ty=Tensor[(16), float32] */;
+            %3 = multiply(%2, %bn_gamma) /* ty=Tensor[(16), float32] */;
+            %4 = multiply(%data, %3) /* ty=Tensor[(1, 2, 2, 16), float32] */;
+            %5 = negative(%bn_mean) /* ty=Tensor[(16), float32] */;
+            %6 = multiply(%5, %3) /* ty=Tensor[(16), float32] */;
+            %7 = add(%6, %bn_beta) /* ty=Tensor[(16), float32] */;
+            add(%4, %7) /* ty=Tensor[(1, 2, 2, 16), float32] */
+            }      
+            "#,
+            crate::language::RelayOperator::RelayBatchNormInference,
+            23,
+            1f32,
+            2f32,
+            vec!["data", "bn_gamma", "bn_beta", "bn_mean", "bn_var"]
         );
     }
-
     #[test]
     fn relay_op_softmax() {
         let relay = r#"
-#[version = "0.0.5"]
-def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
-    nn.softmax(%data) /* ty=Tensor[(1,10), float32] */
-}
-"#;
+        #[version = "0.0.5"]
+        def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
+            nn.softmax(%data) /* ty=Tensor[(1,10), float32] */
+        }
+        "#;
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
@@ -3089,103 +2889,28 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
             &egraph,
             id,
             &HashMap::default(),
-            "relay_softmax",
+            "compiled_function",
             "",
             &vec!["data"],
             &generate_worklist_for_codegen(&egraph, id),
             true,
         );
-        let main_code = format!(
-            "
-#include <assert.h>
-#include <math.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-
-int main() {{
-  relay_softmax(out, data);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string(
-                "",
-                "data",
-                DType::Fp32,
-                &value_env.get("data").unwrap().view()
-            ),
-            c_assignment_string("", "result", DType::Fp32, &result_output.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result_output.shape()).view()
-            ),
+        let var_assignment_str = c_assignment_string(
+            "",
+            "data",
+            DType::Fp32,
+            &value_env.get("data").unwrap().view(),
+        );
+        let var = ", data";
+        relay_op_test!(
+            "relay_op_softmax",
+            var_assignment_str,
+            var,
+            "fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001",
             code,
-            result_output.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-softmax-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-softmax-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+            result_output
         );
     }
-
     #[test]
     fn relay_op_relu() {
         let relay = r#"
@@ -3194,137 +2919,17 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
   nn.relu(%x)
 }
 "#;
-
-        // Random number generator for generating random tensors.
-        const SEED: u64 = 23;
-        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
-
-        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-            &module,
-            true,
-            &vec![crate::language::RelayOperator::RelayReLU],
-        );
-
-        let mut env = HashMap::default();
-        let mut value_env = HashMap::default();
-        for (k, v) in &shapes_vec {
-            env.insert(k.clone(), v.clone());
-            value_env.insert(
-                k.clone(),
-                ndarray::ArrayD::<f32>::random_using(
-                    v.clone(),
-                    Uniform::new(-1f32, 1f32),
-                    &mut tensor_rng,
-                ),
-            );
-        }
-
-        let mut egraph = EGraph::new(MyAnalysis {
-            name_to_shape: env.clone(),
-        });
-
-        let id = egraph.add_expr(&expr);
-
-        let result = run_relay(&value_env, &shapes_vec, relay);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "relay_relu",
-            "",
-            &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-
-int main() {{
-    relay_relu(out, x);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
-            c_assignment_string("", "result", DType::Fp32, &result.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-            ),
-            code,
-            result.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-relu-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-relu-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+        relay_op_test!(
+            "relay_op_relu",
+            relay,
+            relay,
+            crate::language::RelayOperator::RelayReLU,
+            23,
+            -1f32,
+            1f32,
+            vec!["x"]
         );
     }
-
     #[test]
     fn relay_op_maxpool2d_resnet_3x3() {
         let relay = r#"
@@ -3333,412 +2938,56 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
   nn.max_pool2d(%x, pool_size=[3, 3], strides=[2, 2], padding=[1, 1, 1, 1], layout="NHWC") /* ty=Tensor[(1, 56, 56, 64), float32] */
 }
 "#;
-        const SEED: u64 = 23;
-        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
-
-        let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
-
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-            &module,
-            true,
-            &vec![crate::language::RelayOperator::RelayMaxPool2D],
-        );
-
-        let mut env = HashMap::default();
-        let mut value_env = HashMap::default();
-        for (k, v) in &shapes_vec {
-            env.insert(k.clone(), v.clone());
-            value_env.insert(
-                k.clone(),
-                ndarray::ArrayD::<f32>::random_using(
-                    v.clone(),
-                    Uniform::new(-1f32, 1f32),
-                    &mut tensor_rng,
-                ),
-            );
-        }
-
-        let mut egraph = EGraph::new(MyAnalysis {
-            name_to_shape: env.clone(),
-        });
-
-        let id = egraph.add_expr(&expr);
-
-        let result = run_relay(&value_env, &shapes_vec, relay);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "relay_maxpool",
-            "",
-            &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-#include <math.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-
-int main() {{
-    relay_maxpool(out, x);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
-            c_assignment_string("", "result", DType::Fp32, &result.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-            ),
-            code,
-            result.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-maxpool-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-maxpool-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+        relay_op_test!(
+            "relay_op_maxpool2d_resnet_3x3",
+            relay,
+            relay,
+            crate::language::RelayOperator::RelayMaxPool2D,
+            23,
+            -1f32,
+            1f32,
+            vec!["x"]
         );
     }
-
     #[test]
     fn relay_op_batchflatten() {
         let relay = r#"
-#[version = "0.0.5"]
-def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
-  nn.batch_flatten(%x)
-}
-"#;
-        const SEED: u64 = 23;
-        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
-
-        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-            &module,
-            true,
-            &vec![crate::language::RelayOperator::RelayBatchFlatten],
-        );
-
-        let mut env = HashMap::default();
-        let mut value_env = HashMap::default();
-        for (k, v) in &shapes_vec {
-            env.insert(k.clone(), v.clone());
-            value_env.insert(
-                k.clone(),
-                ndarray::ArrayD::<f32>::random_using(
-                    v.clone(),
-                    Uniform::new(-2f32, 2f32),
-                    &mut tensor_rng,
-                ),
-            );
+        #[version = "0.0.5"]
+        def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
+          nn.batch_flatten(%x)
         }
-
-        let mut egraph = EGraph::new(MyAnalysis {
-            name_to_shape: env.clone(),
-        });
-
-        let id = egraph.add_expr(&expr);
-
-        let result = run_relay(&value_env, &shapes_vec, relay);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "relay_maxpool",
-            "",
-            &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-#include <math.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-
-int main() {{
-    relay_maxpool(out, x);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
-            c_assignment_string("", "result", DType::Fp32, &result.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-            ),
-            code,
-            result.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-maxpool-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-maxpool-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+        "#;
+        relay_op_test!(
+            "relay_op_batchflatten",
+            relay,
+            relay,
+            crate::language::RelayOperator::RelayBatchFlatten,
+            23,
+            -2f32,
+            2f32,
+            vec!["x"]
         );
     }
 
     #[test]
     fn relay_op_globalavgpool2d() {
         let relay = r#"
-#[version = "0.0.5"]
-def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32] {
-    nn.global_avg_pool2d(%x, layout="NHWC") /* ty=Tensor[(1, 1, 1, 512), float32] */
-}
-"#;
-        const SEED: u64 = 23;
-        let mut tensor_rng = SmallRng::seed_from_u64(SEED);
-
-        let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
-
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
-            &module,
-            true,
-            &vec![crate::language::RelayOperator::RelayGlobalAvgPool2D],
-        );
-
-        let mut env = HashMap::default();
-        let mut value_env = HashMap::default();
-        for (k, v) in &shapes_vec {
-            env.insert(k.clone(), v.clone());
-            value_env.insert(
-                k.clone(),
-                ndarray::ArrayD::<f32>::random_using(
-                    v.clone(),
-                    Uniform::new(-2f32, 2f32),
-                    &mut tensor_rng,
-                ),
-            );
+        #[version = "0.0.5"]
+        def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32] {
+            nn.global_avg_pool2d(%x, layout="NHWC") /* ty=Tensor[(1, 1, 1, 512), float32] */
         }
-
-        let mut egraph = EGraph::new(MyAnalysis {
-            name_to_shape: env.clone(),
-        });
-
-        let id = egraph.add_expr(&expr);
-
-        let result = run_relay(&value_env, &shapes_vec, relay);
-
-        let code = codegen(
-            &egraph,
-            id,
-            &HashMap::default(),
-            "relay_globalavgpool2d",
-            "",
-            &vec!["x"],
-            &generate_worklist_for_codegen(&egraph, id),
-            true,
-        );
-
-        let main_code = format!(
-            "
-#include <assert.h>
-#include <math.h>
-#include \"{}\"
-
-{}
-{}
-{}
-{}
-
-int main() {{
-    relay_globalavgpool2d(out, x);
-
-  for (int i = 0; i < {}; i++) {{
-    assert(fabs(((float*)result)[i] - ((float*)out)[i]) < 0.00001);
-  }}
-}}
-",
-            PathBuf::from_str(
-                format!(
-                    "{}/{}/{}",
-                    env!("CARGO_MANIFEST_DIR"),
-                    "c-files",
-                    "relay-op-implementations.c"
-                )
-                .as_str()
-            )
-            .unwrap()
-            .to_string_lossy(),
-            c_assignment_string("", "x", DType::Fp32, &value_env.get("x").unwrap().view()),
-            c_assignment_string("", "result", DType::Fp32, &result.view()),
-            c_assignment_string(
-                "",
-                "out",
-                DType::Fp32,
-                &ndarray::ArrayD::<f32>::zeros(result.shape()).view()
-            ),
-            code,
-            result.shape().iter().product::<usize>()
-        );
-
-        let main_c_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-globalavgpool2d-test-{}.c",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", main_c_filepath.to_string_lossy());
-
-        let binary_filepath = std::env::temp_dir().with_file_name(format!(
-            "relay-op-globalavgpool2d-test-{}",
-            std::time::SystemTime::now().elapsed().unwrap().as_nanos()
-        ));
-        println!("{}", binary_filepath.to_string_lossy());
-
-        File::create(&main_c_filepath)
-            .unwrap()
-            .write_all(main_code.as_bytes())
-            .unwrap();
-
-        let result = Command::new("gcc")
-            .arg("-Werror")
-            .arg("-g")
-            .arg("-o")
-            .arg(&binary_filepath)
-            .arg(&main_c_filepath)
-            .arg("-lm")
-            .output()
-            .unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
-        );
-
-        let result = Command::new(&binary_filepath).output().unwrap();
-
-        assert!(
-            result.status.success(),
-            "{}",
-            std::str::from_utf8(result.stderr.as_slice())
-                .expect("Could not convert stderr to UTF8")
+        "#;
+        relay_op_test!(
+            "relay_op_globalavgpool2d",
+            relay,
+            relay,
+            crate::language::RelayOperator::RelayGlobalAvgPool2D,
+            23,
+            -2f32,
+            2f32,
+            vec!["x"]
         );
     }
-
     #[test]
     #[ignore = "unfinished test"]
     fn relay_op_leakyrelu() {
