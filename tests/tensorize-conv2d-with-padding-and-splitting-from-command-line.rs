@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 use log::debug;
 use std::process::Command;
 

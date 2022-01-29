@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 use egg::Pattern;
 use egg::Searcher;
 use egg::{RecExpr, Runner};

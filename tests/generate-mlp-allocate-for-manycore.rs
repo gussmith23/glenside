@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 #[test]
 fn asplos_demo_generate_mlp_allocate_for_manycore() {
     /* Runs the following:
