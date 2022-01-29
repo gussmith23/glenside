@@ -1,4 +1,4 @@
-#![cfg(not(tarpaulin_include))]
+#![cfg(not(tarpaulin))]
 
 #[test]
 fn asplos_demo_generate_mlp_allocate_for_manycore() {

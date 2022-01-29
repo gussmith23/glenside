@@ -1,4 +1,4 @@
-#![cfg(not(tarpaulin_include))]
+#![cfg(not(tarpaulin))]
 
 use log::debug;
 use std::process::Command;
