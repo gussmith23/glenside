@@ -1,0 +1,16 @@
+name: Run code coverage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  run_code_coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: docker build --tag glenside .
+      - run: docker run --privileged glenside /bin/bash -c "cargo install cargo-tarpaulin && cargo tarpaulin --no-default-features --features tvm"
+      # TODO(acheung8) Next steps -- fail if tarpaulin coverage dips below certain amount
