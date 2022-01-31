@@ -43,10 +43,8 @@ git = "https://github.com/gussmith23/rplex"
 
 
 [dependencies.tvm]
-# TODO(@gussmith23) Switch to TVM mainline once
-# https://github.com/apache/tvm/pull/10063 lands.
-rev = "f3f14a68b4adedfc48ad448d155ce8f720010317"
-git = "https://github.com/gussmith23/tvm"
+rev = "36b48a5707321adba8a70e14da443566a9391e5a"
+git = "https://github.com/apache/tvm"
 optional = true
 
 [dependencies.egg]

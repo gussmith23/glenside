@@ -26,12 +26,10 @@ RUN sudo ./llvm.sh 10
 ENV LLVM_CONFIG_PATH=/usr/lib/llvm-10/bin/llvm-config
 
 # Build TVM with Rust bindings
-# TODO(@gussmith23) Switch to TVM mainline once
-# https://github.com/apache/tvm/pull/10063 lands.
-RUN cd /root && git clone https://github.com/gussmith23/tvm tvm --recursive
+RUN cd /root && git clone https://github.com/apache/tvm tvm --recursive
 WORKDIR /root/tvm
 RUN git fetch
-RUN git checkout f3f14a68b4adedfc48ad448d155ce8f720010317
+RUN git checkout 36b48a5707321adba8a70e14da443566a9391e5a
 RUN git submodule sync && git submodule update
 RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
