@@ -1951,7 +1951,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     crate::language::RelayOperator::RelayPad => {
                         assert_eq!(params.len(), 4);
 
-                        let mut a = match &egraph[params[1]].data {
+                        let a = match &egraph[params[1]].data {
                             MyAnalysisData::AccessPattern(a) => a.clone(),
                             _ => panic!(),
                         };
@@ -1965,7 +1965,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                             "There should be two padding values per tensor dimension."
                         );
 
-                        todo!()
+                        let newshape = a
+                            .as_vec()
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| pad_width[2 * i] + *v + pad_width[2 * i + 1])
+                            .collect::<Vec<_>>();
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&newshape[..a.shape.ndim()]),
+                            item_shape: IxDyn(&newshape[a.shape.ndim()..]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&newshape)),
+                            contains_accelerator_calls: a.contains_accelerator_calls,
+                        })
                     }
                     crate::language::RelayOperator::RelayExpandDims => {
                         assert_eq!(params.len(), 4);

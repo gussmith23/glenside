@@ -1759,7 +1759,42 @@ fn compile_expression(
 
                     if use_opaque_operators_for.contains(&RelayPad) {
                         let relay_op_id = glenside_expr.add(RelayOperator(RelayPad));
-                        todo!();
+
+                        let ids = attrs
+                            .pad_width
+                            .clone()
+                            .into_iter()
+                            .flat_map(|v| {
+                                assert_eq!(v.len(), 2);
+                                let id0 = glenside_expr.add(Usize(
+                                    v.get(0)
+                                        .unwrap()
+                                        .downcast::<tvm::ir::tir::IntImm>()
+                                        .unwrap()
+                                        .value
+                                        .try_into()
+                                        .unwrap(),
+                                ));
+                                let id1 = glenside_expr.add(Usize(
+                                    v.get(1)
+                                        .unwrap()
+                                        .downcast::<tvm::ir::tir::IntImm>()
+                                        .unwrap()
+                                        .value
+                                        .try_into()
+                                        .unwrap(),
+                                ));
+                                [id0, id1]
+                            })
+                            .collect::<Vec<_>>();
+                        let shape_id = glenside_expr.add(Shape(ids.into_boxed_slice()));
+
+                        return (
+                            glenside_expr.add(RelayOperatorCall(
+                                vec![relay_op_id, data_id, shape_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
                     }
 
                     let pad_type_id = glenside_expr.add(Language::PadType(PadType::ZeroPadding));
