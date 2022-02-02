@@ -3231,7 +3231,7 @@ pub fn expand_dims_relay_to_glenside() -> RW {
     })
 }
 
-fn eliminate_expand_dims_zero_num_newaxis() -> RW {
+pub fn eliminate_expand_dims_zero_num_newaxis() -> RW {
     rewrite!("eliminate-expand-dims-zero-num-newaxis";
              "(relay-operator-call relay-expand-dims ?data ?axis 0)" => "?data")
 }
