@@ -3236,6 +3236,60 @@ pub fn eliminate_expand_dims_zero_num_newaxis() -> RW {
              "(relay-operator-call relay-expand-dims ?data ?axis 0)" => "?data")
 }
 
+pub fn pad_relay_to_glenside() -> RW {
+    #[derive(Clone)]
+    struct Impl {
+        data: Var,
+        pad_widths: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let pad_widths = match &egraph[subst[self.pad_widths]].data {
+                MyAnalysisData::Shape(ShapeData { shape, .. }) => shape.clone(),
+                _ => panic!(),
+            };
+            let ndim = match &egraph[subst[self.data]].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec().len(),
+                _ => panic!(),
+            };
+            assert_eq!(pad_widths.ndim(), ndim * 2,);
+
+            let zero_pad_id = egraph.add(Language::PadType(crate::language::PadType::ZeroPadding));
+
+            let mut id = subst[self.data];
+            for i in 0..ndim {
+                let axis_id = egraph.add(Language::Usize(i));
+                let pad_before_id = egraph.add(Language::Usize(pad_widths[2 * i]));
+                let pad_after_id = egraph.add(Language::Usize(pad_widths[2 * i + 1]));
+                id = egraph.add(Language::AccessPad([
+                    id,
+                    zero_pad_id,
+                    axis_id,
+                    pad_before_id,
+                    pad_after_id,
+                ]));
+            }
+
+            egraph.union(id, eclass);
+
+            vec![id]
+        }
+    }
+    let i = Impl {
+        data: "?data".parse().unwrap(),
+        pad_widths: "?pad-widths".parse().unwrap(),
+    };
+    rewrite!("pad-relay-to-glenside";
+    { format!("(relay-operator-call relay-pad {} {})",
+                i.data, i.pad_widths)
+        .parse::<Pattern<_>>().unwrap() } => { i.clone() })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6678,5 +6732,26 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1, 1, 32, 
             super::eliminate_expand_dims_zero_num_newaxis()
         ],
         &vec![RelayOperator::RelayExpandDims]
+    );
+
+    test!(
+        pad,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 2, 3), float32]) {
+    nn.pad(%data, 0, pad_width=[[0, 0], [1, 0], [1, 1]])
+}"#,
+        r#"
+(access-pad 
+ (access-pad 
+  (access-pad 
+   (access-tensor data)
+   zero-padding 0 0 0)
+  zero-padding 1 1 0)
+ zero-padding 2 1 1)
+"#,
+        &vec![super::pad_relay_to_glenside(),],
+        &vec![RelayOperator::RelayPad]
     );
 }

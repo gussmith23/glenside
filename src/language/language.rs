@@ -461,10 +461,10 @@ pub enum RelayOperator {
     RelayExpandDims,
 
     /// (relay-operator-call relay-pad <data: access>
-    ///                                <pad_width: shape>
-    ///                                <pad_value: int>)
+    ///                                <pad_width: shape>)
     /// Note that the pad_width is a flattened version of the list of tuples
     /// which is used in Relay.
+    /// Padding value is assumed to be zero.
     RelayPad,
 }
 
@@ -1949,7 +1949,7 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 match op_type {
                     crate::language::RelayOperator::RelayPad => {
-                        assert_eq!(params.len(), 4);
+                        assert_eq!(params.len(), 3);
 
                         let a = match &egraph[params[1]].data {
                             MyAnalysisData::AccessPattern(a) => a.clone(),
