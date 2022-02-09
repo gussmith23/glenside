@@ -1,0 +1,316 @@
+type tensor_uint8_t {
+  tensor_nil_uint8,
+  tensor0_uint8(uint8),
+  tensor1_uint8(Tensor[(?), uint8]),
+  tensor2_uint8(Tensor[(?, ?), uint8]),
+  tensor3_uint8(Tensor[(?, ?, ?), uint8]),
+  tensor4_uint8(Tensor[(?, ?, ?, ?), uint8]),
+  tensor5_uint8(Tensor[(?, ?, ?, ?, ?), uint8]),
+  tensor6_uint8(Tensor[(?, ?, ?, ?, ?, ?), uint8]),
+}
+
+type tensor_float64_t {
+  tensor_nil_float64,
+  tensor0_float64(float64),
+  tensor1_float64(Tensor[(?), float64]),
+  tensor2_float64(Tensor[(?, ?), float64]),
+  tensor3_float64(Tensor[(?, ?, ?), float64]),
+  tensor4_float64(Tensor[(?, ?, ?, ?), float64]),
+  tensor5_float64(Tensor[(?, ?, ?, ?, ?), float64]),
+  tensor6_float64(Tensor[(?, ?, ?, ?, ?, ?), float64]),
+}
+
+type tensor_float16_t {
+  tensor_nil_float16,
+  tensor0_float16(float16),
+  tensor1_float16(Tensor[(?), float16]),
+  tensor2_float16(Tensor[(?, ?), float16]),
+  tensor3_float16(Tensor[(?, ?, ?), float16]),
+  tensor4_float16(Tensor[(?, ?, ?, ?), float16]),
+  tensor5_float16(Tensor[(?, ?, ?, ?, ?), float16]),
+  tensor6_float16(Tensor[(?, ?, ?, ?, ?, ?), float16]),
+}
+
+type List[A] {
+  Cons(A, List[A]),
+  Nil,
+}
+
+type tensor_float32_t {
+  tensor_nil_float32,
+  tensor0_float32(float32),
+  tensor1_float32(Tensor[(?), float32]),
+  tensor2_float32(Tensor[(?, ?), float32]),
+  tensor3_float32(Tensor[(?, ?, ?), float32]),
+  tensor4_float32(Tensor[(?, ?, ?, ?), float32]),
+  tensor5_float32(Tensor[(?, ?, ?, ?, ?), float32]),
+  tensor6_float32(Tensor[(?, ?, ?, ?, ?, ?), float32]),
+}
+
+type Tree[A] {
+  Rose(A, List[Tree[A]]),
+}
+
+type tensor_uint16_t {
+  tensor_nil_uint16,
+  tensor0_uint16(uint16),
+  tensor1_uint16(Tensor[(?), uint16]),
+  tensor2_uint16(Tensor[(?, ?), uint16]),
+  tensor3_uint16(Tensor[(?, ?, ?), uint16]),
+  tensor4_uint16(Tensor[(?, ?, ?, ?), uint16]),
+  tensor5_uint16(Tensor[(?, ?, ?, ?, ?), uint16]),
+  tensor6_uint16(Tensor[(?, ?, ?, ?, ?, ?), uint16]),
+}
+
+type Option[A] {
+  Some(A),
+  None,
+}
+
+type tensor_int16_t {
+  tensor_nil_int16,
+  tensor0_int16(int16),
+  tensor1_int16(Tensor[(?), int16]),
+  tensor2_int16(Tensor[(?, ?), int16]),
+  tensor3_int16(Tensor[(?, ?, ?), int16]),
+  tensor4_int16(Tensor[(?, ?, ?, ?), int16]),
+  tensor5_int16(Tensor[(?, ?, ?, ?, ?), int16]),
+  tensor6_int16(Tensor[(?, ?, ?, ?, ?, ?), int16]),
+}
+
+type tensor_int32_t {
+  tensor_nil_int32,
+  tensor0_int32(int32),
+  tensor1_int32(Tensor[(?), int32]),
+  tensor2_int32(Tensor[(?, ?), int32]),
+  tensor3_int32(Tensor[(?, ?, ?), int32]),
+  tensor4_int32(Tensor[(?, ?, ?, ?), int32]),
+  tensor5_int32(Tensor[(?, ?, ?, ?, ?), int32]),
+  tensor6_int32(Tensor[(?, ?, ?, ?, ?, ?), int32]),
+}
+
+type tensor_int8_t {
+  tensor_nil_int8,
+  tensor0_int8(int8),
+  tensor1_int8(Tensor[(?), int8]),
+  tensor2_int8(Tensor[(?, ?), int8]),
+  tensor3_int8(Tensor[(?, ?, ?), int8]),
+  tensor4_int8(Tensor[(?, ?, ?, ?), int8]),
+  tensor5_int8(Tensor[(?, ?, ?, ?, ?), int8]),
+  tensor6_int8(Tensor[(?, ?, ?, ?, ?, ?), int8]),
+}
+
+type tensor_int64_t {
+  tensor_nil_int64,
+  tensor0_int64(int64),
+  tensor1_int64(Tensor[(?), int64]),
+  tensor2_int64(Tensor[(?, ?), int64]),
+  tensor3_int64(Tensor[(?, ?, ?), int64]),
+  tensor4_int64(Tensor[(?, ?, ?, ?), int64]),
+  tensor5_int64(Tensor[(?, ?, ?, ?, ?), int64]),
+  tensor6_int64(Tensor[(?, ?, ?, ?, ?, ?), int64]),
+}
+
+def @main(%input0: Tensor[(1, 3, 1200, 1200), float32], %model.layer1.0.weight: Tensor[(64, 3, 7, 7), float32], %model.layer1.1.weight: Tensor[(64), float32], %model.layer1.1.bias: Tensor[(64), float32], %model.layer1.1.running_mean: Tensor[(64), float32], %model.layer1.1.running_var: Tensor[(64), float32], %model.layer1.4.0.conv1.weight: Tensor[(64, 64, 3, 3), float32], %model.layer1.4.0.bn1.weight: Tensor[(64), float32], %model.layer1.4.0.bn1.bias: Tensor[(64), float32], %model.layer1.4.0.bn1.running_mean: Tensor[(64), float32], %model.layer1.4.0.bn1.running_var: Tensor[(64), float32], %model.layer1.4.0.conv2.weight: Tensor[(64, 64, 3, 3), float32], %model.layer1.4.0.bn2.weight: Tensor[(64), float32], %model.layer1.4.0.bn2.bias: Tensor[(64), float32], %model.layer1.4.0.bn2.running_mean: Tensor[(64), float32], %model.layer1.4.0.bn2.running_var: Tensor[(64), float32], %model.layer1.4.1.conv1.weight: Tensor[(64, 64, 3, 3), float32], %model.layer1.4.1.bn1.weight: Tensor[(64), float32], %model.layer1.4.1.bn1.bias: Tensor[(64), float32], %model.layer1.4.1.bn1.running_mean: Tensor[(64), float32], %model.layer1.4.1.bn1.running_var: Tensor[(64), float32], %model.layer1.4.1.conv2.weight: Tensor[(64, 64, 3, 3), float32], %model.layer1.4.1.bn2.weight: Tensor[(64), float32], %model.layer1.4.1.bn2.bias: Tensor[(64), float32], %model.layer1.4.1.bn2.running_mean: Tensor[(64), float32], %model.layer1.4.1.bn2.running_var: Tensor[(64), float32], %model.layer1.4.2.conv1.weight: Tensor[(64, 64, 3, 3), float32], %model.layer1.4.2.bn1.weight: Tensor[(64), float32], %model.layer1.4.2.bn1.bias: Tensor[(64), float32], %model.layer1.4.2.bn1.running_mean: Tensor[(64), float32], %model.layer1.4.2.bn1.running_var: Tensor[(64), float32], %model.layer1.4.2.conv2.weight: Tensor[(64, 64, 3, 3), float32], %model.layer1.4.2.bn2.weight: Tensor[(64), float32], %model.layer1.4.2.bn2.bias: Tensor[(64), float32], %model.layer1.4.2.bn2.running_mean: Tensor[(64), float32], %model.layer1.4.2.bn2.running_var: Tensor[(64), float32], %model.layer1.5.0.conv1.weight: Tensor[(128, 64, 3, 3), float32], %model.layer1.5.0.bn1.weight: Tensor[(128), float32], %model.layer1.5.0.bn1.bias: Tensor[(128), float32], %model.layer1.5.0.bn1.running_mean: Tensor[(128), float32], %model.layer1.5.0.bn1.running_var: Tensor[(128), float32], %model.layer1.5.0.conv2.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.0.bn2.weight: Tensor[(128), float32], %model.layer1.5.0.bn2.bias: Tensor[(128), float32], %model.layer1.5.0.bn2.running_mean: Tensor[(128), float32], %model.layer1.5.0.bn2.running_var: Tensor[(128), float32], %model.layer1.5.0.downsample.0.weight: Tensor[(128, 64, 1, 1), float32], %model.layer1.5.0.downsample.1.weight: Tensor[(128), float32], %model.layer1.5.0.downsample.1.bias: Tensor[(128), float32], %model.layer1.5.0.downsample.1.running_mean: Tensor[(128), float32], %model.layer1.5.0.downsample.1.running_var: Tensor[(128), float32], %model.layer1.5.1.conv1.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.1.bn1.weight: Tensor[(128), float32], %model.layer1.5.1.bn1.bias: Tensor[(128), float32], %model.layer1.5.1.bn1.running_mean: Tensor[(128), float32], %model.layer1.5.1.bn1.running_var: Tensor[(128), float32], %model.layer1.5.1.conv2.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.1.bn2.weight: Tensor[(128), float32], %model.layer1.5.1.bn2.bias: Tensor[(128), float32], %model.layer1.5.1.bn2.running_mean: Tensor[(128), float32], %model.layer1.5.1.bn2.running_var: Tensor[(128), float32], %model.layer1.5.2.conv1.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.2.bn1.weight: Tensor[(128), float32], %model.layer1.5.2.bn1.bias: Tensor[(128), float32], %model.layer1.5.2.bn1.running_mean: Tensor[(128), float32], %model.layer1.5.2.bn1.running_var: Tensor[(128), float32], %model.layer1.5.2.conv2.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.2.bn2.weight: Tensor[(128), float32], %model.layer1.5.2.bn2.bias: Tensor[(128), float32], %model.layer1.5.2.bn2.running_mean: Tensor[(128), float32], %model.layer1.5.2.bn2.running_var: Tensor[(128), float32], %model.layer1.5.3.conv1.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.3.bn1.weight: Tensor[(128), float32], %model.layer1.5.3.bn1.bias: Tensor[(128), float32], %model.layer1.5.3.bn1.running_mean: Tensor[(128), float32], %model.layer1.5.3.bn1.running_var: Tensor[(128), float32], %model.layer1.5.3.conv2.weight: Tensor[(128, 128, 3, 3), float32], %model.layer1.5.3.bn2.weight: Tensor[(128), float32], %model.layer1.5.3.bn2.bias: Tensor[(128), float32], %model.layer1.5.3.bn2.running_mean: Tensor[(128), float32], %model.layer1.5.3.bn2.running_var: Tensor[(128), float32], %model.layer2.0.0.conv1.weight: Tensor[(256, 128, 3, 3), float32], %model.layer2.0.0.bn1.weight: Tensor[(256), float32], %model.layer2.0.0.bn1.bias: Tensor[(256), float32], %model.layer2.0.0.bn1.running_mean: Tensor[(256), float32], %model.layer2.0.0.bn1.running_var: Tensor[(256), float32], %model.layer2.0.0.conv2.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.0.bn2.weight: Tensor[(256), float32], %model.layer2.0.0.bn2.bias: Tensor[(256), float32], %model.layer2.0.0.bn2.running_mean: Tensor[(256), float32], %model.layer2.0.0.bn2.running_var: Tensor[(256), float32], %model.layer2.0.0.downsample.0.weight: Tensor[(256, 128, 1, 1), float32], %model.layer2.0.0.downsample.1.weight: Tensor[(256), float32], %model.layer2.0.0.downsample.1.bias: Tensor[(256), float32], %model.layer2.0.0.downsample.1.running_mean: Tensor[(256), float32], %model.layer2.0.0.downsample.1.running_var: Tensor[(256), float32], %model.layer2.0.1.conv1.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.1.bn1.weight: Tensor[(256), float32], %model.layer2.0.1.bn1.bias: Tensor[(256), float32], %model.layer2.0.1.bn1.running_mean: Tensor[(256), float32], %model.layer2.0.1.bn1.running_var: Tensor[(256), float32], %model.layer2.0.1.conv2.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.1.bn2.weight: Tensor[(256), float32], %model.layer2.0.1.bn2.bias: Tensor[(256), float32], %model.layer2.0.1.bn2.running_mean: Tensor[(256), float32], %model.layer2.0.1.bn2.running_var: Tensor[(256), float32], %model.layer2.0.2.conv1.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.2.bn1.weight: Tensor[(256), float32], %model.layer2.0.2.bn1.bias: Tensor[(256), float32], %model.layer2.0.2.bn1.running_mean: Tensor[(256), float32], %model.layer2.0.2.bn1.running_var: Tensor[(256), float32], %model.layer2.0.2.conv2.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.2.bn2.weight: Tensor[(256), float32], %model.layer2.0.2.bn2.bias: Tensor[(256), float32], %model.layer2.0.2.bn2.running_mean: Tensor[(256), float32], %model.layer2.0.2.bn2.running_var: Tensor[(256), float32], %model.layer2.0.3.conv1.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.3.bn1.weight: Tensor[(256), float32], %model.layer2.0.3.bn1.bias: Tensor[(256), float32], %model.layer2.0.3.bn1.running_mean: Tensor[(256), float32], %model.layer2.0.3.bn1.running_var: Tensor[(256), float32], %model.layer2.0.3.conv2.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.3.bn2.weight: Tensor[(256), float32], %model.layer2.0.3.bn2.bias: Tensor[(256), float32], %model.layer2.0.3.bn2.running_mean: Tensor[(256), float32], %model.layer2.0.3.bn2.running_var: Tensor[(256), float32], %model.layer2.0.4.conv1.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.4.bn1.weight: Tensor[(256), float32], %model.layer2.0.4.bn1.bias: Tensor[(256), float32], %model.layer2.0.4.bn1.running_mean: Tensor[(256), float32], %model.layer2.0.4.bn1.running_var: Tensor[(256), float32], %model.layer2.0.4.conv2.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.4.bn2.weight: Tensor[(256), float32], %model.layer2.0.4.bn2.bias: Tensor[(256), float32], %model.layer2.0.4.bn2.running_mean: Tensor[(256), float32], %model.layer2.0.4.bn2.running_var: Tensor[(256), float32], %model.layer2.0.5.conv1.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.5.bn1.weight: Tensor[(256), float32], %model.layer2.0.5.bn1.bias: Tensor[(256), float32], %model.layer2.0.5.bn1.running_mean: Tensor[(256), float32], %model.layer2.0.5.bn1.running_var: Tensor[(256), float32], %model.layer2.0.5.conv2.weight: Tensor[(256, 256, 3, 3), float32], %model.layer2.0.5.bn2.weight: Tensor[(256), float32], %model.layer2.0.5.bn2.bias: Tensor[(256), float32], %model.layer2.0.5.bn2.running_mean: Tensor[(256), float32], %model.layer2.0.5.bn2.running_var: Tensor[(256), float32], %loc.0.weight: Tensor[(16, 256, 3, 3), float32], %loc.0.bias: Tensor[(16), float32], %additional_blocks.0.0.weight: Tensor[(256, 256, 1, 1), float32], %additional_blocks.0.0.bias: Tensor[(256), float32], %additional_blocks.0.2.weight: Tensor[(512, 256, 3, 3), float32], %additional_blocks.0.2.bias: Tensor[(512), float32], %loc.1.weight: Tensor[(24, 512, 3, 3), float32], %loc.1.bias: Tensor[(24), float32], %additional_blocks.1.0.weight: Tensor[(256, 512, 1, 1), float32], %additional_blocks.1.0.bias: Tensor[(256), float32], %additional_blocks.1.2.weight: Tensor[(512, 256, 3, 3), float32], %additional_blocks.1.2.bias: Tensor[(512), float32], %loc.2.weight: Tensor[(24, 512, 3, 3), float32], %loc.2.bias: Tensor[(24), float32], %additional_blocks.2.0.weight: Tensor[(128, 512, 1, 1), float32], %additional_blocks.2.0.bias: Tensor[(128), float32], %additional_blocks.2.2.weight: Tensor[(256, 128, 3, 3), float32], %additional_blocks.2.2.bias: Tensor[(256), float32], %loc.3.weight: Tensor[(24, 256, 3, 3), float32], %loc.3.bias: Tensor[(24), float32], %additional_blocks.3.0.weight: Tensor[(128, 256, 1, 1), float32], %additional_blocks.3.0.bias: Tensor[(128), float32], %additional_blocks.3.2.weight: Tensor[(256, 128, 3, 3), float32], %additional_blocks.3.2.bias: Tensor[(256), float32], %loc.4.weight: Tensor[(16, 256, 3, 3), float32], %loc.4.bias: Tensor[(16), float32], %additional_blocks.4.0.weight: Tensor[(128, 256, 1, 1), float32], %additional_blocks.4.0.bias: Tensor[(128), float32], %additional_blocks.4.2.weight: Tensor[(256, 128, 3, 3), float32], %additional_blocks.4.2.bias: Tensor[(256), float32], %loc.5.weight: Tensor[(16, 256, 3, 3), float32], %loc.5.bias: Tensor[(16), float32], %conf.0.weight: Tensor[(324, 256, 3, 3), float32], %conf.0.bias: Tensor[(324), float32], %conf.1.weight: Tensor[(486, 512, 3, 3), float32], %conf.1.bias: Tensor[(486), float32], %conf.2.weight: Tensor[(486, 512, 3, 3), float32], %conf.2.bias: Tensor[(486), float32], %conf.3.weight: Tensor[(486, 256, 3, 3), float32], %conf.3.bias: Tensor[(486), float32], %conf.4.weight: Tensor[(324, 256, 3, 3), float32], %conf.4.bias: Tensor[(324), float32], %conf.5.weight: Tensor[(324, 256, 3, 3), float32], %conf.5.bias: Tensor[(324), float32]) {
+  %0 = nn.conv2d(%input0, %model.layer1.0.weight, strides=[2, 2], padding=[3, 3, 3, 3], channels=64, kernel_size=[7, 7]);
+  %1 = nn.batch_norm(%0, %model.layer1.1.weight, %model.layer1.1.bias, %model.layer1.1.running_mean, %model.layer1.1.running_var);
+  %2 = %1.0;
+  %3 = nn.relu(%2);
+  %4 = nn.max_pool2d(%3, pool_size=[3, 3], strides=[2, 2], padding=[1, 1, 1, 1]);
+  %5 = nn.conv2d(%4, %model.layer1.4.0.conv1.weight, padding=[1, 1, 1, 1], channels=64, kernel_size=[3, 3]);
+  %6 = nn.batch_norm(%5, %model.layer1.4.0.bn1.weight, %model.layer1.4.0.bn1.bias, %model.layer1.4.0.bn1.running_mean, %model.layer1.4.0.bn1.running_var);
+  %7 = %6.0;
+  %8 = nn.relu(%7);
+  %9 = nn.conv2d(%8, %model.layer1.4.0.conv2.weight, padding=[1, 1, 1, 1], channels=64, kernel_size=[3, 3]);
+  %10 = nn.batch_norm(%9, %model.layer1.4.0.bn2.weight, %model.layer1.4.0.bn2.bias, %model.layer1.4.0.bn2.running_mean, %model.layer1.4.0.bn2.running_var);
+  %11 = %10.0;
+  %12 = add(%11, %4);
+  %13 = nn.relu(%12);
+  %14 = nn.conv2d(%13, %model.layer1.4.1.conv1.weight, padding=[1, 1, 1, 1], channels=64, kernel_size=[3, 3]);
+  %15 = nn.batch_norm(%14, %model.layer1.4.1.bn1.weight, %model.layer1.4.1.bn1.bias, %model.layer1.4.1.bn1.running_mean, %model.layer1.4.1.bn1.running_var);
+  %16 = %15.0;
+  %17 = nn.relu(%16);
+  %18 = nn.conv2d(%17, %model.layer1.4.1.conv2.weight, padding=[1, 1, 1, 1], channels=64, kernel_size=[3, 3]);
+  %19 = nn.batch_norm(%18, %model.layer1.4.1.bn2.weight, %model.layer1.4.1.bn2.bias, %model.layer1.4.1.bn2.running_mean, %model.layer1.4.1.bn2.running_var);
+  %20 = %19.0;
+  %21 = add(%20, %13);
+  %22 = nn.relu(%21);
+  %23 = nn.conv2d(%22, %model.layer1.4.2.conv1.weight, padding=[1, 1, 1, 1], channels=64, kernel_size=[3, 3]);
+  %24 = nn.batch_norm(%23, %model.layer1.4.2.bn1.weight, %model.layer1.4.2.bn1.bias, %model.layer1.4.2.bn1.running_mean, %model.layer1.4.2.bn1.running_var);
+  %25 = %24.0;
+  %26 = nn.relu(%25);
+  %27 = nn.conv2d(%26, %model.layer1.4.2.conv2.weight, padding=[1, 1, 1, 1], channels=64, kernel_size=[3, 3]);
+  %28 = nn.batch_norm(%27, %model.layer1.4.2.bn2.weight, %model.layer1.4.2.bn2.bias, %model.layer1.4.2.bn2.running_mean, %model.layer1.4.2.bn2.running_var);
+  %29 = %28.0;
+  %30 = add(%29, %22);
+  %31 = nn.relu(%30);
+  %32 = nn.conv2d(%31, %model.layer1.5.0.conv1.weight, strides=[2, 2], padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %33 = nn.batch_norm(%32, %model.layer1.5.0.bn1.weight, %model.layer1.5.0.bn1.bias, %model.layer1.5.0.bn1.running_mean, %model.layer1.5.0.bn1.running_var);
+  %34 = %33.0;
+  %35 = nn.relu(%34);
+  %36 = nn.conv2d(%35, %model.layer1.5.0.conv2.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %37 = nn.batch_norm(%36, %model.layer1.5.0.bn2.weight, %model.layer1.5.0.bn2.bias, %model.layer1.5.0.bn2.running_mean, %model.layer1.5.0.bn2.running_var);
+  %38 = %37.0;
+  %39 = nn.conv2d(%31, %model.layer1.5.0.downsample.0.weight, strides=[2, 2], padding=[0, 0, 0, 0], channels=128, kernel_size=[1, 1]);
+  %40 = nn.batch_norm(%39, %model.layer1.5.0.downsample.1.weight, %model.layer1.5.0.downsample.1.bias, %model.layer1.5.0.downsample.1.running_mean, %model.layer1.5.0.downsample.1.running_var);
+  %41 = %40.0;
+  %42 = add(%38, %41);
+  %43 = nn.relu(%42);
+  %44 = nn.conv2d(%43, %model.layer1.5.1.conv1.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %45 = nn.batch_norm(%44, %model.layer1.5.1.bn1.weight, %model.layer1.5.1.bn1.bias, %model.layer1.5.1.bn1.running_mean, %model.layer1.5.1.bn1.running_var);
+  %46 = %45.0;
+  %47 = nn.relu(%46);
+  %48 = nn.conv2d(%47, %model.layer1.5.1.conv2.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %49 = nn.batch_norm(%48, %model.layer1.5.1.bn2.weight, %model.layer1.5.1.bn2.bias, %model.layer1.5.1.bn2.running_mean, %model.layer1.5.1.bn2.running_var);
+  %50 = %49.0;
+  %51 = add(%50, %43);
+  %52 = nn.relu(%51);
+  %53 = nn.conv2d(%52, %model.layer1.5.2.conv1.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %54 = nn.batch_norm(%53, %model.layer1.5.2.bn1.weight, %model.layer1.5.2.bn1.bias, %model.layer1.5.2.bn1.running_mean, %model.layer1.5.2.bn1.running_var);
+  %55 = %54.0;
+  %56 = nn.relu(%55);
+  %57 = nn.conv2d(%56, %model.layer1.5.2.conv2.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %58 = nn.batch_norm(%57, %model.layer1.5.2.bn2.weight, %model.layer1.5.2.bn2.bias, %model.layer1.5.2.bn2.running_mean, %model.layer1.5.2.bn2.running_var);
+  %59 = %58.0;
+  %60 = add(%59, %52);
+  %61 = nn.relu(%60);
+  %62 = nn.conv2d(%61, %model.layer1.5.3.conv1.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %63 = nn.batch_norm(%62, %model.layer1.5.3.bn1.weight, %model.layer1.5.3.bn1.bias, %model.layer1.5.3.bn1.running_mean, %model.layer1.5.3.bn1.running_var);
+  %64 = %63.0;
+  %65 = nn.relu(%64);
+  %66 = nn.conv2d(%65, %model.layer1.5.3.conv2.weight, padding=[1, 1, 1, 1], channels=128, kernel_size=[3, 3]);
+  %67 = nn.batch_norm(%66, %model.layer1.5.3.bn2.weight, %model.layer1.5.3.bn2.bias, %model.layer1.5.3.bn2.running_mean, %model.layer1.5.3.bn2.running_var);
+  %68 = %67.0;
+  %69 = add(%68, %61);
+  %70 = nn.relu(%69);
+  %71 = nn.conv2d(%70, %model.layer2.0.0.conv1.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %72 = nn.batch_norm(%71, %model.layer2.0.0.bn1.weight, %model.layer2.0.0.bn1.bias, %model.layer2.0.0.bn1.running_mean, %model.layer2.0.0.bn1.running_var);
+  %73 = %72.0;
+  %74 = nn.relu(%73);
+  %75 = nn.conv2d(%74, %model.layer2.0.0.conv2.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %76 = nn.batch_norm(%75, %model.layer2.0.0.bn2.weight, %model.layer2.0.0.bn2.bias, %model.layer2.0.0.bn2.running_mean, %model.layer2.0.0.bn2.running_var);
+  %77 = %76.0;
+  %78 = nn.conv2d(%70, %model.layer2.0.0.downsample.0.weight, padding=[0, 0, 0, 0], channels=256, kernel_size=[1, 1]);
+  %79 = nn.batch_norm(%78, %model.layer2.0.0.downsample.1.weight, %model.layer2.0.0.downsample.1.bias, %model.layer2.0.0.downsample.1.running_mean, %model.layer2.0.0.downsample.1.running_var);
+  %80 = %79.0;
+  %81 = add(%77, %80);
+  %82 = nn.relu(%81);
+  %83 = nn.conv2d(%82, %model.layer2.0.1.conv1.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %84 = nn.batch_norm(%83, %model.layer2.0.1.bn1.weight, %model.layer2.0.1.bn1.bias, %model.layer2.0.1.bn1.running_mean, %model.layer2.0.1.bn1.running_var);
+  %85 = %84.0;
+  %86 = nn.relu(%85);
+  %87 = nn.conv2d(%86, %model.layer2.0.1.conv2.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %88 = nn.batch_norm(%87, %model.layer2.0.1.bn2.weight, %model.layer2.0.1.bn2.bias, %model.layer2.0.1.bn2.running_mean, %model.layer2.0.1.bn2.running_var);
+  %89 = %88.0;
+  %90 = add(%89, %82);
+  %91 = nn.relu(%90);
+  %92 = nn.conv2d(%91, %model.layer2.0.2.conv1.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %93 = nn.batch_norm(%92, %model.layer2.0.2.bn1.weight, %model.layer2.0.2.bn1.bias, %model.layer2.0.2.bn1.running_mean, %model.layer2.0.2.bn1.running_var);
+  %94 = %93.0;
+  %95 = nn.relu(%94);
+  %96 = nn.conv2d(%95, %model.layer2.0.2.conv2.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %97 = nn.batch_norm(%96, %model.layer2.0.2.bn2.weight, %model.layer2.0.2.bn2.bias, %model.layer2.0.2.bn2.running_mean, %model.layer2.0.2.bn2.running_var);
+  %98 = %97.0;
+  %99 = add(%98, %91);
+  %100 = nn.relu(%99);
+  %101 = nn.conv2d(%100, %model.layer2.0.3.conv1.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %102 = nn.batch_norm(%101, %model.layer2.0.3.bn1.weight, %model.layer2.0.3.bn1.bias, %model.layer2.0.3.bn1.running_mean, %model.layer2.0.3.bn1.running_var);
+  %103 = %102.0;
+  %104 = nn.relu(%103);
+  %105 = nn.conv2d(%104, %model.layer2.0.3.conv2.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %106 = nn.batch_norm(%105, %model.layer2.0.3.bn2.weight, %model.layer2.0.3.bn2.bias, %model.layer2.0.3.bn2.running_mean, %model.layer2.0.3.bn2.running_var);
+  %107 = %106.0;
+  %108 = add(%107, %100);
+  %109 = nn.relu(%108);
+  %110 = nn.conv2d(%109, %model.layer2.0.4.conv1.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %111 = nn.batch_norm(%110, %model.layer2.0.4.bn1.weight, %model.layer2.0.4.bn1.bias, %model.layer2.0.4.bn1.running_mean, %model.layer2.0.4.bn1.running_var);
+  %112 = %111.0;
+  %113 = nn.relu(%112);
+  %114 = nn.conv2d(%113, %model.layer2.0.4.conv2.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %115 = nn.batch_norm(%114, %model.layer2.0.4.bn2.weight, %model.layer2.0.4.bn2.bias, %model.layer2.0.4.bn2.running_mean, %model.layer2.0.4.bn2.running_var);
+  %116 = %115.0;
+  %117 = add(%116, %109);
+  %118 = nn.relu(%117);
+  %119 = nn.conv2d(%118, %model.layer2.0.5.conv1.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %120 = nn.batch_norm(%119, %model.layer2.0.5.bn1.weight, %model.layer2.0.5.bn1.bias, %model.layer2.0.5.bn1.running_mean, %model.layer2.0.5.bn1.running_var);
+  %121 = %120.0;
+  %122 = nn.relu(%121);
+  %123 = nn.conv2d(%122, %model.layer2.0.5.conv2.weight, padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %124 = nn.batch_norm(%123, %model.layer2.0.5.bn2.weight, %model.layer2.0.5.bn2.bias, %model.layer2.0.5.bn2.running_mean, %model.layer2.0.5.bn2.running_var);
+  %125 = %124.0;
+  %126 = add(%125, %118);
+  %127 = nn.relu(%126);
+  %128 = nn.conv2d(%127, %loc.0.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=16, kernel_size=[3, 3]);
+  %129 = nn.bias_add(%128, %loc.0.bias);
+  %130 = reshape(%129, newshape=[1, 4, -1]);
+  %131 = nn.conv2d(%127, %additional_blocks.0.0.weight, padding=[0, 0, 0, 0], channels=256, kernel_size=[1, 1]);
+  %132 = nn.bias_add(%131, %additional_blocks.0.0.bias);
+  %133 = nn.relu(%132);
+  %134 = nn.conv2d(%133, %additional_blocks.0.2.weight, strides=[2, 2], padding=[1, 1, 1, 1], channels=512, kernel_size=[3, 3]);
+  %135 = nn.bias_add(%134, %additional_blocks.0.2.bias);
+  %136 = nn.relu(%135);
+  %137 = nn.conv2d(%136, %loc.1.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=24, kernel_size=[3, 3]);
+  %138 = nn.bias_add(%137, %loc.1.bias);
+  %139 = reshape(%138, newshape=[1, 4, -1]);
+  %140 = nn.conv2d(%136, %additional_blocks.1.0.weight, padding=[0, 0, 0, 0], channels=256, kernel_size=[1, 1]);
+  %141 = nn.bias_add(%140, %additional_blocks.1.0.bias);
+  %142 = nn.relu(%141);
+  %143 = nn.conv2d(%142, %additional_blocks.1.2.weight, strides=[2, 2], padding=[1, 1, 1, 1], channels=512, kernel_size=[3, 3]);
+  %144 = nn.bias_add(%143, %additional_blocks.1.2.bias);
+  %145 = nn.relu(%144);
+  %146 = nn.conv2d(%145, %loc.2.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=24, kernel_size=[3, 3]);
+  %147 = nn.bias_add(%146, %loc.2.bias);
+  %148 = reshape(%147, newshape=[1, 4, -1]);
+  %149 = nn.conv2d(%145, %additional_blocks.2.0.weight, padding=[0, 0, 0, 0], channels=128, kernel_size=[1, 1]);
+  %150 = nn.bias_add(%149, %additional_blocks.2.0.bias);
+  %151 = nn.relu(%150);
+  %152 = nn.conv2d(%151, %additional_blocks.2.2.weight, strides=[2, 2], padding=[1, 1, 1, 1], channels=256, kernel_size=[3, 3]);
+  %153 = nn.bias_add(%152, %additional_blocks.2.2.bias);
+  %154 = nn.relu(%153);
+  %155 = nn.conv2d(%154, %loc.3.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=24, kernel_size=[3, 3]);
+  %156 = nn.bias_add(%155, %loc.3.bias);
+  %157 = reshape(%156, newshape=[1, 4, -1]);
+  %158 = nn.conv2d(%154, %additional_blocks.3.0.weight, padding=[0, 0, 0, 0], channels=128, kernel_size=[1, 1]);
+  %159 = nn.bias_add(%158, %additional_blocks.3.0.bias);
+  %160 = nn.relu(%159);
+  %161 = nn.conv2d(%160, %additional_blocks.3.2.weight, strides=[2, 2], padding=[0, 0, 0, 0], channels=256, kernel_size=[3, 3]);
+  %162 = nn.bias_add(%161, %additional_blocks.3.2.bias);
+  %163 = nn.relu(%162);
+  %164 = nn.conv2d(%163, %loc.4.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=16, kernel_size=[3, 3]);
+  %165 = nn.bias_add(%164, %loc.4.bias);
+  %166 = reshape(%165, newshape=[1, 4, -1]);
+  %167 = nn.conv2d(%163, %additional_blocks.4.0.weight, padding=[0, 0, 0, 0], channels=128, kernel_size=[1, 1]);
+  %168 = nn.bias_add(%167, %additional_blocks.4.0.bias);
+  %169 = nn.relu(%168);
+  %170 = nn.conv2d(%169, %additional_blocks.4.2.weight, padding=[0, 0, 0, 0], channels=256, kernel_size=[3, 3]);
+  %171 = nn.bias_add(%170, %additional_blocks.4.2.bias);
+  %172 = nn.relu(%171);
+  %173 = nn.conv2d(%172, %loc.5.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=16, kernel_size=[3, 3]);
+  %174 = nn.bias_add(%173, %loc.5.bias);
+  %175 = reshape(%174, newshape=[1, 4, -1]);
+  %176 = (%130, %139, %148, %157, %166, %175);
+  %177 = concatenate(%176, axis=2);
+  %178 = copy(%177);
+  %179 = nn.conv2d(%127, %conf.0.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=324, kernel_size=[3, 3]);
+  %180 = nn.bias_add(%179, %conf.0.bias);
+  %181 = reshape(%180, newshape=[1, 81, -1]);
+  %182 = nn.conv2d(%136, %conf.1.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=486, kernel_size=[3, 3]);
+  %183 = nn.bias_add(%182, %conf.1.bias);
+  %184 = reshape(%183, newshape=[1, 81, -1]);
+  %185 = nn.conv2d(%145, %conf.2.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=486, kernel_size=[3, 3]);
+  %186 = nn.bias_add(%185, %conf.2.bias);
+  %187 = reshape(%186, newshape=[1, 81, -1]);
+  %188 = nn.conv2d(%154, %conf.3.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=486, kernel_size=[3, 3]);
+  %189 = nn.bias_add(%188, %conf.3.bias);
+  %190 = reshape(%189, newshape=[1, 81, -1]);
+  %191 = nn.conv2d(%163, %conf.4.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=324, kernel_size=[3, 3]);
+  %192 = nn.bias_add(%191, %conf.4.bias);
+  %193 = reshape(%192, newshape=[1, 81, -1]);
+  %194 = nn.conv2d(%172, %conf.5.weight, strides=[3, 3], padding=[1, 1, 1, 1], channels=324, kernel_size=[3, 3]);
+  %195 = nn.bias_add(%194, %conf.5.bias);
+  %196 = reshape(%195, newshape=[1, 81, -1]);
+  %197 = (%181, %184, %187, %190, %193, %196);
+  %198 = concatenate(%197, axis=2);
+  %199 = copy(%198);
+  (%178, %199)
+}
