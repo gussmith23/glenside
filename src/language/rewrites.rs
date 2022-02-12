@@ -3290,6 +3290,12 @@ pub fn pad_relay_to_glenside() -> RW {
         .parse::<Pattern<_>>().unwrap() } => { i.clone() })
 }
 
+pub fn dense_relay_to_glenside() -> RW {
+    rewrite!("dense-relay-to-glenside";
+                "(relay-operator-call relay-dense ?data ?weights)" =>
+                "(compute dot-product (access-cartesian-product (access ?data 1) (access ?weights 1)))")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6753,5 +6759,26 @@ def @main(%data: Tensor[(1, 2, 3), float32]) {
 "#,
         &vec![super::pad_relay_to_glenside(),],
         &vec![RelayOperator::RelayPad]
+    );
+
+    test!(
+        dense_relay_to_glenside,
+        1e-5,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(16, 32), float32], %weights: Tensor[(64, 32), float32]) -> Tensor[(16, 64), float32] {
+  nn.dense(%data, %weights, units=64) /* ty=Tensor[(16, 64), float32] */
+}
+"#,
+        r#"
+(compute dot-product
+ (access-cartesian-product
+  (access (access-tensor data) 1)
+  (access (access-tensor weights) 1)
+ )
+)
+"#,
+        &vec![super::dense_relay_to_glenside(),],
+        &vec![RelayOperator::RelayDense]
     );
 }
