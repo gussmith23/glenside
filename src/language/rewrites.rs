@@ -6735,7 +6735,7 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1, 1, 32, 
     );
 
     test!(
-        pad,
+        pad_relay_to_glenside,
         1e-60,
         r#"
 #[version = "0.0.5"]
