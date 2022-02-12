@@ -1872,6 +1872,12 @@ fn compile_expression(
                         vec![dense_op_id, data_id, weights_id].into_boxed_slice(),
                     ));
 
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayDense)
+                    {
+                        return (opaque_operator_call, None);
+                    }
+
                     let data_id = access(glenside_expr, data_id, 1);
                     let weights_id = access(glenside_expr, weights_id, 1);
 
