@@ -3389,6 +3389,30 @@ pub fn add_relay_to_glenside() -> RW {
     })
 }
 
+pub fn multiply_relay_to_glenside() -> RW {
+    rewrite!("multipy-relay-to-glenside";
+    "(relay-operator-call relay-multiply ?a ?b)" =>
+    {
+        BroadcastedRelayOpApplier {
+            op: ComputeType::ElementwiseMul,
+            a: "?a".parse().unwrap(),
+            b: "?b".parse().unwrap(),
+        }
+    })
+}
+
+pub fn divide_relay_to_glenside() -> RW {
+    rewrite!("divide-relay-to-glenside";
+    "(relay-operator-call relay-divide ?a ?b)" =>
+    {
+        BroadcastedRelayOpApplier {
+            op: ComputeType::ElementwiseDiv,
+            a: "?a".parse().unwrap(),
+            b: "?b".parse().unwrap(),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6894,5 +6918,47 @@ def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32
 "#,
         &vec![super::add_relay_to_glenside(),],
         &vec![RelayOperator::RelayAdd]
+    );
+
+    test!(
+        multiply_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  multiply(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-mul
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#,
+        &vec![super::multiply_relay_to_glenside(),],
+        &vec![RelayOperator::RelayMultiply]
+    );
+
+    test!(
+        divide_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  divide(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-div
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#,
+        &vec![super::divide_relay_to_glenside(),],
+        &vec![RelayOperator::RelayDivide]
     );
 }
