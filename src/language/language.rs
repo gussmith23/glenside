@@ -396,6 +396,9 @@ pub enum RelayOperator {
     /// (relay-operator relay-multiply <a: access> <b: access>)
     RelayMultiply,
 
+    /// (relay-operator relay-divide <a: access> <b: access>)
+    RelayDivide,
+
     /// (relay-operator relay-sigmoid <data: access>)
     RelaySigmoid,
 
@@ -511,6 +514,7 @@ impl FromStr for RelayOperator {
             "relay-sqrt" => Ok(RelayOperator::RelaySqrt),
             "relay-expand-dims" => Ok(RelayOperator::RelayExpandDims),
             "relay-pad" => Ok(RelayOperator::RelayPad),
+            "relay-divide" => Ok(RelayOperator::RelayDivide),
             _ => Err(()),
         }
     }
@@ -561,6 +565,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayNegative => "relay-negative",
                 RelayOperator::RelayExpandDims => "relay-expand-dims",
                 RelayOperator::RelayPad => "relay-pad",
+                RelayOperator::RelayDivide => "relay-divide",
             }
         )
     }
@@ -2297,6 +2302,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         })
                     }
                     crate::language::RelayOperator::RelayAdd
+                    | crate::language::RelayOperator::RelayDivide
                     | crate::language::RelayOperator::RelayMultiply
                     | crate::language::RelayOperator::RelayMaximum
                     | crate::language::RelayOperator::RelayMinimum => {

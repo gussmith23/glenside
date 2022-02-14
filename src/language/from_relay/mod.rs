@@ -1942,6 +1942,34 @@ fn compile_expression(
                             None,
                         );
                     }
+                    if primitive_op.name.as_str().unwrap() == "multiply"
+                        && use_opaque_operators_for
+                            .contains(&crate::language::RelayOperator::RelayMultiply)
+                    {
+                        let add_operator_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayMultiply,
+                        ));
+                        return (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
+                    }
+                    if primitive_op.name.as_str().unwrap() == "divide"
+                        && use_opaque_operators_for
+                            .contains(&crate::language::RelayOperator::RelayDivide)
+                    {
+                        let add_operator_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayDivide,
+                        ));
+                        return (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
+                    }
 
                     while a_shape.len() < b_shape.len() {
                         a_id = access_insert_axis(glenside_expr, a_id, 0);
