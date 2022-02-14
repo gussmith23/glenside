@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
+use crate::language::from_relay::{access_insert_axis, access_pair, access_shape, compute};
 use crate::language::{from_relay, ShapeData};
 
-use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
+use super::{ComputeType, Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{
     rewrite, Applier, ConditionalApplier, EGraph, ENodeOrVar, Id, Pattern, Rewrite, Subst, Var,
 };
@@ -3294,6 +3295,98 @@ pub fn dense_relay_to_glenside() -> RW {
     rewrite!("dense-relay-to-glenside";
                 "(relay-operator-call relay-dense ?data ?weights)" =>
                 "(compute dot-product (access-cartesian-product (access ?data 1) (access ?weights 1)))")
+}
+
+struct BroadcastedRelayOpApplier {
+    op: ComputeType,
+    a: Var,
+    b: Var,
+}
+impl Applier<Language, MyAnalysis> for BroadcastedRelayOpApplier {
+    fn apply_one(
+        &self,
+        egraph: &mut EGraph<Language, MyAnalysis>,
+        eclass: Id,
+        subst: &Subst,
+    ) -> Vec<Id> {
+        let a_id = subst[self.a];
+        let b_id = subst[self.b];
+        let (mut a_shape, mut b_shape) = match (&egraph[a_id].data, &egraph[b_id].data) {
+            (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => {
+                (a.as_vec().clone(), b.as_vec().clone())
+            }
+            _ => panic!(),
+        };
+
+        let mut expr = RecExpr::default();
+        let mut a_id = expr.add(Language::Symbol("a_PLACEHOLDER".to_string()));
+        let mut b_id = expr.add(Language::Symbol("b_PLACEHOLDER".to_string()));
+        while a_shape.len() < b_shape.len() {
+            a_id = access_insert_axis(&mut expr, a_id, 0);
+            a_shape.insert(0, 1);
+        }
+
+        while b_shape.len() < a_shape.len() {
+            b_id = access_insert_axis(&mut expr, b_id, 0);
+            b_shape.insert(0, 1);
+        }
+
+        assert_eq!(a_shape.len(), b_shape.len());
+
+        assert!(a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a <= b).all(|v| v) ||
+                a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a >= b).all(|v| v),
+                "Can only handle simple broadcasts; all dims of a must be <= all dims of b (or vice-versa)");
+        if a_shape
+            .iter()
+            .zip(b_shape.iter())
+            .map(|(a, b)| a < b)
+            .any(|v| v)
+        {
+            let access_shape_id = access_shape(&mut expr, &b_shape, &[]);
+            a_id = expr.add(Language::AccessBroadcast([a_id, access_shape_id]));
+        } else if a_shape
+            .iter()
+            .zip(b_shape.iter())
+            .map(|(a, b)| a > b)
+            .any(|v| v)
+        {
+            let access_shape_id = access_shape(&mut expr, &a_shape, &[]);
+            b_id = expr.add(Language::AccessBroadcast([b_id, access_shape_id]));
+        }
+
+        let pair_id = access_pair(&mut expr, a_id, b_id, 0);
+
+        let _compute_id = compute(&mut expr, self.op.clone(), pair_id);
+
+        let pattern_ast = PatternAst::from(
+            expr.as_ref()
+                .iter()
+                .map(|n| match n {
+                    Language::Symbol(s) if s == "a_PLACEHOLDER" => ENodeOrVar::Var(self.a),
+                    Language::Symbol(s) if s == "b_PLACEHOLDER" => ENodeOrVar::Var(self.b),
+                    _ => ENodeOrVar::ENode(n.clone()),
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+        egraph.union(eclass, out_id);
+
+        vec![eclass, out_id]
+    }
+}
+
+pub fn add_relay_to_glenside() -> RW {
+    rewrite!("add-relay-to-glenside";
+    "(relay-operator-call relay-add ?a ?b)" =>
+    {
+        BroadcastedRelayOpApplier {
+            op: ComputeType::ElementwiseAdd,
+            a: "?a".parse().unwrap(),
+            b: "?b".parse().unwrap(),
+        }
+    })
 }
 
 #[cfg(test)]
@@ -6780,5 +6873,26 @@ def @main(%data: Tensor[(16, 32), float32], %weights: Tensor[(64, 32), float32])
 "#,
         &vec![super::dense_relay_to_glenside(),],
         &vec![RelayOperator::RelayDense]
+    );
+
+    test!(
+        add_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  add(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#,
+        &vec![super::add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayAdd]
     );
 }
