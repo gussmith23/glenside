@@ -3413,6 +3413,12 @@ pub fn divide_relay_to_glenside() -> RW {
     })
 }
 
+pub fn batch_flatten_relay_to_glenside() -> RW {
+    rewrite!("batch-flatten-relay-to-glenside";
+        "(relay-operator-call relay-batch-flatten ?a)" =>
+        "(access-flatten (access ?a 1))")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6960,5 +6966,21 @@ def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32
 "#,
         &vec![super::divide_relay_to_glenside(),],
         &vec![RelayOperator::RelayDivide]
+    );
+
+    test!(
+        batch_flatten_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(2, 3, 3, 4, 100), float32]) -> Tensor[(2, 3600), float32] {
+  nn.batch_flatten(%x)
+}
+"#,
+        r#"
+(access-flatten (access (access-tensor x) 1))
+"#,
+        &vec![super::batch_flatten_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBatchFlatten]
     );
 }
