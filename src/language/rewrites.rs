@@ -3419,6 +3419,77 @@ pub fn batch_flatten_relay_to_glenside() -> RW {
         "(access-flatten (access ?a 1))")
 }
 
+pub fn bias_add_relay_to_glenside() -> RW {
+    struct Impl {
+        data_var: Var,
+        bias_var: Var,
+        axis_var: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let axis = match &egraph[subst[self.axis_var]].data {
+                MyAnalysisData::Usize(v) => *v,
+                _ => panic!(),
+            };
+            let data_shape = match &egraph[subst[self.data_var]].data {
+                MyAnalysisData::AccessPattern(v) => v.clone(),
+                _ => panic!(),
+            };
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let mut bias_id = expr.add(Language::Symbol("bias_PLACEHOLDER".to_string()));
+
+            // Insert axes before
+            for _ in 0..axis {
+                let zero_id = expr.add(Language::Usize(0));
+                bias_id = expr.add(Language::AccessInsertAxis([bias_id, zero_id]));
+            }
+
+            // Insert axes after
+            for axis in (axis + 1)..data_shape.as_vec().len() {
+                let axis_id = expr.add(Language::Usize(axis as usize));
+                bias_id = expr.add(Language::AccessInsertAxis([bias_id, axis_id]));
+            }
+
+            let access_shape_id = access_shape(&mut expr, &data_shape.as_vec(), &[]);
+            let bias_id = expr.add(Language::AccessBroadcast([bias_id, access_shape_id]));
+
+            let data_id = access_pair(&mut expr, data_id, bias_id, 0);
+            let _data_id = compute(&mut expr, ComputeType::ElementwiseAdd, data_id);
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data_var)
+                        }
+                        Language::Symbol(s) if s == "bias_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.bias_var)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+            egraph.union(eclass, out_id);
+
+            vec![eclass, out_id]
+        }
+    }
+    rewrite!("bias-add-relay-to-glenside";
+                "(relay-operator-call relay-bias-add ?data ?bias ?axis)" =>
+                { Impl{data_var:"?data".parse().unwrap(), bias_var:"?bias".parse().unwrap(), axis_var:"?axis".parse().unwrap()} })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6982,5 +7053,113 @@ def @main(%x: Tensor[(2, 3, 3, 4, 100), float32]) -> Tensor[(2, 3600), float32] 
 "#,
         &vec![super::batch_flatten_relay_to_glenside(),],
         &vec![RelayOperator::RelayBatchFlatten]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_0,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=0)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 1)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_1,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=1)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 0)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_neg_1,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=-1)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 0)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_neg_2,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=-2)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 1)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
     );
 }
