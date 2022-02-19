@@ -1,11 +1,14 @@
 use std::str::FromStr;
 
-use crate::language::from_relay::{access_insert_axis, access_pair, access_shape, compute};
+use crate::language::from_relay::{
+    access_concatenate, access_insert_axis, access_pair, access_shape, compute,
+};
 use crate::language::{from_relay, ShapeData};
 
 use super::{ComputeType, Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{
-    rewrite, Applier, ConditionalApplier, EGraph, ENodeOrVar, Id, Pattern, Rewrite, Subst, Var,
+    rewrite, Applier, ConditionalApplier, EGraph, ENodeOrVar, Id, Pattern, Rewrite, SearchMatches,
+    Searcher, Subst, Var,
 };
 use egg::{PatternAst, RecExpr};
 use itertools::Itertools;
@@ -3490,6 +3493,119 @@ pub fn bias_add_relay_to_glenside() -> RW {
                 { Impl{data_var:"?data".parse().unwrap(), bias_var:"?bias".parse().unwrap(), axis_var:"?axis".parse().unwrap()} })
 }
 
+pub fn concatenate_relay_to_glenside() -> RW {
+    struct Impl {
+        axis_var: Var,
+        tuple_var: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let tuple_len = match &egraph[subst[self.tuple_var]].data {
+                MyAnalysisData::Tuple(t) => t.len(),
+                _ => panic!(),
+            };
+            let axis = match &egraph[subst[self.axis_var]].data {
+                MyAnalysisData::Usize(v) => *v,
+                _ => panic!(),
+            };
+
+            let mut expr = RecExpr::default();
+
+            let tuple_id = expr.add(Language::Symbol("tuple_PLACEHOLDER".to_string()));
+
+            let tensor_ids: Vec<Id> = (0..tuple_len)
+                .map(|i| {
+                    let i_id = expr.add(Language::Usize(i));
+                    expr.add(Language::TupleGetItem([tuple_id, i_id]))
+                })
+                .collect();
+
+            assert!(tensor_ids.len() > 0);
+
+            let mut concatted_id = tensor_ids[0];
+            for id in tensor_ids[1..].iter() {
+                // TODO(@gussmith23) Layout assumption
+                concatted_id = access_concatenate(&mut expr, concatted_id, *id, axis);
+            }
+
+            println!("{}", expr.pretty(80));
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "tuple_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.tuple_var)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+            println!("test {:?}", egraph[out_id]);
+
+            egraph.union(eclass, out_id);
+
+            vec![eclass, out_id]
+        }
+    }
+    rewrite!("concatenate-relay-to-glenside";
+                "(relay-operator-call relay-concatenate ?axis ?tuple)" =>
+                { Impl{axis_var:"?axis".parse().unwrap(), tuple_var: "?tuple".parse().unwrap()} })
+}
+
+pub fn simplify_tuple_get_item() -> RW {
+    struct SearcherImpl(Var);
+    impl Searcher<Language, MyAnalysis> for SearcherImpl {
+        fn search_eclass(
+            &self,
+            egraph: &EGraph<Language, MyAnalysis>,
+            eclass: Id,
+        ) -> Option<egg::SearchMatches> {
+                    println!("{:?}", egraph[eclass]);
+            let substs: Vec<Subst> = egraph[eclass]
+                .nodes
+                .iter()
+                .filter_map(|v| match v {
+                    Language::TupleGetItem([t_id, idx_id]) => Some((*t_id, *idx_id)),
+                    _ => None,
+                })
+                .flat_map(|(tuple_id, idx_id)| {
+                    let idx = match egraph[idx_id].data {
+                        MyAnalysisData::Usize(v) => v,
+                        _ => panic!(),
+                    };
+                    egraph[tuple_id].nodes.iter().filter_map(move |v| match v {
+                        Language::ConstructTuple(ids) => {
+                            let mut subst = Subst::default();
+                            subst.insert(self.0, ids[idx]);
+                            Some(subst)
+                        }
+                        _ => None,
+                    })
+                })
+                .collect();
+            if substs.is_empty() {
+                None
+            } else {
+                Some(SearchMatches { eclass, substs })
+            }
+        }
+
+        fn vars(&self) -> Vec<Var> {
+            vec![self.0]
+        }
+    }
+
+    rewrite!("simplify-tuple-get-item";
+                { SearcherImpl("?val".parse().unwrap()) } => "?val")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -6555,6 +6671,7 @@ mod tests {
             $(#[$meta])*
             #[test]
             fn $test_name() {
+                test_logger::ensure_env_logger_initialized();
 
                 // The number of times to run each program and compare their
                 // outputs.
@@ -7161,5 +7278,22 @@ def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3
 "#,
         &vec![super::bias_add_relay_to_glenside(),],
         &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        concatenate_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 5, 1, 1), float32], %y: Tensor[(1, 3, 1, 1), float32]) {
+    %0 = (%x, %y);
+    concatenate(%0, axis=1)
+}
+"#,
+        r#"
+(access-concatenate (access-tensor x) (access-tensor y) 1)
+"#,
+        &vec![super::concatenate_relay_to_glenside(), super::simplify_tuple_get_item()],
+        &vec![RelayOperator::RelayConcatenate]
     );
 }

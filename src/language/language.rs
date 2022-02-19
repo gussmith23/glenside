@@ -469,12 +469,16 @@ pub enum RelayOperator {
     /// which is used in Relay.
     /// Padding value is assumed to be zero.
     RelayPad,
+
+    /// (relay-operator-call relay-concatenate <to-concat: Tuple of access> <axis: num>)
+    RelayConcatenate,
 }
 
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
         match input {
+            "relay-concatenate" => Ok(RelayOperator::RelayConcatenate),
             "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
             "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
             "relay-relu" => Ok(RelayOperator::RelayReLU),
@@ -525,6 +529,7 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
+                RelayOperator::RelayConcatenate => "relay-concatenate",
                 RelayOperator::RelayStridedSlice => "relay-strided-slice",
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
                 RelayOperator::RelaySoftmax => "relay-softmax",
@@ -1953,6 +1958,71 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayConcatenate => {
+                        assert_eq!(params.len(), 3);
+
+                        let axis = match &egraph[params[1]].data {
+                            MyAnalysisData::Usize(v) => *v as i64,
+                            MyAnalysisData::Int32(v) => *v as i64,
+                            _ => panic!(),
+                        };
+
+                        // In the future we need to handle negative axis, but
+                        // for now I think they'll always be positive.
+                        assert!(axis >=0);
+                        let axis = axis as usize;
+
+                        let access_pattern_iter =
+                            match &egraph[params[2]].data {
+                                MyAnalysisData::Tuple(t) => t,
+                                _ => panic!(),
+                            }.iter().map(|a| match a {
+                                MyAnalysisData::AccessPattern(a) => a,
+                                _ => panic!(),
+                            });
+
+                        let mut shapes = access_pattern_iter
+                            .clone()
+                            .map(AccessPatternData::as_vec)
+                            .collect::<Vec<_>>();
+
+                        assert!(shapes.len() > 0);
+
+                        let new_shape = shapes
+                            .drain(..)
+                            .reduce(|acc, s| {
+                                acc.iter()
+                                    .zip(s.iter())
+                                    .enumerate()
+                                    .map(|(i, (acc_val, this_val))| {
+                                        if i == axis {
+                                            acc_val + this_val
+                                        } else {
+                                            assert_eq!(acc_val, this_val);
+                                            *acc_val
+                                        }
+                                    })
+                                    .collect()
+                            })
+                            .unwrap();
+
+                        if any(access_pattern_iter.clone(), |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&new_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&new_shape)),
+                            contains_accelerator_calls: any(access_pattern_iter, |a| {
+                                a.contains_accelerator_calls
+                            }),
+                        })
+                    }
                     crate::language::RelayOperator::RelayPad => {
                         assert_eq!(params.len(), 3);
 

@@ -2499,6 +2499,34 @@ fn compile_expression(
 
                     assert!(attrs.axis >= 0);
 
+                    if use_opaque_operators_for.contains(&RelayOperator::RelayConcatenate) {
+                        let op_id = glenside_expr
+                            .add(Language::RelayOperator(RelayOperator::RelayConcatenate));
+                        let axis_id = glenside_expr.add(Language::Usize(attrs.axis as usize));
+                        let tuple_id = glenside_expr.add(Language::ConstructTuple(
+                            call.args
+                                .get(0)
+                                .unwrap()
+                                .clone()
+                                .downcast::<tvm::ir::relay::Tuple>()
+                                .ok()
+                                .unwrap()
+                                .fields
+                                .clone()
+                                .into_iter()
+                                .map(|v| get_compiled_expression(v))
+                                .collect::<Vec<_>>()
+                                .into_boxed_slice(),
+                        ));
+
+                        return (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![op_id, axis_id, tuple_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
+                    }
+
                     let tuple = call
                         .args
                         .get(0)
