@@ -140,6 +140,21 @@ where
         &Language::AcceleratorCall(_) => todo!(),
         &Language::AcceleratorFunc(_) => todo!(),
         &Language::ConstantTensor(_) => todo!(),
+        &Language::AccessReshape([data_id, shape_id]) => {
+            let mut a = match interpret(expr, data_id.into(), env) {
+                Value::Access(a) => a,
+                _ => panic!(),
+            };
+            let (s, access_dim) = match interpret(expr, shape_id.into(), env) {
+                Value::AccessShape(s, access_dim) => (s, access_dim),
+                _ => panic!(),
+            };
+
+            a.tensor = a.tensor.into_shape(s).unwrap();
+            a.access_axis = access_dim;
+
+            Value::Access(a)
+        }
         &Language::AccessShape([shape_id, item_shape_id]) => {
             let shape = match interpret(expr, shape_id.into(), env) {
                 Value::Shape(s) => s,
@@ -975,7 +990,6 @@ where
         | &Language::BsgSystolicArray(_)
         | &Language::SystolicArray(_)
         | &Language::SystolicArrayWithBlocking(_)
-        | &Language::AccessReshape(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
     }
 }
