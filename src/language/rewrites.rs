@@ -3605,6 +3605,55 @@ pub fn reshape_relay_to_glenside() -> RW {
                 "(relay-operator-call relay-reshape ?data ?shape)" => "(access-reshape ?data (access-shape ?shape (shape)))")
 }
 
+pub fn squeeze_relay_to_glenside() -> RW {
+    struct Impl {
+        axis_var: Var,
+        data_var: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let mut axes = match &egraph[subst[self.axis_var]].data {
+                MyAnalysisData::List(v) => v.clone(),
+                _ => panic!(),
+            };
+            axes.sort();
+
+            let mut expr = RecExpr::default();
+
+            let mut data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+
+            for axis in axes.iter().rev() {
+                let usize_id = expr.add(Language::Usize(*axis));
+                data_id = expr.add(Language::AccessSqueeze([data_id, usize_id]));
+            }
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data_var)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+            vec![out_id]
+        }
+    }
+    rewrite!("squeeze-relay-to-glenside";
+                "(relay-operator-call relay-squeeze ?data ?axis)" =>
+                { Impl{axis_var:"?axis".parse().unwrap(), data_var: "?data".parse().unwrap()} })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -7329,5 +7378,21 @@ def @main(%x: Tensor[(3, 5), float32]) {
     "#,
         &vec![super::reshape_relay_to_glenside(),],
         &vec![RelayOperator::RelayReshape]
+    );
+
+    test!(
+        squeeze_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
+    squeeze(%x, axis=[2, 3])
+}
+"#,
+        r#"
+(access-squeeze (access-squeeze (access-tensor x) 3) 2)
+        "#,
+        &vec![super::squeeze_relay_to_glenside(),],
+        &vec![RelayOperator::RelaySqueeze]
     );
 }

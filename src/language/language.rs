@@ -475,12 +475,16 @@ pub enum RelayOperator {
 
     /// (relay-operator-call relay-transpose <data: access> <axes: list of num>)
     RelayTranspose,
+
+    /// (relay-operator-call relay-squeeze <data: access> <axes: list of num>)
+    RelaySqueeze,
 }
 
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
         match input {
+            "relay-squeeze" => Ok(RelayOperator::RelaySqueeze),
             "relay-transpose" => Ok(RelayOperator::RelayTranspose),
             "relay-concatenate" => Ok(RelayOperator::RelayConcatenate),
             "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
@@ -533,6 +537,7 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
+                RelayOperator::RelaySqueeze => "relay-squeeze",
                 RelayOperator::RelayTranspose => "relay-transpose",
                 RelayOperator::RelayConcatenate => "relay-concatenate",
                 RelayOperator::RelayStridedSlice => "relay-strided-slice",
@@ -1963,6 +1968,49 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelaySqueeze => {
+                        assert_eq!(params.len(), 3);
+                        let a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a,
+                            _ => panic!(),
+                        };
+                        let axes = match &egraph[params[2]].data {
+                            MyAnalysisData::List(v) => v,
+                            _ => panic!(),
+                        };
+
+                        let new_shape = a
+                            .as_vec()
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, v)| {
+                                if axes.contains(&i) {
+                                    assert_eq!(
+                                        *v, 1,
+                                        "Cannot squeeze an axis unless its value is 1."
+                                    );
+                                    None
+                                } else {
+                                    Some(*v)
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        if any(&[a], |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&new_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&new_shape)),
+                            contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
+                        })
+                    }
                     crate::language::RelayOperator::RelayTranspose => {
                         assert_eq!(params.len(), 3);
                         let a = match &egraph[params[1]].data {

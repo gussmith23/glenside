@@ -2991,6 +2991,26 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::transform::SqueezeAttrs>()
                         .unwrap();
 
+                    if use_opaque_operators_for.contains(&RelayOperator::RelaySqueeze) {
+                        let axis_list_id = list(
+                            glenside_expr,
+                            &attrs
+                                .axis
+                                .clone()
+                                .into_iter()
+                                .map(|v| v.value as usize)
+                                .collect::<Vec<_>>(),
+                        );
+                        let op_id =
+                            glenside_expr.add(Language::RelayOperator(RelayOperator::RelaySqueeze));
+
+                        let out_id = glenside_expr.add(Language::RelayOperatorCall(
+                            vec![op_id, data_id, axis_list_id].into_boxed_slice(),
+                        ));
+
+                        return (out_id, None);
+                    }
+
                     // assume for efficientnet
                     // I don't think this assumption is needed! I think the code
                     // below is general-purpose.
