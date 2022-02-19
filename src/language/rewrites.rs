@@ -3250,7 +3250,7 @@ pub fn pad_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            eclass: Id,
+            _eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
             let pad_widths = match &egraph[subst[self.pad_widths]].data {
@@ -3278,8 +3278,6 @@ pub fn pad_relay_to_glenside() -> RW {
                     pad_after_id,
                 ]));
             }
-
-            egraph.union(id, eclass);
 
             vec![id]
         }
@@ -3309,7 +3307,7 @@ impl Applier<Language, MyAnalysis> for BroadcastedRelayOpApplier {
     fn apply_one(
         &self,
         egraph: &mut EGraph<Language, MyAnalysis>,
-        eclass: Id,
+        _eclass: Id,
         subst: &Subst,
     ) -> Vec<Id> {
         let a_id = subst[self.a];
@@ -3374,9 +3372,7 @@ impl Applier<Language, MyAnalysis> for BroadcastedRelayOpApplier {
 
         let out_id = egraph.add_instantiation(&pattern_ast, subst);
 
-        egraph.union(eclass, out_id);
-
-        vec![eclass, out_id]
+        vec![out_id]
     }
 }
 
@@ -3432,7 +3428,7 @@ pub fn bias_add_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            eclass: Id,
+            _eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
             let axis = match &egraph[subst[self.axis_var]].data {
@@ -3483,9 +3479,7 @@ pub fn bias_add_relay_to_glenside() -> RW {
 
             let out_id = egraph.add_instantiation(&pattern_ast, subst);
 
-            egraph.union(eclass, out_id);
-
-            vec![eclass, out_id]
+            vec![out_id]
         }
     }
     rewrite!("bias-add-relay-to-glenside";
