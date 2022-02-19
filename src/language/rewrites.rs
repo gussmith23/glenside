@@ -3595,6 +3595,11 @@ pub fn simplify_tuple_get_item() -> RW {
                 { SearcherImpl("?val".parse().unwrap()) } => "?val")
 }
 
+pub fn transpose_relay_to_glenside() -> RW {
+    rewrite!("transpose-relay-to-glenside";
+                "(relay-operator-call relay-transpose ?data ?axes)" => "(access-transpose ?data ?axes)")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -7287,5 +7292,21 @@ def @main(%x: Tensor[(1, 5, 1, 1), float32], %y: Tensor[(1, 3, 1, 1), float32]) 
             super::simplify_tuple_get_item()
         ],
         &vec![RelayOperator::RelayConcatenate]
+    );
+
+    test!(
+        transpose_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 5), float32]) {
+    transpose(%x, axes=[1, 0])
+}
+"#,
+        r#"
+(access-transpose (access-tensor x) (list 1 0))
+        "#,
+        &vec![super::transpose_relay_to_glenside(),],
+        &vec![RelayOperator::RelayTranspose]
     );
 }

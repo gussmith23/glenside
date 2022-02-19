@@ -2832,6 +2832,17 @@ fn compile_expression(
                         .into_iter()
                         .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
                         .collect::<Vec<usize>>();
+
+                    if use_opaque_operators_for.contains(&RelayOperator::RelayTranspose) {
+                        let transpose_list_id = list(glenside_expr, &transpose_list);
+                        let op_id = glenside_expr
+                            .add(Language::RelayOperator(RelayOperator::RelayTranspose));
+                        let out_id = glenside_expr.add(Language::RelayOperatorCall(
+                            vec![op_id, data_id, transpose_list_id].into_boxed_slice(),
+                        ));
+                        return (out_id, None);
+                    }
+
                     (
                         access_transpose(glenside_expr, data_id, &transpose_list),
                         None,

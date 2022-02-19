@@ -472,12 +472,16 @@ pub enum RelayOperator {
 
     /// (relay-operator-call relay-concatenate <to-concat: Tuple of access> <axis: num>)
     RelayConcatenate,
+
+    /// (relay-operator-call relay-transpose <data: access> <axes: list of num>)
+    RelayTranspose,
 }
 
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
         match input {
+            "relay-transpose" => Ok(RelayOperator::RelayTranspose),
             "relay-concatenate" => Ok(RelayOperator::RelayConcatenate),
             "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
             "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
@@ -529,6 +533,7 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
+                RelayOperator::RelayTranspose => "relay-transpose",
                 RelayOperator::RelayConcatenate => "relay-concatenate",
                 RelayOperator::RelayStridedSlice => "relay-strided-slice",
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
@@ -1958,6 +1963,35 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayTranspose => {
+                        assert_eq!(params.len(), 3);
+                        let a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a,
+                            _ => panic!(),
+                        };
+                        let axes = match &egraph[params[2]].data {
+                            MyAnalysisData::List(v) => v,
+                            _ => panic!(),
+                        };
+                        assert_eq!(a.as_vec().len(), axes.len());
+
+                        let new_shape: Vec<_> = axes.iter().map(|&i| a.as_vec()[i]).collect();
+
+                        if any(&[a], |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&new_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&new_shape)),
+                            contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
+                        })
+                    }
                     crate::language::RelayOperator::RelayConcatenate => {
                         assert_eq!(params.len(), 3);
 
