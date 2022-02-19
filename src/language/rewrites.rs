@@ -3502,7 +3502,7 @@ pub fn concatenate_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            eclass: Id,
+            _eclass: Id,
             subst: &Subst,
         ) -> Vec<Id> {
             let tuple_len = match &egraph[subst[self.tuple_var]].data {
@@ -3533,7 +3533,6 @@ pub fn concatenate_relay_to_glenside() -> RW {
                 concatted_id = access_concatenate(&mut expr, concatted_id, *id, axis);
             }
 
-            println!("{}", expr.pretty(80));
             let pattern_ast = PatternAst::from(
                 expr.as_ref()
                     .iter()
@@ -3547,11 +3546,8 @@ pub fn concatenate_relay_to_glenside() -> RW {
             );
 
             let out_id = egraph.add_instantiation(&pattern_ast, subst);
-            println!("test {:?}", egraph[out_id]);
 
-            egraph.union(eclass, out_id);
-
-            vec![eclass, out_id]
+            vec![out_id]
         }
     }
     rewrite!("concatenate-relay-to-glenside";
@@ -3567,7 +3563,6 @@ pub fn simplify_tuple_get_item() -> RW {
             egraph: &EGraph<Language, MyAnalysis>,
             eclass: Id,
         ) -> Option<egg::SearchMatches> {
-                    println!("{:?}", egraph[eclass]);
             let substs: Vec<Subst> = egraph[eclass]
                 .nodes
                 .iter()
@@ -7293,7 +7288,10 @@ def @main(%x: Tensor[(1, 5, 1, 1), float32], %y: Tensor[(1, 3, 1, 1), float32]) 
         r#"
 (access-concatenate (access-tensor x) (access-tensor y) 1)
 "#,
-        &vec![super::concatenate_relay_to_glenside(), super::simplify_tuple_get_item()],
+        &vec![
+            super::concatenate_relay_to_glenside(),
+            super::simplify_tuple_get_item()
+        ],
         &vec![RelayOperator::RelayConcatenate]
     );
 }

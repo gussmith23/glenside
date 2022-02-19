@@ -1969,17 +1969,18 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         // In the future we need to handle negative axis, but
                         // for now I think they'll always be positive.
-                        assert!(axis >=0);
+                        assert!(axis >= 0);
                         let axis = axis as usize;
 
-                        let access_pattern_iter =
-                            match &egraph[params[2]].data {
-                                MyAnalysisData::Tuple(t) => t,
-                                _ => panic!(),
-                            }.iter().map(|a| match a {
-                                MyAnalysisData::AccessPattern(a) => a,
-                                _ => panic!(),
-                            });
+                        let access_pattern_iter = match &egraph[params[2]].data {
+                            MyAnalysisData::Tuple(t) => t,
+                            _ => panic!(),
+                        }
+                        .iter()
+                        .map(|a| match a {
+                            MyAnalysisData::AccessPattern(a) => a,
+                            _ => panic!(),
+                        });
 
                         let mut shapes = access_pattern_iter
                             .clone()
