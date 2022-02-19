@@ -2640,12 +2640,23 @@ fn compile_expression(
                     // use relay type information to calculate new shape instead of using attrs
                     let new_shape =
                         shape_from_type(call.clone().upcast::<Expr>().checked_type.clone());
-                    let (new_shape_id, shape_id) =
-                        access_shape_with_shape(glenside_expr, &new_shape, &[]);
 
                     let reshape_op = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayReshape,
                     ));
+
+                    if use_opaque_operators_for.contains(&RelayOperator::RelayReshape) {
+                        // TODO(@gussmith23) code is duplicated below.
+                        let new_shape_id = shape(glenside_expr, new_shape);
+                        let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                            vec![reshape_op, data_id, new_shape_id].into_boxed_slice(),
+                        ));
+                        return (opaque_operator_call, None);
+                    }
+
+                    let (new_shape_id, shape_id) =
+                        access_shape_with_shape(glenside_expr, &new_shape, &[]);
+
                     let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
                         vec![reshape_op, data_id, shape_id].into_boxed_slice(),
                     ));

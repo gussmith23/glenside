@@ -3600,6 +3600,11 @@ pub fn transpose_relay_to_glenside() -> RW {
                 "(relay-operator-call relay-transpose ?data ?axes)" => "(access-transpose ?data ?axes)")
 }
 
+pub fn reshape_relay_to_glenside() -> RW {
+    rewrite!("reshape-relay-to-glenside";
+                "(relay-operator-call relay-reshape ?data ?shape)" => "(access-reshape ?data (access-shape ?shape (shape)))")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -7308,5 +7313,21 @@ def @main(%x: Tensor[(3, 5), float32]) {
         "#,
         &vec![super::transpose_relay_to_glenside(),],
         &vec![RelayOperator::RelayTranspose]
+    );
+
+    test!(
+        reshape_relay_to_glenside,
+        1e-60,
+        r#"
+    #[version = "0.0.5"]
+    def @main(%x: Tensor[(1, 255, 52, 52), float32]) {
+        reshape(%x, newshape=[-1, 3, 85, 52, 52])
+    }
+    "#,
+        r#"
+    (access-reshape (access-tensor x) (access-shape (shape 1 3 85 52 52) (shape )))
+    "#,
+        &vec![super::reshape_relay_to_glenside(),],
+        &vec![RelayOperator::RelayReshape]
     );
 }
