@@ -228,9 +228,8 @@ impl CostFunction<Language> for AcceleratorCostFunction {
         let base_cost = match enode {
             // We only consider accelerator calls and relay operators for now when
             // extracting a model
-            
             Language::AcceleratorCall(_)
-            | Language::AcceleratorFunc(_) 
+            | Language::AcceleratorFunc(_)
             | Language::Literal(_) => 1,
             Language::RelayOperatorCall(_)
             | Language::RelayOperator(_)
