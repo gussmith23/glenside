@@ -324,6 +324,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             &Language::Access(ids)
             | &Language::AccessTranspose(ids)
             | &Language::AccessReshape(ids)
+            | &Language::AcceleratorCall(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
             | &Language::AccessShape(ids)
@@ -421,6 +422,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::AccessTranspose(ids)
             | &Language::AccessShape(ids)
             | &Language::AccessReshape(ids)
+            | &Language::AcceleratorCall(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
             | &Language::AccessSqueeze(ids)
@@ -655,6 +657,8 @@ fn codegen_helper(
         }
         &expr[id].nodes[0]
     } {
+        // TODO(mike): we probably could make codegen happen here
+        Language::AcceleratorCall(ids) => { None }
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
@@ -782,6 +786,7 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
                     Some(softmax_out)
                 }
                 RelayOperator::RelayDense => { Some(format!("")) }
+                RelayOperator::RelayReshape => { None }
                 RelayOperator::RelayReLU => {
                     let data = get_c_variable_for_id(expr, ids[1]);
 

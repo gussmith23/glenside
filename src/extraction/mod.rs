@@ -100,6 +100,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             // TODO(@gussmith23) We shouldn't have to extract ANY computes!
             | Language::Compute(_)
             | Language::AccessTranspose(_) => 1,
+            | Language::AcceleratorCall(_) => 0,
 
             // Penalize specific compute types. In the future, these constructs
             // shouldn't be extractable at all.
@@ -209,6 +210,25 @@ impl CostFunction<Language> for SimpleCostFunction {
             | Literal(_) | NotNanFloat64(_) => 1,
         };
 
+        enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
+    }
+}
+
+pub struct AcceleratorCostFunction;
+
+impl CostFunction<Language> for AcceleratorCostFunction {
+    type Cost = usize;
+    fn cost<C>(&mut self, enode: &Language, mut costs: C) -> Self::Cost
+    where
+        C: FnMut(Id) -> Self::Cost,
+    {
+        let base_cost = match enode {
+            // We only consider accelerator calls and relay operators for now when
+            // extracting a model
+            Language::RelayOperatorCall(_) => 1,
+            Language::AcceleratorCall(_)   => 0,
+            _ => usize::MAX
+        };
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
     }
 }

@@ -618,39 +618,42 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
 }
 
 pub fn bubble_reshape_through_linear() -> RW {
-    fn same_op_expr(op1 : Var, op2 : Var, expr1 : Var, expr2 : Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
-        move |egraph, _, subst| egraph.find(subst[op1]) == egraph.find(subst[op2]) && egraph.find(subst[expr1]) == egraph.find(subst[expr2])
-    }
+    // fn same_op_expr(op1 : Var, op2 : Var, expr1 : Var, expr2 : Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+    //     move |egraph, _, subst| egraph.find(subst[op1]) == egraph.find(subst[op2]) && egraph.find(subst[expr1]) == egraph.find(subst[expr2])
+    // }
     rewrite!("bubble-reshape-through-linear";
-            "(compute elementwise-add
-                (access-pair
+            "(compute elementwise-add 
+                (access-pair 
                     (access 
                         (access-reshape 
-                            (compute ?op1 ?expr1) 
-                            ?shape1) 
-                        0)
+                            (compute dot-product 
+                                (access-cartesian-product (access (access-tensor ?x) 1) 
+                                (access (access-tensor ?w) 1))) 
+                                (access-shape ?shape (shape))) 
+                    0) 
                     (access 
-                        (access-broadcast
-                            (access-insert-axis
-                                (access-insert-axis (access-tensor ?bias) 0) 0)
-                            (get-access-shape
-                                (access-reshape
-                                    (compute ?op2 ?expr2)
-                                    ?shape2))) 0)))"
+                        (access-broadcast 
+                            (access-insert-axis (access-insert-axis (access-tensor ?bias) 0) 0)
+                            (access-shape ?shape (shape))) 0)))"
             =>
-            "(access-reshape
-                (compute elementwise-add
-                    (access-pair
-                        (access
-                            (compute ?op1 ?expr1)
-                            0)
-                        (access
-                            (access-broadcast
-                                (access-insert-axis (access-tensor ?bias) 0)
-                                (get-access-shape
-                                    (compute ?op2 ?expr2))) 0)))
-                ?shape
-            )" if same_op_expr("?op1".parse().unwrap(), "?op2".parse().unwrap(), "?expr1".parse().unwrap(), "?expr2".parse().unwrap()))
+            "(access-reshape 
+                (compute elementwise-add 
+                    (access-pair 
+                        (access (compute dot-product (access-cartesian-product (access (access-tensor ?x) 1) (access (access-tensor ?w) 1))) 0) 
+                        (access (access-broadcast (access-insert-axis (access-tensor ?bias) 0) 
+                                (access-shape (shape 10 16) (shape))) 0)))
+            (access-shape ?shape (shape)))")
+}
+
+pub fn linear_layer_accelerator_rewrites() -> RW {
+    rewrite!("linear_to_flexnlp";
+             "(compute elementwise-add 
+                (access-pair 
+                    (access (compute dot-product (access-cartesian-product (access (access-tensor ?x) 1) (access (access-tensor ?w) 1))) 0) 
+                    (access (access-broadcast (access-insert-axis (access-tensor ?bias) 0) 
+                            (access-shape ?shape (shape))) 0)))"
+            =>
+             "(accelerator-call flex-linear ?x ?w ?bias)")
 }
 
 /// Tensorizes a computation to an externally-blocked systolic array.
