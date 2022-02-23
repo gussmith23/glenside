@@ -236,14 +236,15 @@ impl CostFunction<Language> for AcceleratorCostFunction {
         let base_cost = match enode {
             // We only consider accelerator calls and relay operators for now when
             // extracting a model
-            Language::AcceleratorCall(_) => 0,
             Language::Access(_)
             | Language::List(_)
             | Language::Shape(_)
             | Language::Usize(_)
+            | Language::AcceleratorCall(_)
             | Language::AccessShape(_)
             | Language::AcceleratorFunc(_)
             | Language::Symbol(_)
+            | Language::RelayOperatorCall(_)
             | Language::PadType(_)
             | Language::AccessTensor(_) => 0,
             Language::RelayOperatorCall(_) => 0,
@@ -270,14 +271,13 @@ impl CostFunction<Language> for AcceleratorCostFunction {
                 | crate::language::RelayOperator::RelayMaxPool2D => 4,
             },
             Language::AccessTranspose(_)
-            | Language::Literal(_)
             | Language::RelayKernelLayout(_)
             | Language::RelayActivationLayout(_)
             | Language::NotNanFloat64(_)
             | Language::AccessPad(_)
             | Language::AccessFlatten(_)
             | Language::AccessWindows(_)
-            | Language::AccessBroadcast(_) 
+            | Language::AccessBroadcast(_)
             | Language::AccessSqueeze(_) => 2,
 
             Language::AccessInsertAxis(_) | Language::AccessCartesianProduct(_) => 5,
