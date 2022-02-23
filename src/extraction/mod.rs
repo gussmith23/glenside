@@ -1,6 +1,6 @@
 pub mod ilp;
 
-use crate::language::{Language, MyAnalysis};
+use crate::language::{ComputeType, Language, MyAnalysis};
 use egg::{CostFunction, EGraph, Id, Language as LanguageTrait, Pattern, Searcher};
 use std::collections::HashSet;
 
@@ -282,14 +282,19 @@ impl CostFunction<Language> for AcceleratorCostFunction {
 
             Language::AccessInsertAxis(_) | Language::AccessCartesianProduct(_) => 5,
 
-            Language::Compute(_) | Language::AccessReshape(_) | Language::AccessBroadcast(_) => {
-                usize::MAX
-            }
-            Language::ComputeType(compute_type) => match compute_type {
-                crate::language::ComputeType::DotProduct => usize::MAX,
-                _ => 1,
+            Language::Compute(_) | Language::AccessReshape(_) => 10000,
+            Language::ComputeType(compute_type) => {
+                match compute_type {
+                    ComputeType::ReLU
+                    | ComputeType::ReduceMean
+                    | ComputeType::ElementwiseAdd
+                    | ComputeType::ElementwiseMul
+                    | ComputeType::ReduceMax => 10000,
+                    _ => 100
+                }
             },
-            _ => usize::MAX,
+            Language::AccessPair(_) => 10000,
+            _ => 10000,
         };
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id) * factor))
     }
