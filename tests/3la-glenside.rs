@@ -45,7 +45,6 @@ fn test_3la_glenside_linear_rewrite() {
         name_to_shape: env.clone(),
     });
     let rws = vec![
-       glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
        glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
     ];
