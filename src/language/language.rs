@@ -1126,6 +1126,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                     assert_eq!(to_item_shape, from_item_shape);
                 }
 
+                let mut calculated = false;
+                if to_shape.ndim() > 0 || to_item_shape.ndim() > 0 {
+                    calculated = true;
+                    *to_relay_shape = Some(IxDyn(&[to_shape.slice(), to_item_shape.slice()].concat()));
+                }
+
                 // Merge zero regions.
                 // TODO(@gussmith23) Make sure merge returns `true` infrequently
                 // Returning `true` more often forces more rebuilds, which kills
@@ -1200,14 +1206,15 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                 }
 
-                // changed
-                // println!("{:?} {:?} {:?}", from, to_relay_shape.clone(), from_relay_shape.clone());
+                if calculated {
+                    return Some(Ordering::Greater);
+                }
+
                 if *to_relay_shape == None && *from_relay_shape == None {
-                    // println!("{:?}", from);
                     Some(Ordering::Greater)
                 } else if let (Some(left_shape), Some(right_shape)) = (to_relay_shape.clone(), from_relay_shape.clone()) {
                     assert_eq!(left_shape, right_shape);
-                    if to_shape.slice().len() >= from_shape.slice().len() && to_item_shape.slice().len() >= from_item_shape.slice().len() {
+                    if to_shape.ndim() >= from_shape.ndim() && to_item_shape.ndim() >= from_item_shape.ndim() {
                         Some(Ordering::Greater)
                     } else {
                         Some(Ordering::Less)
@@ -2123,7 +2130,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&new_shape[..access.shape.ndim()]),
                     item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
                     zero_regions: new_zero_regions,
-                    relay_shape: None,
+                    relay_shape: Some(IxDyn(&[&new_shape[..access.shape.ndim()], &new_shape[access.shape.ndim()..]].concat())),
                 })
             }
             List(list) => {
@@ -2509,7 +2516,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     new_access.item_shape[axis - new_access.shape.ndim()] +=
                         a1.item_shape[axis - new_access.shape.ndim()];
                 }
-
+                
+                // new_access.relay_shape = Some(IxDyn(&[new_access.shape.slice(), new_access.item_shape.slice()].concat()));
                 MyAnalysisData::AccessPattern(new_access)
             }
             &AccessShape([shape_id, item_shape_id]) => {
