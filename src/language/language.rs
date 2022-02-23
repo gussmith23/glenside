@@ -380,6 +380,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-dropout <data: access> <rate: f64>)
     RelayDropout,
+
+    /// (relay-operator relay-tanh <data: access>)
+    RelayTanh,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -453,6 +456,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayRound => "relay-round",
                 RelayOperator::RelayTake => "relay-take",
                 RelayOperator::RelayDropout => "relay-dropout",
+                RelayOperator::RelayTanh => "relay-tanh",
             }
         )
     }
@@ -2574,7 +2578,8 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::RelaySigmoid => {
+                    crate::language::RelayOperator::RelaySigmoid
+                    | crate::language::RelayOperator::RelayTanh => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
