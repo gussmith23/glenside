@@ -1,8 +1,11 @@
 #![cfg(feature = "tvm")]
 
-use std::{path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
-use egg::{rewrite, EGraph, ENodeOrVar, Pattern, RecExpr, Runner, Searcher, Var};
+use egg::{
+    rewrite, CostFunction, EGraph, ENodeOrVar, Extractor, Id, Language as LanguageTrait, Pattern,
+    RecExpr, Runner, Searcher, Var,
+};
 use glenside::language::{Language, MyAnalysis, MyAnalysisData};
 
 /// Importing LSTM to Glenside.
@@ -131,4 +134,30 @@ fn lstm_relay_to_glenside() {
         .unwrap()
         .search(&runner.egraph);
     assert_eq!(matches.len(), 1);
+
+    struct Cost {
+        memo: HashMap<Id, usize>,
+    }
+    impl CostFunction<Language> for Cost {
+        type Cost = usize;
+
+        fn cost<C>(&mut self, enode: &Language, mut costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            enode.fold(1, |sum, id| {
+                usize::saturating_add(sum, *self.memo.entry(id).or_insert(costs(id)))
+            })
+        }
+    }
+
+    let (cost, _expr) = Extractor::new(
+        &runner.egraph,
+        Cost {
+            memo: HashMap::default(),
+        },
+    )
+    .find_best(id);
+
+    assert!(cost < 500);
 }
