@@ -5020,14 +5020,21 @@ mod tests {
         assert_eq!(matches.substs.len(), 1);
     }
 
-    /// Test in which we "split" or "reassociate" and "tensorize" to flexasr.
-    /// This is without flattening.
+    /// Test in which we map a small 2D max pool layer to FlexASR. This is done
+    /// by:
+    ///
+    /// 1. Flattening the input windows to vectors,
+    /// 2. Converting the reduce-max computation to reduce in windows of two
+    ///    (FlexASR-style) rather than reducing the entire vector all at once,
+    /// 3. Mapping the new reduce-max computations to FlexASR.
+    ///
+    /// There are also various rewrites used for cleanup and exploration.
     #[test]
     fn flexasr_maxpool_split_tensorize() {
-        test_logger::ensure_env_logger_initialized();
-
-        // TODO(@gussmith23) change to rn50 maxpool shape
-        // Very simple "max pool" layer with unrealistic shapes.
+        // Very simple 2D max pool layer. We use small shapes here so that we
+        // can write out the final expression by hand; the larger the reduction,
+        // the larger the final expression. Note that this is the max pool
+        // described in our original paper.
         let program = "
          (compute reduce-max 
           (access-windows 
@@ -5037,24 +5044,33 @@ mod tests {
         .parse()
         .unwrap();
 
-        // Define the shape of the input data. In this case, we're using
+        // Define the shape of the input data: batch, channels, height, width.
         let mut map = HashMap::default();
         map.insert("data".to_string(), vec![3, 16, 4, 4]);
 
-
+        // Insert the expression into the egraph.
         let mut egraph =
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
         let id = egraph.add_expr(&program);
 
+        // Define our rewrites. These rewrites are what map the max pool to
+        // FlexASR.
         let rws = vec![
-            // Split.
+            // Performs initial flattening of 2D pooling windows into vectors.
+            super::flatten_unflatten_any_access(),
+            // Splits a reduce-max into two reduce-maxes: the first reduce max
+            // reduces the data in windows of size 2, striding by 2 (FlexASR
+            // style) while the second reduce max just reduces the rest all at
+            // once. This is the core rewrite for transforming max pools to a
+            // format which can be mapped to FlexASR.
             super::reassociate_max(2, 2),
             // Tensorize.
             super::flexasr_maxpool(),
-            // Performs initial flattening of pooling windows into vectors.
-            super::flatten_unflatten_any_access(),
-            // Moves the access-reshape coming from the above rewrite upwards
-            // through the program.
+            //
+            // The rest of the rewrites are needed for cleanup.
+            //
+            // Moves the access-reshape which results from the flatten-unflatten
+            // rewrite up through the program.
             super::bubble_access_reshape_through_compute_reduce_max(),
             // Collapses adjacent operators.
             super::simplify_multiple_accesses(),
@@ -5065,15 +5081,33 @@ mod tests {
             // Remove the topmost reduce-max which becomes "trivial" (i.e. a max
             // over a single element) after we rewrite it multiple times to
             // FlexASR invocations.
-            // Currently seems to be causing an error.
             super::simplify_reduce_max(),
         ];
 
+        // Run the rewrites.
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .with_iter_limit(7)
             .run(&rws);
 
+        // Assert that we find the expected program in the egraph.
+        //
+        // The final program computes the original max pool with two invocations
+        // of FlexASR.
+        //
+        // Reading from inside to out:
+        // 1. We first form 2x2 windows over the data. These are the windows we
+        //    want to reduce via the max operator.
+        // 2. We then flatten those 2x2 windows into vectors of length 4.
+        // 3. We transpose the data so that it's in the format expected by
+        //    FlexASR.
+        // 4. We compute multiple max pools on FlexASR.
+        // 5. We transpose the data back to its original layout, and reshape it
+        //    to its final reshape.
+        //
+        // Note that operators like access-reshape, access-flatten, and access
+        // are operators which exist purely to keep the types in check in
+        // Glenside. They do not involve actual data movement.
         let matches = "
          (access-reshape
           (access
