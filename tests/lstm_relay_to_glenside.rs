@@ -904,10 +904,6 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
         ],
     );
 
-    // TODO(@gussmith23) Include some simple simplifying rewrites
-    // If we add some very basic rewrites here, then $glenside_str
-    // won't need to exactly match what's actually produced by
-    // from_relay.py. It can be simpler (e.g. collapsing accesses).
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: shapes_vec.iter().cloned().collect(),
         name_to_dtype: dtypes_vec.iter().cloned().collect(),
