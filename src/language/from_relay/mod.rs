@@ -94,9 +94,11 @@ pub fn conv1d(
 
 
     let pad_axis_id = expr.add(Language::Usize(2));
+    let access_dim_id = expr.add(Language::Usize(1));
     let pad_before_id = expr.add(Language::Usize(padding[0]));
     let pad_after_id = expr.add(Language::Usize(padding[1]));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessPad([
         data_id,
         zero_padding_id,
@@ -115,25 +117,30 @@ pub fn conv1d(
     //TODO: Figure out how stride_list changes 
     let mut stride_list = Vec::default();
     stride_list.push(expr.add(Language::Usize(1)));
+    stride_list.push(expr.add(Language::Usize(1)));
     stride_list.push(expr.add(Language::Usize(strides[0])));
     let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
-    let in_channels = data_shape[1];
     
+    let usize_o_id = expr.add(Language::Usize(1));
     let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
     let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
     let weights_shape_id = expr.add(Language::Shape(Box::new([
+        usize_o_id,
         usize_c_id,
         usize_kw_id,
     ])));
+    // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessWindows([
         data_id,
         weights_shape_id,
         stride_shape_id,
     ]));
+    let dim_id_3 = expr.add(Language::Usize(3));
+    let data_id = expr.add(Language::AccessSqueeze([data_id, dim_id_3]));
     // data_id = cartProd (data_id, (access weights 1))
-    let access_dim_id = expr.add(Language::Usize(1));
     let weights_id = expr.add(Language::Access([weights_id, access_dim_id]));
     let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+    let data_id = expr.add(Language::AccessSqueeze([data_id, access_dim_id]));
 
     let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
     let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
@@ -1619,7 +1626,6 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::Conv1DAttrs>()
                         .unwrap();
-                    println!("Parsed attrs");
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let data_shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
@@ -1627,7 +1633,6 @@ fn compile_expression(
                     assert_eq!(attrs.padding.len(), 2);
                     assert_eq!(attrs.dilation.len(), 1);
 
-                    println!("checked padding dilation");
 
                     assert_eq!(
                         attrs
@@ -1639,7 +1644,12 @@ fn compile_expression(
                             .value,
                         1
                     );
-                    println!("Checked dilation");
+                    let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let weight_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id, weight_id].into_boxed_slice()
+                    ));
                     //Might need some more asserts for dilation, output layout (see Conv2d)
                     // assert_eq!(attrs.out_layout, "");
                     // println!("Checked layout");
@@ -1694,7 +1704,7 @@ fn compile_expression(
                         "NCW",
                         "OIW",
                         "",
-                    ), None)
+                    ), Some(conv1d_opcall))
                     
                 }
                 "nn.conv2d" => {
