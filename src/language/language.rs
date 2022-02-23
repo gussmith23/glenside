@@ -395,6 +395,10 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-strided-slice <data: access> <begin: shape> <end: shape> <strides: shape>)
     RelayStridedSlice,
+
+    RelayLayerNorm,
+
+    RelayBatchMatmul,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -432,6 +436,8 @@ impl FromStr for RelayOperator {
             "relay-stack" => Ok(RelayOperator::RelayStack),
             "relay-log-softmax" => Ok(RelayOperator::RelayLogSoftmax),
             "relay-strided-slice" => Ok(RelayOperator::RelayStridedSlice),
+            "relay-layer-norm" => Ok(RelayOperator::RelayLayerNorm),
+            "relay-batch-matmul" => Ok(RelayOperator::RelayBatchMatmul),
             _ => Err(()),
         }
     }
@@ -475,6 +481,8 @@ impl Display for RelayOperator {
                 RelayOperator::RelayTanh => "relay-tanh",
                 RelayOperator::RelayStack => "relay-stack",
                 RelayOperator::RelayLogSoftmax => "relay-log-softmax",
+                RelayOperator::RelayLayerNorm => "relay-layer-norm",
+                RelayOperator::RelayBatchMatmul => "relay-batch-matmul",
             }
         )
     }
@@ -1862,6 +1870,47 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayBatchMatmul => {
+                        let (a0, a1) = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(a0), MyAnalysisData::AccessPattern(a1)] =>
+                            {
+                                assert_eq!(a0.as_vec().len(), 3);
+                                assert_eq!(a1.as_vec().len(), 3);
+                                (a0, a1)
+                            }
+                            _ => panic!(),
+                        };
+
+                        let (s0, s1) = (a0.as_vec(), a1.as_vec());
+                        assert_eq!(s0[0], s1[0]);
+                        assert_eq!(s0[2], s1[2]);
+                        let out_shape = vec![s0[0], s0[1], s1[1]];
+
+                        if any(&[a0, a1], |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        let zero_regions = HashMap::default();
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&out_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions,
+                            relay_shape: Some(IxDyn(&out_shape)),
+                            contains_accelerator_calls: any([a0, a1], |a| {
+                                a.contains_accelerator_calls
+                            }),
+                        })
+                    }
+                    crate::language::RelayOperator::RelayLayerNorm => {
+                        egraph[params[1]].data.clone()
+                    }
                     crate::language::RelayOperator::RelayRound => match &egraph[params[1]].data {
                         x @ MyAnalysisData::AccessPattern(_) => x.clone(),
                         MyAnalysisData::Shape(shape) => {
