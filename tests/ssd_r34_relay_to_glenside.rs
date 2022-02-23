@@ -39,7 +39,7 @@ fn parse_ssd_r34() {
     let (expr, shapes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![],
+        &vec![glenside::language::RelayOperator::RelayCopy],
     );
 
     let mut env = HashMap::default();

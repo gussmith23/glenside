@@ -421,6 +421,7 @@ pub enum RelayOperator {
 
     /// (relay-operator-call relay-squeeze <data: access> <axes: list of num>)
     RelaySqueeze,
+    RelayCopy
 }
 
 /// All variants of [`RelayOperator`].
@@ -574,6 +575,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayExpandDims => "relay-expand-dims",
                 RelayOperator::RelayPad => "relay-pad",
                 RelayOperator::RelayDivide => "relay-divide",
+                RelayOperator::RelayCopy => "relay-copy"
             }
         )
     }
@@ -2014,6 +2016,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                             access_pattern_shape_settled: false,
                             contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
                         })
+                    }
+                    crate::language::RelayOperator::RelayCopy => {
+                        // create correct analysis data for relay ope
+                        egraph[params[1]].data.clone()
                     }
                     crate::language::RelayOperator::RelayTranspose => {
                         assert_eq!(params.len(), 3);
@@ -3876,6 +3882,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                 dtype: crate::language::DataType::Uint(64),
             }),
             &AccessReshape([access_id, access_shape_id]) => {
+                println!("{:#?}", egraph[access_id]);
+                println!("{:#?}", egraph[access_shape_id]);
+                println!("{:#?}", {
+                    assert_eq!(egraph[access_id].nodes.len(), 1);
+                    match &egraph[access_id].nodes[0] {
+                        Language::Compute([op_id, _]) => &egraph[*op_id],
+                        _ => panic!(),
+                    } });
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     MyAnalysisData::Shape(s) => AccessPatternData {

@@ -2813,6 +2813,22 @@ fn compile_expression(
 
                     data_id
                 }
+                "copy" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    if use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayCopy) 
+                    {
+                        let copy_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayCopy,
+                        ));
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![copy_id, data_id].into_boxed_slice(), 
+                        ))
+                    } else {
+                        todo!();
+                    }
+                }
                 op => {
                     todo!("{} operator not implemented", op);
                 }
