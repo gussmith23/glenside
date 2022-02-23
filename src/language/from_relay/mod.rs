@@ -1084,7 +1084,7 @@ fn compile_expression(
                 "nn.batch_matmul" => {
                     let a_id = get_compiled_expression(call.args.get(0).unwrap());
                     let b_id = get_compiled_expression(call.args.get(1).unwrap());
-                    let attrs = call
+                    let _attrs = call
                         .attrs
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::BatchMatmulAttrs>()
