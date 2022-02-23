@@ -1201,8 +1201,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                 }
 
                 // changed
-                // Some(Ordering::Greater)
-                if let (Some(left_shape), Some(right_shape)) = (to_relay_shape.clone(), from_relay_shape.clone()) {
+                // println!("{:?} {:?} {:?}", from, to_relay_shape.clone(), from_relay_shape.clone());
+                if *to_relay_shape == None && *from_relay_shape == None {
+                    // println!("{:?}", from);
+                    Some(Ordering::Greater)
+                } else if let (Some(left_shape), Some(right_shape)) = (to_relay_shape.clone(), from_relay_shape.clone()) {
                     assert_eq!(left_shape, right_shape);
                     if to_shape.slice().len() >= from_shape.slice().len() && to_item_shape.slice().len() >= from_item_shape.slice().len() {
                         Some(Ordering::Greater)
@@ -1214,12 +1217,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                         *to_relay_shape = from_relay_shape.clone();
                         Some(Ordering::Greater)
                     } else {
-                        Some(Ordering::Less)
+                        Some(Ordering::Greater)
                     }
                 }
             }
             (to @ _, _) => {
-                // assert_eq!(*to, from);
+                assert_eq!(*to, from);
                 merge_if_different(to, from);
                 Some(Ordering::Greater)
             }
@@ -1511,7 +1514,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                      crate::language::RelayOperator::RelayMaximum
+                      crate::language::RelayOperator::RelayAdd
+                    | crate::language::RelayOperator::RelayMultiply
+                    | crate::language::RelayOperator::RelayMaximum
                     | crate::language::RelayOperator::RelayMinimum => {
                         let (a, b) = match params[1..]
                             .iter()
@@ -1606,36 +1611,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                             _ => panic!("Erf only supports accepting 1 input tensor")
                         };
-                        MyAnalysisData::AccessPattern(access)
-                    }
-                      crate::language::RelayOperator::RelayAdd
-                    | crate::language::RelayOperator::RelayMultiply => {
-                        let mut access = match params[1..]
-                                            .iter()
-                                            .map(|id| &egraph[*id].data)
-                                            .collect::<Vec<_>>()[..] {
-                                    [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
-                                        let size_a = a.shape
-                                                    .slice()
-                                                    .into_iter()
-                                                    .map(|&x| x)
-                                                    .reduce(|x, y| x * y);
-                                        let size_b = b.shape
-                                                    .slice()
-                                                    .into_iter()
-                                                    .map(|&x| x)
-                                                    .reduce(|x, y| x * y);
-                                        if size_a > size_b {
-                                            a.clone()
-                                        } else {
-                                            b.clone()
-                                        }
-                                    }
-                                    _ => panic!("Relay Add only supports 2 params currently")
-                                };
-                        if access.relay_shape == None {
-                            access.relay_shape = Some(IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat()));
-                        }
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayConv1D => {
@@ -1750,12 +1725,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         access.zero_regions = HashMap::default();
 
-                        assert_eq!(access.shape.ndim() + access.item_shape.ndim(), 4);
+                        assert!(access.shape.ndim() + access.item_shape.ndim() > 0);
 
                         // TODO(@gussmith23) Assuming NCHW layout
                         // TODO(@gussmith23) I'm just doing something arbitrary
                         // w/ access axis.
-                        access.shape = IxDyn(&[access[0], access[1] * access[2] * access[3]]);
+                        if access.shape.ndim() + access.item_shape.ndim() == 1 {
+                            access.shape = IxDyn(&[access[0]]);
+                        } else {
+                            access.shape = IxDyn(&[access[0], access.shape.slice()
+                                                                    .iter()
+                                                                    .chain(access.item_shape.slice().iter())
+                                                                    .skip(1)
+                                                                    .product()]);
+                        }
                         access.item_shape = IxDyn(&[]);
 
                         MyAnalysisData::AccessPattern(access)
