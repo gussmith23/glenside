@@ -922,7 +922,7 @@ pub fn add_bias_add_to_dense() -> RW {
             };
 
             format!(
-                "(relay-operator-call bias-add 
+                "(relay-operator-call relay-bias-add 
                   (relay-operator-call relay-dense ?x ?w)
                   (relay-operator-call relay-zeros (shape {}))
                   1)",
