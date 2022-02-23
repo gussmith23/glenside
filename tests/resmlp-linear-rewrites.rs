@@ -1,5 +1,4 @@
 #![cfg(feature = "tvm")]
-
 use egg::{EGraph, Runner, Extractor};
 use glenside::language::MyAnalysis;
 use glenside::extraction::{AcceleratorCostFunction};
@@ -43,7 +42,10 @@ fn test_resmlp() {
         .run(&rws);
     let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
     let (_cost, best) = extractor.find_best(id);
-    let model = best.pretty(80);
-    let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
-    let _ = std::fs::write(output_file, model).unwrap();
+    // let model = best.pretty(80);
+    // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
+    // let _ = std::fs::write(output_file, model).unwrap();
+    let json_dump = best.serialize();
+    let output_file = PathBuf::from(format!("{}/models/resmlp-dump.json", env!("CARGO_MANIFEST_DIR")));
+    let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
 } 
