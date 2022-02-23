@@ -2141,6 +2141,47 @@ fn compile_expression(
 
                     (concatted_id, None)
                 }
+                "cast" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::CastAttrs>()
+                        .unwrap();
+                    let dtype = attrs.dtype.to_string();
+                    let cast_op_id =
+                        glenside_expr.add(Language::RelayOperator(RelayOperator::RelayCast));
+                    let dtype_id = glenside_expr.add(Language::DataType(
+                        dtype.parse::<crate::language::DataType>().unwrap(),
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![cast_op_id, data_id, dtype_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "clip" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::ClipAttrs>()
+                        .unwrap();
+                    let a_min_id = glenside_expr
+                        .add(Language::NotNanFloat64(NotNan::new(attrs.a_min).unwrap()));
+                    let a_max_id = glenside_expr
+                        .add(Language::NotNanFloat64(NotNan::new(attrs.a_max).unwrap()));
+                    let clip_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayClip,
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![clip_op_id, data_id, a_min_id, a_max_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
                 "reshape" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
