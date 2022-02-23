@@ -667,15 +667,6 @@ pub fn dot_product_with_vta() -> RW {
             _ => false,
         }
     }
-    // struct ApplierImpl(Var, Var);
-    // impl Applier<Language, MyAnalysis> for ApplierImpl {
-    //     fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-    //         "(accelerator-call vta-dense ?x ?w)"
-    //         .parse::<Pattern<_>>()
-    //         .unwrap()
-    //         .apply_one(egraph, eclass, subst)
-    //     }
-    // }
     rewrite!("dot-product-on-vta";
         "(compute dot-product (access-cartesian-product ?x ?w))"
         => "(accelerator-call vta-dense ?x ?w)"
@@ -2282,7 +2273,7 @@ pub fn flexasr_maxpool() -> Rewrite<Language, MyAnalysis> {
       (access-windows ?a (shape 2) (shape 2)))" =>
     "(access
       (access-transpose
-       (flexasr-maxpool
+       (accelerator-call flex-maxpool
         (access (access-transpose ?a (list 1 0)) 0))
        (list 1 0))
       1)"
@@ -5033,7 +5024,7 @@ mod tests {
         let matches = "
             (access
              (access-transpose
-              (flexasr-maxpool
+              (accelerator-call flex-maxpool
                (access 
                 (access-transpose 
                  (access (access-tensor a) 1)

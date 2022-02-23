@@ -79,17 +79,6 @@ define_language! {
         "systolic-array-conv2d-im2col-nchw-oihw-with-blocking" = SystolicArrayConv2dIm2colNchwOihwWithBlocking([Id; 8]),
         "systolic-array-conv2d-im2col-nhwc-hwio-with-blocking" = SystolicArrayConv2dIm2colNhwcHwioWithBlocking([Id; 8]),
 
-        // (flexasr-maxpool <access>)
-        //
-        // Compute's FlexASR's maxpool operator. The input access should be of
-        // shape ((),(t, h)) where t is the number of timesteps and h is the
-        // number of hidden states. t should be divisible by 2; h should be
-        // divisible by 16. The result is an access pattern with shape ((),(t/2,
-        // h)).
-        //
-        // TODO(@gussmith23) Add tests for flexasr-maxpool.
-        "flexasr-maxpool" = FlexASRMaxPool([Id; 1]),
-
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
@@ -360,6 +349,9 @@ pub enum RelayOperator {
 
     /// (relay-opeartor relay-conv2d <data: access> <kernel: access> <strides: shape> <padding: shape>)
     RelayConv2D,
+
+    /// (relay-operator relay-split <data: access> <indices_or_sections: usize> <axis: usize>)
+    RelaySplit,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -386,6 +378,7 @@ impl FromStr for RelayOperator {
             "relay-mean" => Ok(RelayOperator::RelayMean),
             "relay-multiply" => Ok(RelayOperator::RelayMultiply),
             "relay-conv2d" => Ok(RelayOperator::RelayConv2D),
+            "relay-split" => Ok(RelayOperator::RelaySplit),
             _ => Err(()),
         }
     }
@@ -417,6 +410,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayMean => "relay-mean",
                 RelayOperator::RelayMultiply => "relay-mul",
                 RelayOperator::RelayConv2D => "relay-conv2d",
+                RelayOperator::RelaySplit => "relay-split",
             }
         )
     }
@@ -586,6 +580,16 @@ pub enum AcceleratorFunc {
     VTADense,
     VTAConv1D,
     HlsCNNConv2D,
+    // (accelerator-call flex-maxpool <access>)
+    //
+    // Compute's FlexASR's maxpool operator. The input access should be of
+    // shape ((),(t, h)) where t is the number of timesteps and h is the
+    // number of hidden states. t should be divisible by 2; h should be
+    // divisible by 16. The result is an access pattern with shape ((),(t/2,
+    // h)).
+    //
+    // TODO(@gussmith23) Add tests for flexasr-maxpool.
+    FlexASRMaxPool,
 }
 
 impl FromStr for AcceleratorFunc {
@@ -598,6 +602,7 @@ impl FromStr for AcceleratorFunc {
             "vta-dense" => Ok(AcceleratorFunc::VTADense),
             "vta-conv1d" => Ok(AcceleratorFunc::VTAConv1D),
             "hlscnn-conv2d" => Ok(AcceleratorFunc::HlsCNNConv2D),
+            "flex-maxpool" => Ok(AcceleratorFunc::FlexASRMaxPool),
             _ => Err(()),
         }
     }
@@ -614,6 +619,7 @@ impl Display for AcceleratorFunc {
                 AcceleratorFunc::VTADense => "vta-dense",
                 AcceleratorFunc::VTAConv1D => "vta-conv1d",
                 AcceleratorFunc::HlsCNNConv2D => "hlscnn-conv2d",
+                AcceleratorFunc::FlexASRMaxPool => "flex-maxpool",
             }
         )
     }
@@ -1363,23 +1369,6 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
-            &Language::FlexASRMaxPool([access_id]) => {
-                let mut access = match &egraph[access_id].data {
-                    MyAnalysisData::AccessPattern(a) => a.clone(),
-                    _ => panic!(),
-                };
-
-                assert_eq!(access.item_shape.ndim(), 2);
-                assert_eq!(access.shape.ndim(), 0);
-                let t = access.item_shape[0];
-                let h = access.item_shape[1];
-                assert_eq!(t % 2, 0);
-                assert_eq!(h % 16, 0);
-                access.item_shape[0] = access.item_shape[0] / 2;
-                access.contains_accelerator_calls = true;
-
-                MyAnalysisData::AccessPattern(access)
-            }
             &SystolicArrayConv2dIm2colNhwcHwioWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
@@ -1655,6 +1644,23 @@ impl egg::Analysis<Language> for MyAnalysis {
                             contains_accelerator_calls: true,
                         })
                     }
+                    crate::language::AcceleratorFunc::FlexASRMaxPool => {
+                        let mut access = match &egraph[ids[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a.clone(),
+                            _ => panic!(),
+                        };
+        
+                        assert_eq!(access.item_shape.ndim(), 2);
+                        assert_eq!(access.shape.ndim(), 0);
+                        let t = access.item_shape[0];
+                        let h = access.item_shape[1];
+                        assert_eq!(t % 2, 0);
+                        assert_eq!(h % 16, 0);
+                        access.item_shape[0] = access.item_shape[0] / 2;
+                        access.contains_accelerator_calls = true;
+        
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::AcceleratorFunc::HlsCNNConv2D => {
                         let access = match ids[1..]
                             .iter()
@@ -1698,6 +1704,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             AcceleratorFunc(name) => {
                 let accelerator = match &name {
                     crate::language::AcceleratorFunc::FlexLinear
+                    | crate::language::AcceleratorFunc::FlexASRMaxPool
                     | crate::language::AcceleratorFunc::FlexLSTM => "flexnlp",
                     crate::language::AcceleratorFunc::VTAConv1D
                     | crate::language::AcceleratorFunc::VTADense => "vta",
@@ -1812,6 +1819,96 @@ impl egg::Analysis<Language> for MyAnalysis {
                             _ => panic!("Erf only supports accepting 1 input tensor"),
                         };
                         MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelaySplit => {
+                        match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::Usize(sections), MyAnalysisData::Int32(axis)] =>
+                            {
+                                let relay_shape = if let Some(relay_shape) =
+                                    data.relay_shape.clone()
+                                {
+                                    relay_shape
+                                } else {
+                                    IxDyn(&[data.shape.slice(), data.item_shape.slice()].concat())
+                                };
+                                let axis = if *axis < 0 {
+                                    (*axis + relay_shape.ndim() as i32) as usize
+                                } else {
+                                    *axis as usize
+                                };
+                                let mut access_vec = Vec::default();
+                                for _ in 0..*sections {
+                                    let mut oshape: Vec<_> =
+                                        relay_shape.slice().iter().cloned().collect();
+                                    oshape[axis] = oshape[axis] / *sections;
+                                    access_vec.push(MyAnalysisData::AccessPattern(
+                                        AccessPatternData {
+                                            shape: IxDyn(&[]),
+                                            item_shape: IxDyn(&oshape[..]),
+                                            relay_shape: Some(IxDyn(&oshape[..])),
+                                            zero_regions: HashMap::default(),
+                                            contains_accelerator_calls: data
+                                                .contains_accelerator_calls,
+                                        },
+                                    ));
+                                }
+                                MyAnalysisData::Tuple(access_vec)
+                            }
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::List(sections), MyAnalysisData::Int32(axis)] =>
+                            {
+                                let relay_shape = if let Some(relay_shape) =
+                                    data.relay_shape.clone()
+                                {
+                                    relay_shape
+                                } else {
+                                    IxDyn(&[data.shape.slice(), data.item_shape.slice()].concat())
+                                };
+                                let axis = if *axis < 0 {
+                                    (*axis + relay_shape.ndim() as i32) as usize
+                                } else {
+                                    *axis as usize
+                                };
+                                let mut begin = 0;
+                                let mut access_vec = Vec::default();
+                                for index in sections.iter() {
+                                    assert!(
+                                        *index > begin,
+                                        "`index` of the sections must be greater than `begin`"
+                                    );
+                                    let mut oshape: Vec<_> =
+                                        relay_shape.slice().iter().cloned().collect();
+                                    oshape[axis] = *index - begin;
+                                    begin = *index;
+                                    access_vec.push(MyAnalysisData::AccessPattern(
+                                        AccessPatternData {
+                                            shape: IxDyn(&[]),
+                                            item_shape: IxDyn(&oshape[..]),
+                                            relay_shape: Some(IxDyn(&oshape[..])),
+                                            zero_regions: HashMap::default(),
+                                            contains_accelerator_calls: data
+                                                .contains_accelerator_calls,
+                                        },
+                                    ));
+                                }
+                                assert!(relay_shape[axis] > begin);
+                                let mut oshape: Vec<_> =
+                                    relay_shape.slice().iter().cloned().collect();
+                                oshape[axis] = relay_shape[axis] - begin;
+                                access_vec.push(MyAnalysisData::AccessPattern(AccessPatternData {
+                                    shape: IxDyn(&[]),
+                                    item_shape: IxDyn(&oshape[..]),
+                                    relay_shape: Some(IxDyn(&oshape[..])),
+                                    zero_regions: HashMap::default(),
+                                    contains_accelerator_calls: data.contains_accelerator_calls,
+                                }));
+                                MyAnalysisData::Tuple(access_vec)
+                            }
+                            _ => panic!("Invalid call to RelaySplit"),
+                        }
                     }
                     crate::language::RelayOperator::RelayMean => {
                         let access = match params[1..]
@@ -5869,6 +5966,42 @@ mod tests {
                 assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn relay_operator_call_split() {
+        let names_to_shapes = [("data".into(), vec![1, 5, 4])]
+            .iter()
+            .cloned()
+            .collect::<HashMap<_, _>>();
+        let mut program = egg::RecExpr::default();
+        let operator_id = program.add(Language::RelayOperator(RelayOperator::RelaySplit));
+        let tensor_id = program.add(Language::Symbol("data".into()));
+        let access_data = program.add(Language::AccessTensor(tensor_id));
+        let sections = program.add(Language::Usize(5));
+        let axis = program.add(Language::Int32(1));
+        let _relay_operator_call = program.add(Language::RelayOperatorCall(
+            vec![operator_id, access_data, sections, axis].into_boxed_slice(),
+        ));
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: names_to_shapes,
+            name_to_dtype: HashMap::default(),
+        });
+        let id = egraph.add_expr(&program);
+        let section_data = MyAnalysisData::AccessPattern(AccessPatternData {
+            shape: IxDyn(&[]),
+            item_shape: IxDyn(&[1, 1, 4]),
+            relay_shape: Some(IxDyn(&[1, 1, 4])),
+            zero_regions: HashMap::default(),
+            contains_accelerator_calls: false,
+        });
+        match &egraph[id].data {
+            MyAnalysisData::Tuple(tup) => tup
+                .iter()
+                .zip(vec![section_data.clone(), section_data.clone(), section_data].iter())
+                .for_each(|t| assert_eq!(t.0, t.1)),
+            _ => panic!("Split should outputs a tuple"),
         }
     }
 
