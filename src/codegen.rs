@@ -1082,6 +1082,7 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                 RelayOperator::RelayMaximum => todo!(),
                 RelayOperator::RelayMinimum => todo!(),
                 RelayOperator::RelayDropout => todo!(),
+                RelayOperator::RelayStack => todo!(),
             }
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
