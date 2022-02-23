@@ -282,10 +282,6 @@ impl CostFunction<Language> for AcceleratorCostFunction {
                 _ => 1.0,
             },
             Language::AccessCartesianProduct(_)
-            | Language::Slice(_)
-            | Language::MoveAxis(_)
-            | Language::MapDotProduct(_)
-            | Language::BsgSystolicArray(_)
             | Language::SystolicArray(_)
             | Language::AccessBroadcast(_)
             | Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
@@ -297,10 +293,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::SliceShape(_)
             | Language::ShapeInsertAxis(_)
             | Language::ShapeRemoveAxis(_)
-            | Language::Concatenate(_)
-            | Language::ElementwiseAdd(_)
             | Language::AccessSlice(_)
-            | Language::CartesianProduct(_)
             | Language::AccessConcatenate(_)
             | Language::AccessShiftRight(_)
             | Language::AccessPair(_) => self.0 * 100.0,
