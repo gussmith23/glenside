@@ -2343,6 +2343,72 @@ mod tests {
             _ => panic!(),
         }
     }
+    #[test]
+    fn conv1d_im2col_systolic_array() {
+        let program = "
+        (access-transpose
+            (compute dot-product
+              (access-cartesian-product
+               (access (access-tensor weights) 1)
+               (access-squeeze
+                (access-windows
+                 (access
+                  (access-pad
+                   (access-tensor data)
+                   zero-padding
+                   2 3 4
+                  )
+                  1
+                 )
+                 (shape 3 3)
+                 (shape 1 2)
+                )
+                1
+               )
+              )
+            )
+            (list 1 0 2)
+           )
+        "
+        .parse()
+        .unwrap();
+
+        let mut map = HashMap::new();
+        map.insert("data".to_string(), vec![1, 3, 32]);
+        map.insert("weights".to_string(), vec![8, 3, 3]);
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map
+        });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![
+            super::flatten_unflatten_any_access(),
+            super::bubble_reshape_through_cartesian_product(),
+            super::bubble_reshape_through_compute_dot_product(),
+            super::systolic_array(),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+        (access-transpose
+         (access-reshape
+          (systolic-array ?rows ?cols
+            ?a
+            ?b
+          )
+          ?shape
+         )
+         ?transpose-list
+        )
+            "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id).unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
 
     #[test]
     fn conv2d_im2col_systolic_array() {
