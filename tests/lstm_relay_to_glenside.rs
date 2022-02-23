@@ -3,7 +3,6 @@
 use egg::EGraph;
 use glenside::language::MyAnalysis;
 
-
 #[test]
 fn lstm_relay_to_glenside() {
     test_logger::ensure_env_logger_initialized();
