@@ -3,7 +3,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use egg::EGraph;
-use glenside::language::MyAnalysis;
+use glenside::language::{MyAnalysis, MyAnalysisData};
 
 #[test]
 fn transformer() {
@@ -17,7 +17,13 @@ fn transformer() {
     let (expr, shapes_vec, dtypes_vec, _) = glenside::language::from_relay::from_relay(
         &module,
         false,
-        &vec![glenside::language::RelayOperator::RelayStridedSlice],
+        &vec![
+            glenside::language::RelayOperator::RelayStridedSlice,
+            glenside::language::RelayOperator::RelaySoftmax,
+            glenside::language::RelayOperator::RelayAdd,
+            glenside::language::RelayOperator::RelayDropout,
+            glenside::language::RelayOperator::RelayMultiply,
+        ],
     );
 
     let mut env = HashMap::default();
@@ -29,5 +35,13 @@ fn transformer() {
         name_to_shape: env.clone(),
         name_to_dtype: dtypes_vec.into_iter().collect(),
     });
-    egraph.add_expr(&expr);
+    let id = egraph.add_expr(&expr);
+
+    assert_eq!(
+        vec![20, 32, 256],
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => a.as_vec(),
+            _ => panic!(),
+        }
+    );
 }
