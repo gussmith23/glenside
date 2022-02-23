@@ -3373,7 +3373,6 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
     // "#
     //     );
 
-
     test!(
         pad,
         1e-60,
