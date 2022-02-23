@@ -3419,7 +3419,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         } else {
                             a.clone()
                         }
-                    },
+                    }
                     _ => panic!(),
                 };
                 // TODO(@gussmith23) Implement zero_regions
