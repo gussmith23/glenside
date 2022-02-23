@@ -93,7 +93,7 @@ define_language! {
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
         // AccessWindows is used in other contexts too, i.e. pooling.
-        "access-windows" = AccessWindows([Id; 4]),
+        "access-windows" = AccessWindows([Id; 3]),
 
         // (shape-of <tensor>)
         // Returns the shape of the tensor.
@@ -1130,13 +1130,28 @@ impl MyAnalysis {
 pub fn serialize_analysis_data(egraph: &EGraph<Language, MyAnalysis>, id_map: &HashMap<Id, Id>) -> serde_json::Value{
     let analysis_data = id_map.into_iter()
                                 .map(|(expr_id, eid)| {
-                                    (usize::from(expr_id.clone()), match &egraph[eid.clone()].data {
-                                        MyAnalysisData::AccessPattern(access) => access.as_vec(),
-                                        MyAnalysisData::Shape(shape) => shape.shape.slice().to_vec(),
-                                        MyAnalysisData::Literal(lit) => lit.shape().to_vec(),
-                                        MyAnalysisData::List(l) => vec![l.len()],
-                                        _ => vec![],
-                                    })
+                                    let shape_dict: HashMap<String, Vec<usize>> = match &egraph[eid.clone()].data {
+                                        MyAnalysisData::AccessPattern(access) => {
+                                            let mut analysis_dict = HashMap::default();
+                                            analysis_dict.insert(String::from("relay_shape"), access.as_vec());
+                                            analysis_dict.insert(String::from("shape"), access.shape.slice().to_vec());
+                                            analysis_dict.insert(String::from("item_shape"), access.item_shape.slice().to_vec());
+                                            analysis_dict
+                                        },
+                                        MyAnalysisData::Shape(shape) => {
+                                            let mut analysis_dict = HashMap::default();
+                                            analysis_dict.insert(String::from("relay_shape"), shape.shape.slice().to_vec());
+                                            analysis_dict
+                                        },
+                                        MyAnalysisData::Literal(lit) => {
+                                            let mut analysis_dict = HashMap::default();
+                                            analysis_dict.insert(String::from("relay_shape"), lit.shape().to_vec());
+                                            analysis_dict
+                                        },
+                                        // MyAnalysisData::List(l) => vec![l.len()],
+                                        _ => HashMap::default(),
+                                    };
+                                    (usize::from(expr_id.clone()), shape_dict)
                                 }).collect::<HashMap<_, _>>();
     json!(analysis_data)
 }
@@ -3144,7 +3159,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             PadType(t) => MyAnalysisData::PadType(*t),
-            &AccessWindows([access_id, _data_shape_id, filters_shape_id, stride_shape_id]) => {
+            &AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
                 let access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => {

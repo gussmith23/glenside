@@ -261,7 +261,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
                     | crate::language::RelayOperator::RelaySoftmax
                     | crate::language::RelayOperator::RelayBiasAdd
                     | crate::language::RelayOperator::RelaySigmoid
-                    | crate::language::RelayOperator::RelayLeakyReLU => 2,
+                    | crate::language::RelayOperator::RelayLeakyReLU => 1,
                     crate::language::RelayOperator::RelayDense => 3,
                     crate::language::RelayOperator::RelayConv1D
                     | crate::language::RelayOperator::RelayUpSampling
@@ -279,20 +279,15 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::AccessPad(_)
             | Language::AccessFlatten(_)
             | Language::AccessWindows(_)
+            | Language::AccessBroadcast(_) 
             | Language::AccessSqueeze(_) => 2,
             
             Language::AccessInsertAxis(_)
             | Language::AccessCartesianProduct(_) => 5,
 
             Language::Compute(_)
-            | Language::AccessReshape(_)
-            | Language::AccessBroadcast(_) => usize::MAX,
-            Language::ComputeType(compute_type) => {
-                match compute_type {
-                    crate::language::ComputeType::DotProduct => usize::MAX,
-                    _ => 1,
-                }
-            }
+            | Language::AccessReshape(_) => usize::MAX,
+            Language::ComputeType(_) => usize::MAX,
             _ => usize::MAX,
         };
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id) * factor))
