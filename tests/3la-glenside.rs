@@ -6,6 +6,7 @@ use glenside::extraction::{AcceleratorCostFunction};
 use std::collections::HashMap;
 
 #[test]
+#[ignore = "Mike says this is handled by the ResMLP test."]
 fn test_3la_glenside_linear_rewrite() {
     let prog_frag = r#"
     #[version = "0.0.5"]
