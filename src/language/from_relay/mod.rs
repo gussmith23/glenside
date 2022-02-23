@@ -114,10 +114,7 @@ pub fn conv1d(
     let usize_o_id = expr.add(Language::Usize(1));
     let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
     let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
-    let weights_shape_id = expr.add(Language::Shape(Box::new([
-        usize_c_id,
-        usize_kw_id,
-    ])));
+    let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
 
     // let usize_data_n_id = expr.add(Language::Usize(data_shape[0]));
     // let usize_data_c_id = expr.add(Language::Usize(data_shape[1]));
@@ -1079,16 +1076,14 @@ fn compile_expression(
                 }
                 "nn.max_pool2d" => {
                     assert_eq!(call.args.len(), 1);
-                    let data_shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    let data_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     let attrs = call
                         .attrs
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::MaxPool2DAttrs>()
                         .unwrap();
-                    assert_eq!(
-                        data_shape.len(),
-                        4
-                    );
+                    assert_eq!(data_shape.len(), 4);
                     assert_eq!(attrs.pool_size.len(), 2);
                     assert_eq!(attrs.padding.len(), 4);
                     assert_eq!(attrs.strides.len(), 2);
