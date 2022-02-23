@@ -2342,6 +2342,41 @@ pub fn bubble_access_through_access_transpose() -> RW {
              "(access-transpose (access ?a ?dim) ?list)" => "(access (access-transpose ?a ?list) ?dim)")
 }
 
+/// Simplify away a reduce-max of a single element by rewriting it to a simple
+/// reshape. I.e. a reduce-max over `((...), (1, ..., 1))` gets rewritten to a
+/// reshape which reshapes to `((...), ())`. My previous version of this rewrite
+/// was seeming to cause bugs; if things go wrong, disable this rewrite first!
+pub fn simplify_reduce_max() -> RW {
+    struct ApplierImpl(Var);
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let shape = match &egraph[subst[self.0]].data {
+                MyAnalysisData::AccessPattern(a) => a.shape.slice(),
+                _ => panic!(),
+            };
+            format!(
+                "(access-reshape
+                  ?a
+                  (access-shape (shape {shape}) (shape)))",
+                shape = shape.iter().map(usize::to_string).join(" ")
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite!("simplify-reduce-max";
+             "(compute reduce-max ?a)" => 
+             {ApplierImpl("?a".parse().unwrap())}
+            if constrain_access("?a".parse().unwrap(), |access| {
+                // Lets all of the following pass:
+                // - `((...), ())`
+                // - `((...), (1))`
+                // - `((...), (1, 1, ..., 1))`
+                access.item_shape.slice().iter().product::<usize>() == 1
+            }))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -5019,6 +5054,11 @@ mod tests {
             super::simplify_multiple_transposes(),
             // Move access through access-transpose, to enable more collapsing.
             super::bubble_access_through_access_transpose(),
+            // Remove the topmost reduce-max which becomes "trivial" (i.e. a max
+            // over a single element) after we rewrite it multiple times to
+            // FlexASR invocations.
+            // Currently seems to be causing an error.
+            super::simplify_reduce_max(),
         ];
 
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
@@ -5029,7 +5069,7 @@ mod tests {
 
         let matches = "
          (access-reshape
-          (compute reduce-max
+          (access-reshape
            (access
              (access-transpose
               (flexasr-maxpool
@@ -5046,7 +5086,8 @@ mod tests {
                       0))
                 0))
               (list 1 0))
-            1))
+            1)
+           (access-shape (shape 64) (shape)))
           (access-shape (shape 16 2 2) (shape)))
         "
         .parse::<Pattern<_>>()
