@@ -917,6 +917,7 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
     });
 
     let id = egraph.add_expr(&expr);
+    egraph.rebuild();
 
     // Check that the types match the expected Relay types.
     match &egraph[id].data {
