@@ -3380,13 +3380,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
                 };
-                let shape = access
+                let mut shape = access
                     .shape
                     .as_array_view()
                     .iter()
                     .chain(access.item_shape.as_array_view().iter())
                     .cloned()
                     .collect::<Vec<_>>();
+                if shape.len() == 0 {
+                    if let Some(relay_shape) = &access.relay_shape {
+                        shape = relay_shape.slice().iter().cloned().collect();
+                    } else {
+                        panic!("No shape info")
+                    }
+                }
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
                     // It's harmless (I think) if `zero_regions` defaults to
