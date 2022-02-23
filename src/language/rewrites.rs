@@ -625,7 +625,7 @@ pub fn bubble_reshape_through_linear_generalized() -> RW {
                 MyAnalysisData::Shape(s) => s,
                 _ => panic!("not a valid shape data")
             };
-            assert!(shape_data.shape.slice().len() == 3);
+            println!("Shape length: {}", shape_data.shape.slice().len());
             format!("(access-reshape 
                         (compute elementwise-add 
                             (access-pair 

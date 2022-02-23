@@ -669,6 +669,7 @@ fn codegen_helper(
             };
 
             match relay_op {
+                RelayOperator::RelayConv1D => todo!(),
                 RelayOperator::RelayBatchNormInference => {
                     let data = get_c_variable_for_id(expr, ids[1]);
                     let gamma = get_c_variable_for_id(expr, ids[2]);
