@@ -1000,6 +1000,9 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "take" => {
+                    todo!()
+                }
                 "nn.batch_norm" => {
                     assert!(simplify_batch_norm_for_inference_hack);
                     assert!(
