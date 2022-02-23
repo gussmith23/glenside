@@ -265,8 +265,8 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::ComputeType(_)
             | Language::AccessSlice(_)
             | Language::AccessCartesianProduct(_)
-            | Language::AccessPair(_) => self.0,
-            _ => self.0 / 20.0,
+            | Language::AccessPair(_) => self.0 * 100.0,
+            _ => self.0 * 10.0,
         };
         enode.fold(base_cost, |sum, id| sum + costs(id))
     }
