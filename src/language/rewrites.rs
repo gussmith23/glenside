@@ -1,7 +1,16 @@
 use std::str::FromStr;
 
-use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
-use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
+use crate::language::from_relay::{
+    access_concatenate, access_insert_axis, access_pair, access_shape, compute,
+};
+use crate::language::{from_relay, ShapeData};
+
+use super::{ComputeType, Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
+use egg::{
+    rewrite, Applier, ConditionalApplier, EGraph, ENodeOrVar, Id, Pattern, Rewrite, SearchMatches,
+    Searcher, Subst, Var,
+};
+use egg::{PatternAst, RecExpr};
 use itertools::Itertools;
 use ndarray::Dimension;
 use ndarray::IxDyn;
@@ -2576,13 +2585,817 @@ pub fn simplify_multiple_access_reshapes() -> RW {
      "(access-reshape (access-reshape ?a ?s0) ?s1)" => "(access-reshape ?a ?s1)")
 }
 
+pub fn conv2d_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        weights: Var,
+        strides: Var,
+        padding: Var,
+        group: Var,
+        channel: Var,
+        kernel_size: Var,
+        activation_layout: Var,
+        kernel_layout: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let (
+                data,
+                weight,
+                strides,
+                padding,
+                group,
+                _channels,
+                _kernel_size,
+                activation_layout,
+                kernel_layout,
+            ) = match vec![
+                &self.data,
+                &self.weights,
+                &self.strides,
+                &self.padding,
+                &self.group,
+                &self.channel,
+                &self.kernel_size,
+                &self.activation_layout,
+                &self.kernel_layout,
+            ]
+            .drain(..)
+            .map(|v| &egraph[subst[*v]].data)
+            .collect::<Vec<_>>()[..]
+            {
+                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
+                    (
+                        data,
+                        weight,
+                        strides,
+                        padding,
+                        *group,
+                        channels,
+                        kernel_size,
+                        act_layout,
+                        _ker_layout,
+                    )
+                }
+                _ => todo!(),
+            };
+
+            assert_eq!(group, 1);
+            assert_eq!(strides.shape.ndim(), 3);
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let weights_id = expr.add(Language::Symbol("weights_PLACEHOLDER".to_string()));
+            from_relay::conv2d(
+                &mut expr,
+                data_id,
+                data.as_vec().as_slice(),
+                weights_id,
+                weight.as_vec().as_slice(),
+                &strides.shape.slice()[1..3],
+                padding.shape.slice(),
+                &[1, 1],
+                group,
+                match activation_layout {
+                    crate::language::RelayActivationLayout::NCHW => "NCHW",
+                    crate::language::RelayActivationLayout::NHWC => "NHWC",
+                },
+                match kernel_layout {
+                    crate::language::RelayKernelLayout::OIHW => "OIHW",
+                    crate::language::RelayKernelLayout::HWIO => "HWIO",
+                },
+                "",
+            );
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data)
+                        }
+                        Language::Symbol(s) if s == "weights_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.weights)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            vec![egraph.add_instantiation(&pattern_ast, subst)]
+        }
+    }
+    rewrite!("conv2d-relay-to-glenside";
+    "(relay-operator-call relay-conv2d
+       ?data
+       ?weights
+       ?strides
+       ?padding
+       ?group
+       ?channel
+       ?kernel-size
+       ?activation-layout
+       ?kernel-layout)" => {
+          Impl {
+            data: "?data".parse().unwrap(),
+            weights: "?weights".parse().unwrap(),
+            strides: "?strides".parse().unwrap(),
+            padding: "?padding".parse().unwrap(),
+            group: "?group".parse().unwrap(),
+            channel: "?channel".parse().unwrap(),
+            kernel_size: "?kernel-size".parse().unwrap(),
+            activation_layout: "?activation-layout".parse().unwrap(),
+            kernel_layout: "?kernel-layout".parse().unwrap(),
+          }
+      })
+}
+
+pub fn conv1d_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        weights: Var,
+        strides: Var,
+        padding: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let (data, weights, strides, padding) = match vec![
+                self.data,
+                self.weights,
+                self.strides,
+                self.padding,
+            ]
+            .drain(..)
+            .map(|v| &egraph[subst[v]].data)
+            .collect::<Vec<_>>()[..]
+            {
+                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weights), MyAnalysisData::Shape(ShapeData { shape: strides, .. }), MyAnalysisData::Shape(ShapeData { shape: padding, .. })] => {
+                    (data, weights, strides, padding)
+                }
+                _ => todo!(),
+            };
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let weights_id = expr.add(Language::Symbol("weights_PLACEHOLDER".to_string()));
+            from_relay::conv1d(
+                &mut expr,
+                data_id,
+                data.as_vec().as_slice(),
+                weights_id,
+                weights.as_vec().as_slice(),
+                &strides.slice(),
+                padding.slice(),
+                &[1],
+                1,
+                "NCW",
+                "OIW",
+                "",
+            );
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data)
+                        }
+                        Language::Symbol(s) if s == "weights_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.weights)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            vec![egraph.add_instantiation(&pattern_ast, subst)]
+        }
+    }
+    let i = Impl {
+        data: "?data".parse().unwrap(),
+        weights: "?weights".parse().unwrap(),
+        strides: "?strides".parse().unwrap(),
+        padding: "?padding".parse().unwrap(),
+    };
+    rewrite!("conv1d-relay-to-glenside";
+        { format!("(relay-operator-call relay-conv1d {} {} {} {})",
+                    i.data, i.weights, i.strides, i.padding)
+            .parse::<Pattern<_>>().unwrap() } => { i })
+}
+
+pub fn softmax_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        axis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let data = match &egraph[subst[self.data]].data {
+                MyAnalysisData::AccessPattern(data) => data,
+                _ => panic!(),
+            };
+            let axis: i64 = match &egraph[subst[self.axis]].data {
+                MyAnalysisData::Usize(u) => *u as i64,
+                MyAnalysisData::Int32(i) => *i as i64,
+                MyAnalysisData::Int64(i) => *i as i64,
+                _ => panic!(),
+            };
+
+            assert_eq!(
+                axis, -1,
+                "We only support an axis value of -1 at the moment"
+            );
+
+            let axis: i64 = if axis < 0 {
+                data.as_vec().len() as i64 + axis
+            } else {
+                axis
+            };
+            assert!(axis >= 0 && axis < data.as_vec().len() as i64);
+
+            format!("(compute softmax (access {} {}))", self.data, axis)
+                .parse::<Pattern<_>>()
+                .unwrap()
+                .apply_one(egraph, _eclass, subst)
+        }
+    }
+    let i = Impl {
+        data: "?data".parse().unwrap(),
+        axis: "?axis".parse().unwrap(),
+    };
+    rewrite!("softmax-relay-to-glenside";
+        { format!("(relay-operator-call relay-softmax {} {})",
+                    i.data, i.axis)
+            .parse::<Pattern<_>>().unwrap() } => { i })
+}
+
+pub fn max_pool2d_relay_to_glenside_nchw() -> RW {
+    rewrite!("max-pool2d-relay-to-glenside-nchw";
+        "(relay-operator-call relay-max-pool2d
+            ?data
+            ?pool-size
+            ?strides
+            (shape ?padding0 ?padding1 ?padding2 ?padding3)
+            relay-activation-layout-nchw)" =>
+        "(compute reduce-max
+          (access-windows
+           (access
+            (access-pad
+             (access-pad
+              (access-tensor data)
+              min-padding
+              2 ?padding0 ?padding2
+             )
+             min-padding
+             3 ?padding1 ?padding3
+            )
+            2
+           )
+           ?pool-size
+           ?strides
+          )
+         )")
+}
+
+pub fn global_avg_pool2d_relay_to_glenside_nchw() -> RW {
+    rewrite!("global-avg-pool2d-relay-to-glenside-nchw";
+        "(relay-operator-call relay-global-avg-pool2d
+            ?data
+            relay-activation-layout-nchw)" =>
+        "(access
+          (access-insert-axis
+           (access-insert-axis
+            (compute reduce-mean (access ?data 2))
+            2
+           )
+           3
+          )
+          2
+         )")
+}
+
+// TODO(gussmith23) on second thought, remove this; doesn't really do anything.
+macro_rules! relay_to_glenside_simple {
+    ($fn_name: ident, $rw_name: expr, $from: expr, $to: expr) => {
+        pub fn $fn_name() -> RW {
+            rewrite!($rw_name; $from => $to)
+        }
+    }
+}
+
+relay_to_glenside_simple!(
+    relu_relay_to_glenside,
+    "relu-relay-to-glenside",
+    "(relay-operator-call relay-relu ?data)",
+    "(compute relu ?data)"
+);
+
+relay_to_glenside_simple!(
+    negative_relay_to_glenside,
+    "negative-relay-to-glenside",
+    "(relay-operator-call relay-negative ?data)",
+    "(compute negative ?data)"
+);
+
+relay_to_glenside_simple!(
+    sqrt_relay_to_glenside,
+    "sqrt-relay-to-glenside",
+    "(relay-operator-call relay-sqrt ?data)",
+    "(compute sqrt ?data)"
+);
+
+pub fn expand_dims_relay_to_glenside() -> RW {
+    #[derive(Clone)]
+    struct Impl {
+        num_newaxis: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let num_newaxis: i64 = match &egraph[subst[self.num_newaxis]].data {
+                MyAnalysisData::Usize(u) => *u as i64,
+                MyAnalysisData::Int32(i) => *i as i64,
+                MyAnalysisData::Int64(i) => *i as i64,
+                _ => panic!(),
+            };
+
+            format!(
+                "(relay-operator-call relay-expand-dims (access-insert-axis ?data ?axis) ?axis {})",
+                num_newaxis - 1
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, _eclass, subst)
+        }
+    }
+    let i = Impl {
+        num_newaxis: "?num-newaxis".parse().unwrap(),
+    };
+    rewrite!("expand-dims-relay-to-glenside";
+    { format!("(relay-operator-call relay-expand-dims ?data ?axis {})",
+                i.num_newaxis)
+        .parse::<Pattern<_>>().unwrap() } => { i.clone() }
+    if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst[i.num_newaxis]].data {
+        MyAnalysisData::Int64(v) => v > &0,
+        MyAnalysisData::Usize(v) => v > &0,
+        _ => panic!(),
+    })
+}
+
+pub fn eliminate_expand_dims_zero_num_newaxis() -> RW {
+    rewrite!("eliminate-expand-dims-zero-num-newaxis";
+             "(relay-operator-call relay-expand-dims ?data ?axis 0)" => "?data")
+}
+
+pub fn pad_relay_to_glenside() -> RW {
+    #[derive(Clone)]
+    struct Impl {
+        data: Var,
+        pad_widths: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let pad_widths = match &egraph[subst[self.pad_widths]].data {
+                MyAnalysisData::Shape(ShapeData { shape, .. }) => shape.clone(),
+                _ => panic!(),
+            };
+            let ndim = match &egraph[subst[self.data]].data {
+                MyAnalysisData::AccessPattern(a) => a.as_vec().len(),
+                _ => panic!(),
+            };
+            assert_eq!(pad_widths.ndim(), ndim * 2,);
+
+            let zero_pad_id = egraph.add(Language::PadType(crate::language::PadType::ZeroPadding));
+
+            let mut id = subst[self.data];
+            for i in 0..ndim {
+                let axis_id = egraph.add(Language::Usize(i));
+                let pad_before_id = egraph.add(Language::Usize(pad_widths[2 * i]));
+                let pad_after_id = egraph.add(Language::Usize(pad_widths[2 * i + 1]));
+                id = egraph.add(Language::AccessPad([
+                    id,
+                    zero_pad_id,
+                    axis_id,
+                    pad_before_id,
+                    pad_after_id,
+                ]));
+            }
+
+            vec![id]
+        }
+    }
+    let i = Impl {
+        data: "?data".parse().unwrap(),
+        pad_widths: "?pad-widths".parse().unwrap(),
+    };
+    rewrite!("pad-relay-to-glenside";
+    { format!("(relay-operator-call relay-pad {} {})",
+                i.data, i.pad_widths)
+        .parse::<Pattern<_>>().unwrap() } => { i.clone() })
+}
+
+pub fn dense_relay_to_glenside() -> RW {
+    rewrite!("dense-relay-to-glenside";
+                "(relay-operator-call relay-dense ?data ?weights)" =>
+                "(compute dot-product (access-cartesian-product (access ?data 1) (access ?weights 1)))")
+}
+
+struct BroadcastedRelayOpApplier {
+    op: ComputeType,
+    a: Var,
+    b: Var,
+}
+impl Applier<Language, MyAnalysis> for BroadcastedRelayOpApplier {
+    fn apply_one(
+        &self,
+        egraph: &mut EGraph<Language, MyAnalysis>,
+        _eclass: Id,
+        subst: &Subst,
+    ) -> Vec<Id> {
+        let a_id = subst[self.a];
+        let b_id = subst[self.b];
+        let (mut a_shape, mut b_shape) = match (&egraph[a_id].data, &egraph[b_id].data) {
+            (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => {
+                (a.as_vec().clone(), b.as_vec().clone())
+            }
+            _ => panic!(),
+        };
+
+        let mut expr = RecExpr::default();
+        let mut a_id = expr.add(Language::Symbol("a_PLACEHOLDER".to_string()));
+        let mut b_id = expr.add(Language::Symbol("b_PLACEHOLDER".to_string()));
+        while a_shape.len() < b_shape.len() {
+            a_id = access_insert_axis(&mut expr, a_id, 0);
+            a_shape.insert(0, 1);
+        }
+
+        while b_shape.len() < a_shape.len() {
+            b_id = access_insert_axis(&mut expr, b_id, 0);
+            b_shape.insert(0, 1);
+        }
+
+        assert_eq!(a_shape.len(), b_shape.len());
+
+        assert!(a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a <= b).all(|v| v) ||
+                a_shape.iter().zip(b_shape.iter()).map(|(a, b)| a >= b).all(|v| v),
+                "Can only handle simple broadcasts; all dims of a must be <= all dims of b (or vice-versa)");
+        if a_shape
+            .iter()
+            .zip(b_shape.iter())
+            .map(|(a, b)| a < b)
+            .any(|v| v)
+        {
+            let access_shape_id = access_shape(&mut expr, &b_shape, &[]);
+            a_id = expr.add(Language::AccessBroadcast([a_id, access_shape_id]));
+        } else if a_shape
+            .iter()
+            .zip(b_shape.iter())
+            .map(|(a, b)| a > b)
+            .any(|v| v)
+        {
+            let access_shape_id = access_shape(&mut expr, &a_shape, &[]);
+            b_id = expr.add(Language::AccessBroadcast([b_id, access_shape_id]));
+        }
+
+        let pair_id = access_pair(&mut expr, a_id, b_id, 0);
+
+        let _compute_id = compute(&mut expr, self.op.clone(), pair_id);
+
+        let pattern_ast = PatternAst::from(
+            expr.as_ref()
+                .iter()
+                .map(|n| match n {
+                    Language::Symbol(s) if s == "a_PLACEHOLDER" => ENodeOrVar::Var(self.a),
+                    Language::Symbol(s) if s == "b_PLACEHOLDER" => ENodeOrVar::Var(self.b),
+                    _ => ENodeOrVar::ENode(n.clone()),
+                })
+                .collect::<Vec<_>>(),
+        );
+
+        let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+        vec![out_id]
+    }
+}
+
+pub fn add_relay_to_glenside() -> RW {
+    rewrite!("add-relay-to-glenside";
+    "(relay-operator-call relay-add ?a ?b)" =>
+    {
+        BroadcastedRelayOpApplier {
+            op: ComputeType::ElementwiseAdd,
+            a: "?a".parse().unwrap(),
+            b: "?b".parse().unwrap(),
+        }
+    })
+}
+
+pub fn multiply_relay_to_glenside() -> RW {
+    rewrite!("multipy-relay-to-glenside";
+    "(relay-operator-call relay-multiply ?a ?b)" =>
+    {
+        BroadcastedRelayOpApplier {
+            op: ComputeType::ElementwiseMul,
+            a: "?a".parse().unwrap(),
+            b: "?b".parse().unwrap(),
+        }
+    })
+}
+
+pub fn divide_relay_to_glenside() -> RW {
+    rewrite!("divide-relay-to-glenside";
+    "(relay-operator-call relay-divide ?a ?b)" =>
+    {
+        BroadcastedRelayOpApplier {
+            op: ComputeType::ElementwiseDiv,
+            a: "?a".parse().unwrap(),
+            b: "?b".parse().unwrap(),
+        }
+    })
+}
+
+pub fn batch_flatten_relay_to_glenside() -> RW {
+    rewrite!("batch-flatten-relay-to-glenside";
+        "(relay-operator-call relay-batch-flatten ?a)" =>
+        "(access-flatten (access ?a 1))")
+}
+
+pub fn bias_add_relay_to_glenside() -> RW {
+    struct Impl {
+        data_var: Var,
+        bias_var: Var,
+        axis_var: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let axis = match &egraph[subst[self.axis_var]].data {
+                MyAnalysisData::Usize(v) => *v,
+                _ => panic!(),
+            };
+            let data_shape = match &egraph[subst[self.data_var]].data {
+                MyAnalysisData::AccessPattern(v) => v.clone(),
+                _ => panic!(),
+            };
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let mut bias_id = expr.add(Language::Symbol("bias_PLACEHOLDER".to_string()));
+
+            // Insert axes before
+            for _ in 0..axis {
+                let zero_id = expr.add(Language::Usize(0));
+                bias_id = expr.add(Language::AccessInsertAxis([bias_id, zero_id]));
+            }
+
+            // Insert axes after
+            for axis in (axis + 1)..data_shape.as_vec().len() {
+                let axis_id = expr.add(Language::Usize(axis as usize));
+                bias_id = expr.add(Language::AccessInsertAxis([bias_id, axis_id]));
+            }
+
+            let access_shape_id = access_shape(&mut expr, &data_shape.as_vec(), &[]);
+            let bias_id = expr.add(Language::AccessBroadcast([bias_id, access_shape_id]));
+
+            let data_id = access_pair(&mut expr, data_id, bias_id, 0);
+            let _data_id = compute(&mut expr, ComputeType::ElementwiseAdd, data_id);
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data_var)
+                        }
+                        Language::Symbol(s) if s == "bias_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.bias_var)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+            vec![out_id]
+        }
+    }
+    rewrite!("bias-add-relay-to-glenside";
+                "(relay-operator-call relay-bias-add ?data ?bias ?axis)" =>
+                { Impl{data_var:"?data".parse().unwrap(), bias_var:"?bias".parse().unwrap(), axis_var:"?axis".parse().unwrap()} })
+}
+
+pub fn concatenate_relay_to_glenside() -> RW {
+    struct Impl {
+        axis_var: Var,
+        tuple_var: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let tuple_len = match &egraph[subst[self.tuple_var]].data {
+                MyAnalysisData::Tuple(t) => t.len(),
+                _ => panic!(),
+            };
+            let axis = match &egraph[subst[self.axis_var]].data {
+                MyAnalysisData::Usize(v) => *v,
+                _ => panic!(),
+            };
+
+            let mut expr = RecExpr::default();
+
+            let tuple_id = expr.add(Language::Symbol("tuple_PLACEHOLDER".to_string()));
+
+            let tensor_ids: Vec<Id> = (0..tuple_len)
+                .map(|i| {
+                    let i_id = expr.add(Language::Usize(i));
+                    expr.add(Language::TupleGetItem([tuple_id, i_id]))
+                })
+                .collect();
+
+            assert!(tensor_ids.len() > 0);
+
+            let mut concatted_id = tensor_ids[0];
+            for id in tensor_ids[1..].iter() {
+                // TODO(@gussmith23) Layout assumption
+                concatted_id = access_concatenate(&mut expr, concatted_id, *id, axis);
+            }
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "tuple_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.tuple_var)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+            vec![out_id]
+        }
+    }
+    rewrite!("concatenate-relay-to-glenside";
+                "(relay-operator-call relay-concatenate ?axis ?tuple)" =>
+                { Impl{axis_var:"?axis".parse().unwrap(), tuple_var: "?tuple".parse().unwrap()} })
+}
+
+pub fn simplify_tuple_get_item() -> RW {
+    struct SearcherImpl(Var);
+    impl Searcher<Language, MyAnalysis> for SearcherImpl {
+        fn search_eclass(
+            &self,
+            egraph: &EGraph<Language, MyAnalysis>,
+            eclass: Id,
+        ) -> Option<egg::SearchMatches> {
+            let substs: Vec<Subst> = egraph[eclass]
+                .nodes
+                .iter()
+                .filter_map(|v| match v {
+                    Language::TupleGetItem([t_id, idx_id]) => Some((*t_id, *idx_id)),
+                    _ => None,
+                })
+                .flat_map(|(tuple_id, idx_id)| {
+                    let idx = match egraph[idx_id].data {
+                        MyAnalysisData::Usize(v) => v,
+                        _ => panic!(),
+                    };
+                    egraph[tuple_id].nodes.iter().filter_map(move |v| match v {
+                        Language::ConstructTuple(ids) => {
+                            let mut subst = Subst::default();
+                            subst.insert(self.0, ids[idx]);
+                            Some(subst)
+                        }
+                        _ => None,
+                    })
+                })
+                .collect();
+            if substs.is_empty() {
+                None
+            } else {
+                Some(SearchMatches { eclass, substs })
+            }
+        }
+
+        fn vars(&self) -> Vec<Var> {
+            vec![self.0]
+        }
+    }
+
+    rewrite!("simplify-tuple-get-item";
+                { SearcherImpl("?val".parse().unwrap()) } => "?val")
+}
+
+pub fn transpose_relay_to_glenside() -> RW {
+    rewrite!("transpose-relay-to-glenside";
+                "(relay-operator-call relay-transpose ?data ?axes)" => "(access-transpose ?data ?axes)")
+}
+
+pub fn reshape_relay_to_glenside() -> RW {
+    rewrite!("reshape-relay-to-glenside";
+                "(relay-operator-call relay-reshape ?data ?shape)" => "(access-reshape ?data (access-shape ?shape (shape)))")
+}
+
+pub fn squeeze_relay_to_glenside() -> RW {
+    struct Impl {
+        axis_var: Var,
+        data_var: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            _eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let mut axes = match &egraph[subst[self.axis_var]].data {
+                MyAnalysisData::List(v) => v.clone(),
+                _ => panic!(),
+            };
+            axes.sort();
+
+            let mut expr = RecExpr::default();
+
+            let mut data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+
+            for axis in axes.iter().rev() {
+                let usize_id = expr.add(Language::Usize(*axis));
+                data_id = expr.add(Language::AccessSqueeze([data_id, usize_id]));
+            }
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data_var)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+
+            vec![out_id]
+        }
+    }
+    rewrite!("squeeze-relay-to-glenside";
+                "(relay-operator-call relay-squeeze ?data ?axis)" =>
+                { Impl{axis_var:"?axis".parse().unwrap(), data_var: "?data".parse().unwrap()} })
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use egg::{Pattern, RecExpr, Runner, Searcher};
+    use crate::language::interpreter::interpret;
+    use crate::language::RelayOperator;
+    use crate::language::{Language, MyAnalysis};
+    use approx::AbsDiffEq;
+    use egg::{EGraph, Pattern, RecExpr, Runner, Searcher};
     use ndarray::IxDyn;
+    use ndarray_npy::{read_npy, write_npy};
+    use ndarray_rand::{rand_distr::Uniform, RandomExt};
+    use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::collections::HashMap;
+    use std::io::Write;
+    use std::process::Command;
     use std::str::FromStr;
 
     #[test]
@@ -5455,4 +6268,740 @@ mod tests {
             .search_eclass(&runner.egraph, id)
             .is_none());
     }
+
+    /// Creates a Relay-to-Glenside test
+    /// The test does the following:
+    ///  1. Converts $relay_str to glenside by running the from_relay.py script
+    ///  2. Inserts the resulting Glenside code into an egraph
+    ///  3. Searches the egraph for $glenside_str to ensure the expected program
+    ///     exists
+    /// $test_name: the name of the created test
+    /// $relay_str: A string containing the Relay program to be converted
+    /// $glenside_str: A string containing the expected resulting Glenside
+    ///     expression
+    /// $tol: Tolerance value.
+    /// $rws: Expression evaluating to a vector of rewrites.
+    macro_rules! test {
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $(#[$meta])*
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                "",
+                Uniform::new(-1f32, 1f32),
+                $rws,
+                &vec![]
+            );
+        };
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $rws: expr, $use_opaque_operators_for: expr) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $(#[$meta])*
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                "",
+                Uniform::new(-1f32, 1f32),
+                $rws,
+                $use_opaque_operators_for
+            );
+        };
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $rws: expr, $use_opaque_operators_for: expr) => {
+            // TODO(@gussmith23) Hardcoding to f32
+            test!(
+                $(#[$meta])*
+                $test_name,
+                $tol,
+                $relay_str,
+                $glenside_str,
+                $optional_arg,
+                Uniform::new(-1f32, 1f32),
+                $rws,
+                $use_opaque_operators_for
+            );
+        };
+        ($(#[$meta:meta])* $test_name:ident, $tol:literal, $relay_str:expr, $glenside_str:expr, $optional_arg:literal, $distribution:expr, $rws: expr, $use_opaque_operators_for: expr) => {
+            $(#[$meta])*
+            #[test]
+            fn $test_name() {
+                test_logger::ensure_env_logger_initialized();
+
+                // The number of times to run each program and compare their
+                // outputs.
+                // TODO(@gussmith23) # random samples chosen arbitrarily
+                const SAMPLES: usize = 3;
+
+                // Random number generator for generating random tensors.
+                const SEED: u64 = 23;
+                let mut tensor_rng = SmallRng::seed_from_u64(SEED);
+
+                let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
+
+                let (expr, shapes_vec, dtypes_vec, _) =
+                    from_relay::from_relay(&module, false, $use_opaque_operators_for);
+
+                let mut env = HashMap::default();
+                for (k, v) in &shapes_vec {
+                    env.insert(k.clone(), v.clone());
+                }
+
+                // TODO(@gussmith23) Include some simple simplifying rewrites
+                // If we add some very basic rewrites here, then $glenside_str
+                // won't need to exactly match what's actually produced by
+                // from_relay.py. It can be simpler (e.g. collapsing accesses).
+                let mut egraph = EGraph::new(MyAnalysis {
+                    name_to_shape: env.clone(),
+                    name_to_dtype: dtypes_vec.into_iter().collect(),
+                });
+                let id = egraph.add_expr(&expr);
+
+                let pattern = $glenside_str.parse::<Pattern<Language>>().unwrap();
+                // The program should not be found at first.
+                assert!(pattern.search_eclass(&egraph, id).is_none());
+
+                // Run compilation rewrites.
+                let runner = Runner::default().with_egraph(egraph).run($rws);
+
+                // Program should now be found.
+                assert!(pattern.search_eclass(&runner.egraph, id).is_some());
+
+                let expr_to_interpret = RecExpr::from_str($glenside_str).unwrap();
+
+                for _ in (0..SAMPLES) {
+                    // Run interpreters and compare output.
+                    let script_filepath = format!(
+                        "{}/src/language/from_relay/run_relay.py",
+                        env!("CARGO_MANIFEST_DIR")
+                    );
+                    // https://www.reddit.com/r/rust/comments/38jhva/piping_string_to_child_process_stdin/crvlqcd/?utm_source=reddit&utm_medium=web2x&context=3
+                    // Output filename
+                    // TODO(@gussmith23) Do we want this RNG to use SEED?
+                    // I initially attempted to do this, but was running into issues
+                    // (I think the same filename kept being generated b/c I wasn't
+                    // using the RNG carefully...but maybe there's also something
+                    // wrong w/ how I'm reading files!)
+                    let output_filepath = std::env::temp_dir().join(format!(
+                        "output-{}.npy",
+                        rand::thread_rng()
+                            .sample_iter(&rand::distributions::Alphanumeric)
+                            .take(30)
+                            .collect::<String>()
+                    ));
+
+                    let mut cmd = Command::new("python3");
+                    cmd.arg(script_filepath);
+                    if $optional_arg.len() > 0 {
+                        cmd.arg($optional_arg);
+                    }
+                    cmd.arg("--npy_out_filepath");
+                    cmd.arg(&output_filepath);
+                    cmd.arg("--npy_arg_filepath");
+                    cmd.stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped());
+                    let mut env = HashMap::default();
+                    for (name, shape) in shapes_vec.iter() {
+                        // TODO(@gussmith23) output type assumption
+                        let value = ndarray::ArrayD::<f32>::random_using(
+                            shape.clone(),
+                            $distribution,
+                            &mut tensor_rng,
+                        );
+                        env.insert(name.as_str(), value.clone());
+                        let filepath = std::env::temp_dir().join(format!(
+                            "arg-{}.npy",
+                            rand::thread_rng()
+                                .sample_iter(&rand::distributions::Alphanumeric)
+                                .take(30)
+                                .collect::<String>()
+                        ));
+                        write_npy(&filepath, &value).unwrap();
+                        cmd.arg(filepath);
+                    }
+
+                    let mut proc = cmd.spawn().ok().expect("Failed to spawn process");
+                    proc.stdin
+                        .as_mut()
+                        .unwrap()
+                        .write_all($relay_str.as_bytes())
+                        .unwrap();
+                    let output = proc.wait_with_output().unwrap();
+                    // Check that it ran.
+                    assert!(
+                        output.status.success(),
+                        "Running Relay code failed with code {:?}.\nstdout:\n{}\nstderr:\n{}",
+                        output.status.code(),
+                        std::str::from_utf8(output.stdout.as_slice())
+                            .expect("Could not convert stderr to UTF8"),
+                        std::str::from_utf8(output.stderr.as_slice())
+                            .expect("Could not convert stderr to UTF8")
+                    );
+
+                    // TODO(@gussmith23) output type assumption
+                    let relay_output: ndarray::ArrayD<f32> = read_npy(output_filepath).unwrap();
+                    let interpreter_output = match interpret(
+                        &expr_to_interpret,
+                        expr_to_interpret.as_ref().len() - 1,
+                        &env,
+                    ) {
+                        crate::language::interpreter::Value::Access(a) => a.tensor,
+                        _ => panic!(),
+                    };
+                    assert!(
+                        relay_output.abs_diff_eq(&interpreter_output, $tol),
+                        "{:?}\nvs.\n{:?}",
+                        relay_output,
+                        interpreter_output
+                    );
+                }
+            }
+        };
+    }
+
+    test!(
+        conv2d_relay_to_glenside,
+        1e-5,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3), float32]) -> Tensor[(1, 8, 17, 12), float32] {
+  nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 8, 17, 12), float32] */
+}
+"#,
+        r#"
+(access-transpose
+ (compute dot-product
+  (access-cartesian-product
+   (access (access-tensor weights) 1)
+   (access
+    (access-squeeze
+     (access-windows
+      (access
+       (access-pad
+        (access-pad
+         (access-tensor data)
+         zero-padding
+         2 1 3
+        )
+        zero-padding
+        3 2 4
+       )
+       1
+      )
+      (shape 3 3 3)
+      (shape 1 2 3)
+     )
+     1
+    )
+    3
+   )
+  )
+ )
+ (list 1 0 2 3)
+)
+"#,
+        &vec![super::conv2d_relay_to_glenside()]
+    );
+
+    test!(
+        conv1d_relay_to_glenside,
+        1e-6,
+        r#"
+    #[version = "0.0.5"]
+    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 19), float32] {
+        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 19), float32] */
+    }
+"#,
+        r#"
+(access-transpose
+ (compute dot-product
+   (access-cartesian-product
+    (access (access-tensor weights) 1)
+    (access-squeeze
+     (access-windows
+      (access
+       (access-pad
+        (access-tensor data)
+        zero-padding
+        2 3 4
+       )
+       1
+      )
+      (shape 3 3)
+      (shape 1 2)
+     )
+     1
+    )
+   )
+ )
+ (list 1 0 2)
+)
+"#,
+        &vec![super::conv1d_relay_to_glenside()]
+    );
+
+    test!(
+        softmax_relay_to_glenside_0,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
+  nn.softmax(%x) /* ty=Tensor[(3), float32] */
+}
+"#,
+        r#"
+(compute softmax (access (access-tensor x) 0))
+"#,
+        &vec![super::softmax_relay_to_glenside()],
+        &vec![RelayOperator::RelaySoftmax]
+    );
+
+    test!(
+        softmax_relay_to_glenside_1,
+        1e-7,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3), float32]) -> Tensor[(3), float32] {
+  %0 = nn.softmax(%x); /* ty=Tensor[(3), float32] */
+  nn.softmax(%0) /* ty=Tensor[(3), float32] */
+}
+"#,
+        r#"
+(compute softmax (access (compute softmax (access (access-tensor x) 0)) 0))
+"#,
+        &vec![super::softmax_relay_to_glenside()],
+        &vec![RelayOperator::RelaySoftmax]
+    );
+
+    test!(
+        relu_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  nn.relu(%x)
+}
+"#,
+        r#"
+(compute relu (access-tensor x))
+"#,
+        &vec![super::relu_relay_to_glenside()],
+        &vec![RelayOperator::RelayReLU]
+    );
+
+    test!(
+        negative_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  negative(%x)
+}
+"#,
+        r#"
+(compute negative (access-tensor x))
+"#,
+        &vec![super::negative_relay_to_glenside()],
+        &vec![RelayOperator::RelayNegative]
+    );
+
+    test!(
+        sqrt_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 32, 32), float32] {
+  sqrt(%x)
+}
+"#,
+        r#"
+(compute sqrt (access-tensor x))
+"#,
+        "",
+        // TODO(@gussmith23) Hardcoding test to f32
+        Uniform::new(0f32, 1f32),
+        &vec![super::sqrt_relay_to_glenside()],
+        &vec![RelayOperator::RelaySqrt]
+    );
+
+    test!(
+        max_pool2d_nchw_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), float32] {
+  nn.max_pool2d(%data, pool_size=[3, 4], strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 3, 17, 12), float32] */
+}
+"#,
+        r#"
+(compute reduce-max
+ (access-windows
+  (access
+   (access-pad
+    (access-pad
+     (access-tensor data)
+     min-padding
+     2 1 3
+    )
+    min-padding
+    3 2 4
+   )
+   2
+  )
+  (shape 3 4)
+  (shape 2 3)
+ )
+)
+"#,
+        &vec![super::max_pool2d_relay_to_glenside_nchw()],
+        &vec![RelayOperator::RelayMaxPool2D]
+    );
+
+    test!(
+        global_avg_pool2d_nchw_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1), float32] {
+  nn.global_avg_pool2d(%x) /* ty=Tensor[(1, 3, 1, 1), float32] */
+}
+"#,
+        r#"
+(access
+ (access-insert-axis
+  (access-insert-axis
+   (compute reduce-mean (access (access-tensor x) 2))
+   2
+  )
+  3
+ )
+ 2
+)
+"#,
+        &vec![super::global_avg_pool2d_relay_to_glenside_nchw()],
+        &vec![RelayOperator::RelayGlobalAvgPool2D]
+    );
+
+    // TODO(@gussmith23) ?axis should be 2 here, but we can't match an Int64
+    // literal. We need to fix the confusion over all of the literals in
+    // Glenside, and then once we do, we need to fix this.
+    test!(
+        #[should_panic = "Symbol ?axis not in environment"]
+        expand_dims_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 1, 1, 1, 32, 32), float32] {
+  expand_dims(%data, axis=2, num_newaxis=3) /* ty=Tensor[(1, 3, 1, 1, 1, 32, 32), float32] */
+}
+"#,
+        r#"
+(access-insert-axis (access-insert-axis (access-insert-axis (access-tensor data) ?axis) ?axis) ?axis)
+"#,
+        &vec![
+            super::expand_dims_relay_to_glenside(),
+            super::eliminate_expand_dims_zero_num_newaxis()
+        ],
+        &vec![RelayOperator::RelayExpandDims]
+    );
+
+    test!(
+        pad_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 2, 3), float32]) {
+    nn.pad(%data, 0, pad_width=[[0, 0], [1, 0], [1, 1]])
+}"#,
+        r#"
+(access-pad 
+ (access-pad 
+  (access-pad 
+   (access-tensor data)
+   zero-padding 0 0 0)
+  zero-padding 1 1 0)
+ zero-padding 2 1 1)
+"#,
+        &vec![super::pad_relay_to_glenside(),],
+        &vec![RelayOperator::RelayPad]
+    );
+
+    test!(
+        dense_relay_to_glenside,
+        1e-5,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(16, 32), float32], %weights: Tensor[(64, 32), float32]) -> Tensor[(16, 64), float32] {
+  nn.dense(%data, %weights, units=64) /* ty=Tensor[(16, 64), float32] */
+}
+"#,
+        r#"
+(compute dot-product
+ (access-cartesian-product
+  (access (access-tensor data) 1)
+  (access (access-tensor weights) 1)
+ )
+)
+"#,
+        &vec![super::dense_relay_to_glenside(),],
+        &vec![RelayOperator::RelayDense]
+    );
+
+    test!(
+        add_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  add(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#,
+        &vec![super::add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayAdd]
+    );
+
+    test!(
+        multiply_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  multiply(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-mul
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#,
+        &vec![super::multiply_relay_to_glenside(),],
+        &vec![RelayOperator::RelayMultiply]
+    );
+
+    test!(
+        divide_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1024, 1, 1), float32], %y: Tensor[(1, 1024, 7, 7), float32]) -> Tensor[(1, 1024, 7, 7), float32] {
+  divide(%x, %y) /* ty=Tensor[(1, 1024, 7, 7), float32] */
+}
+"#,
+        r#"
+(compute elementwise-div
+ (access-pair
+  (access (access-broadcast (access-insert-axis (access-tensor x) 0) (access-shape (shape 1 1024 7 7) (shape))) 0)
+  (access (access-tensor y) 0)
+ )
+)
+"#,
+        &vec![super::divide_relay_to_glenside(),],
+        &vec![RelayOperator::RelayDivide]
+    );
+
+    test!(
+        batch_flatten_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(2, 3, 3, 4, 100), float32]) -> Tensor[(2, 3600), float32] {
+  nn.batch_flatten(%x)
+}
+"#,
+        r#"
+(access-flatten (access (access-tensor x) 1))
+"#,
+        &vec![super::batch_flatten_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBatchFlatten]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_0,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=0)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 1)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_1,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=1)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 0)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_neg_1,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=-1)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 0)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        bias_add_relay_to_glenside_axis_neg_2,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 3), float32], %y: Tensor[(3), float32]) -> Tensor[(3, 3), float32] {
+  nn.bias_add(%x, %y, axis=-2)
+}
+"#,
+        r#"
+(compute elementwise-add
+ (access-pair
+  (access (access-tensor x) 0)
+  (access
+   (access-broadcast
+    (access-insert-axis (access-tensor y) 1)
+    (access-shape (shape 3 3) (shape))
+   )
+   0
+  )
+ )
+)
+"#,
+        &vec![super::bias_add_relay_to_glenside(),],
+        &vec![RelayOperator::RelayBiasAdd]
+    );
+
+    test!(
+        concatenate_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 5, 1, 1), float32], %y: Tensor[(1, 3, 1, 1), float32]) {
+    %0 = (%x, %y);
+    concatenate(%0, axis=1)
+}
+"#,
+        r#"
+(access-concatenate (access-tensor x) (access-tensor y) 1)
+"#,
+        &vec![
+            super::concatenate_relay_to_glenside(),
+            super::simplify_tuple_get_item()
+        ],
+        &vec![RelayOperator::RelayConcatenate]
+    );
+
+    test!(
+        transpose_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(3, 5), float32]) {
+    transpose(%x, axes=[1, 0])
+}
+"#,
+        r#"
+(access-transpose (access-tensor x) (list 1 0))
+        "#,
+        &vec![super::transpose_relay_to_glenside(),],
+        &vec![RelayOperator::RelayTranspose]
+    );
+
+    test!(
+        reshape_relay_to_glenside,
+        1e-60,
+        r#"
+    #[version = "0.0.5"]
+    def @main(%x: Tensor[(1, 255, 52, 52), float32]) {
+        reshape(%x, newshape=[-1, 3, 85, 52, 52])
+    }
+    "#,
+        r#"
+    (access-reshape (access-tensor x) (access-shape (shape 1 3 85 52 52) (shape )))
+    "#,
+        &vec![super::reshape_relay_to_glenside(),],
+        &vec![RelayOperator::RelayReshape]
+    );
+
+    test!(
+        squeeze_relay_to_glenside,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
+    squeeze(%x, axis=[2, 3])
+}
+"#,
+        r#"
+(access-squeeze (access-squeeze (access-tensor x) 3) 2)
+        "#,
+        &vec![super::squeeze_relay_to_glenside(),],
+        &vec![RelayOperator::RelaySqueeze]
+    );
 }

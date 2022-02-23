@@ -1,3 +1,4 @@
+use crate::language::RelayOperator::*;
 use egg::{define_language, EGraph, Id};
 use itertools::{any, multizip, EitherOrBoth::*, Itertools};
 use log::{debug, warn};
@@ -293,7 +294,7 @@ pub enum RelayOperator {
     /// TODO(@gussmith23) How to handle batch norms?
     RelayBatchNormInference,
 
-    /// (relay-operator relay-softmax <data: access> <axis: usize>)
+    /// (relay-operator relay-softmax <data: access> <axis: int>)
     RelaySoftmax,
 
     /// (relay-operator relay-relu <data: access>)
@@ -333,7 +334,8 @@ pub enum RelayOperator {
     /// (relay-operator relay-reshape <data: access> <shape: shape>)
     RelayReshape,
 
-    /// (relay-operator relay-conv1d <data: access> <kernel: access>)
+    /// (relay-operator-call relay-conv1d <data: access> <kernel: access>
+    ///  <strides: shape> <padding: shape>)
     RelayConv1D,
 
     /// (relay-operator relay-erf <data: access>)
@@ -348,6 +350,9 @@ pub enum RelayOperator {
     /// (relay-operator relay-multiply <a: access> <b: access>)
     RelayMultiply,
 
+    /// (relay-operator relay-divide <a: access> <b: access>)
+    RelayDivide,
+
     /// (relay-operator relay-sigmoid <data: access>)
     RelaySigmoid,
 
@@ -357,7 +362,10 @@ pub enum RelayOperator {
     /// (relay-operator relay-minimum <a:access> <b: access>)
     RelayMinimum,
 
-    /// (relay-opeartor relay-conv2d <data: access> <kernel: access> <strides: shape> <padding: shape>)
+    /// (relay-operator relay-conv2d <data: access> <kernel: access>
+    ///  <strides: shape> <padding: shape> <group: usize>
+    ///  <channels: usize> <kernel_size: shape> <activation_layout>
+    ///  <kernel_layout>)
     RelayConv2D,
 
     /// (relay-operator relay-split <data: access> <indices_or_sections: usize> <axis: usize>)
@@ -401,11 +409,38 @@ pub enum RelayOperator {
     RelayBatchMatmul,
 
     RelayZeros,
+
+    RelaySqrt,
+
+    RelayNegative,
+
+    /// (relay-operator-call relay-expand-dims <data: access> <axis: int> <num_newaxis: int>)
+    RelayExpandDims,
+
+    /// (relay-operator-call relay-pad <data: access>
+    ///                                <pad_width: shape>)
+    /// Note that the pad_width is a flattened version of the list of tuples
+    /// which is used in Relay.
+    /// Padding value is assumed to be zero.
+    RelayPad,
+
+    /// (relay-operator-call relay-concatenate <to-concat: Tuple of access> <axis: num>)
+    RelayConcatenate,
+
+    /// (relay-operator-call relay-transpose <data: access> <axes: list of num>)
+    RelayTranspose,
+
+    /// (relay-operator-call relay-squeeze <data: access> <axes: list of num>)
+    RelaySqueeze,
 }
+
 impl FromStr for RelayOperator {
     type Err = ();
     fn from_str(input: &str) -> Result<RelayOperator, Self::Err> {
         match input {
+            "relay-squeeze" => Ok(RelayOperator::RelaySqueeze),
+            "relay-transpose" => Ok(RelayOperator::RelayTranspose),
+            "relay-concatenate" => Ok(RelayOperator::RelayConcatenate),
             "relay-batch-norm-inference" => Ok(RelayOperator::RelayBatchNormInference),
             "relay-softmax" => Ok(RelayOperator::RelaySoftmax),
             "relay-relu" => Ok(RelayOperator::RelayReLU),
@@ -441,6 +476,11 @@ impl FromStr for RelayOperator {
             "relay-layer-norm" => Ok(RelayOperator::RelayLayerNorm),
             "relay-batch-matmul" => Ok(RelayOperator::RelayBatchMatmul),
             "relay-zeros" => Ok(RelayOperator::RelayZeros),
+            "relay-negative" => Ok(RelayOperator::RelayNegative),
+            "relay-sqrt" => Ok(RelayOperator::RelaySqrt),
+            "relay-expand-dims" => Ok(RelayOperator::RelayExpandDims),
+            "relay-pad" => Ok(RelayOperator::RelayPad),
+            "relay-divide" => Ok(RelayOperator::RelayDivide),
             _ => Err(()),
         }
     }
@@ -451,6 +491,9 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
+                RelayOperator::RelaySqueeze => "relay-squeeze",
+                RelayOperator::RelayTranspose => "relay-transpose",
+                RelayOperator::RelayConcatenate => "relay-concatenate",
                 RelayOperator::RelayStridedSlice => "relay-strided-slice",
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
                 RelayOperator::RelaySoftmax => "relay-softmax",
@@ -487,6 +530,11 @@ impl Display for RelayOperator {
                 RelayOperator::RelayLayerNorm => "relay-layer-norm",
                 RelayOperator::RelayBatchMatmul => "relay-batch-matmul",
                 RelayOperator::RelayZeros => "relay-zeros",
+                RelayOperator::RelaySqrt => "relay-sqrt",
+                RelayOperator::RelayNegative => "relay-negative",
+                RelayOperator::RelayExpandDims => "relay-expand-dims",
+                RelayOperator::RelayPad => "relay-pad",
+                RelayOperator::RelayDivide => "relay-divide",
             }
         )
     }
@@ -1874,6 +1922,232 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelaySqueeze => {
+                        assert_eq!(params.len(), 3);
+                        let a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a,
+                            _ => panic!(),
+                        };
+                        let axes = match &egraph[params[2]].data {
+                            MyAnalysisData::List(v) => v,
+                            _ => panic!(),
+                        };
+
+                        let new_shape = a
+                            .as_vec()
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, v)| {
+                                if axes.contains(&i) {
+                                    assert_eq!(
+                                        *v, 1,
+                                        "Cannot squeeze an axis unless its value is 1."
+                                    );
+                                    None
+                                } else {
+                                    Some(*v)
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        if any(&[a], |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&new_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&new_shape)),
+                            contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
+                        })
+                    }
+                    crate::language::RelayOperator::RelayTranspose => {
+                        assert_eq!(params.len(), 3);
+                        let a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a,
+                            _ => panic!(),
+                        };
+                        let axes = match &egraph[params[2]].data {
+                            MyAnalysisData::List(v) => v,
+                            _ => panic!(),
+                        };
+                        assert_eq!(a.as_vec().len(), axes.len());
+
+                        let new_shape: Vec<_> = axes.iter().map(|&i| a.as_vec()[i]).collect();
+
+                        if any(&[a], |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&new_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&new_shape)),
+                            contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
+                        })
+                    }
+                    crate::language::RelayOperator::RelayConcatenate => {
+                        assert_eq!(params.len(), 3);
+
+                        let axis = match &egraph[params[1]].data {
+                            MyAnalysisData::Usize(v) => *v as i64,
+                            MyAnalysisData::Int32(v) => *v as i64,
+                            _ => panic!(),
+                        };
+
+                        // In the future we need to handle negative axis, but
+                        // for now I think they'll always be positive.
+                        assert!(axis >= 0);
+                        let axis = axis as usize;
+
+                        let access_pattern_iter = match &egraph[params[2]].data {
+                            MyAnalysisData::Tuple(t) => t,
+                            _ => panic!(),
+                        }
+                        .iter()
+                        .map(|a| match a {
+                            MyAnalysisData::AccessPattern(a) => a,
+                            _ => panic!(),
+                        });
+
+                        let mut shapes = access_pattern_iter
+                            .clone()
+                            .map(AccessPatternData::as_vec)
+                            .collect::<Vec<_>>();
+
+                        assert!(shapes.len() > 0);
+
+                        let new_shape = shapes
+                            .drain(..)
+                            .reduce(|acc, s| {
+                                acc.iter()
+                                    .zip(s.iter())
+                                    .enumerate()
+                                    .map(|(i, (acc_val, this_val))| {
+                                        if i == axis {
+                                            acc_val + this_val
+                                        } else {
+                                            assert_eq!(acc_val, this_val);
+                                            *acc_val
+                                        }
+                                    })
+                                    .collect()
+                            })
+                            .unwrap();
+
+                        if any(access_pattern_iter.clone(), |a| !a.zero_regions.is_empty()) {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&new_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&new_shape)),
+                            contains_accelerator_calls: any(access_pattern_iter, |a| {
+                                a.contains_accelerator_calls
+                            }),
+                        })
+                    }
+                    crate::language::RelayOperator::RelayPad => {
+                        assert_eq!(params.len(), 3);
+
+                        let a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a.clone(),
+                            _ => panic!(),
+                        };
+                        let pad_width = match &egraph[params[2]].data {
+                            MyAnalysisData::Shape(ShapeData { shape, .. }) => shape,
+                            _ => panic!(),
+                        };
+                        assert_eq!(
+                            pad_width.ndim(),
+                            2 * a.as_vec().len(),
+                            "There should be two padding values per tensor dimension."
+                        );
+
+                        let newshape = a
+                            .as_vec()
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| pad_width[2 * i] + *v + pad_width[2 * i + 1])
+                            .collect::<Vec<_>>();
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&newshape[..a.shape.ndim()]),
+                            item_shape: IxDyn(&newshape[a.shape.ndim()..]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&newshape)),
+                            contains_accelerator_calls: a.contains_accelerator_calls,
+                        })
+                    }
+                    crate::language::RelayOperator::RelayExpandDims => {
+                        assert_eq!(params.len(), 4);
+
+                        let mut a = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a.clone(),
+                            _ => panic!(),
+                        };
+                        // TODO(@gussmith23) This pattern appears a lot, and it's annoying.
+                        let axis: i64 = match &egraph[params[2]].data {
+                            MyAnalysisData::Int64(v) => *v,
+                            _ => panic!(),
+                        };
+                        let num_axis: i64 = match &egraph[params[3]].data {
+                            MyAnalysisData::Int64(v) => *v,
+                            MyAnalysisData::Usize(v) => *v as i64,
+                            _ => panic!(),
+                        };
+
+                        // From the TVM docs.
+                        assert!(-(a.as_vec().len() as i64) - 1 <= axis);
+                        assert!(axis <= a.as_vec().len() as i64);
+
+                        // Convert negative axis.
+                        let axis: usize = if axis < 0 {
+                            (axis + (a.as_vec().len() as i64 + 1)) as usize
+                        } else {
+                            axis as usize
+                        };
+
+                        if axis < a.shape.ndim() {
+                            a.shape = IxDyn(
+                                &a.shape
+                                    .slice()
+                                    .iter()
+                                    .take(axis)
+                                    .chain(std::iter::repeat(&1).take(num_axis as usize))
+                                    .chain(a.shape.slice().iter().skip(axis))
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            );
+                        } else {
+                            let axis = axis - a.shape.ndim();
+                            a.item_shape = IxDyn(
+                                &a.item_shape
+                                    .slice()
+                                    .iter()
+                                    .take(axis)
+                                    .chain(std::iter::repeat(&1).take(num_axis as usize))
+                                    .chain(a.item_shape.slice().iter().skip(axis))
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                            );
+                        }
+
+                        MyAnalysisData::AccessPattern(a)
+                    }
                     crate::language::RelayOperator::RelayZeros => {
                         let s = match params[1..]
                             .iter()
@@ -2135,6 +2409,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         })
                     }
                     crate::language::RelayOperator::RelayAdd
+                    | crate::language::RelayOperator::RelayDivide
                     | crate::language::RelayOperator::RelayMultiply
                     | crate::language::RelayOperator::RelayMaximum
                     | crate::language::RelayOperator::RelayMinimum => {
@@ -2352,7 +2627,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(ShapeData { shape: strides, .. }), MyAnalysisData::Shape(ShapeData { shape: padding, .. })] =>
                             {
                                 let data_shape = data
                                     .shape
@@ -2371,10 +2646,29 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 assert_eq!(data_shape.len(), 3);
                                 assert_eq!(weight_shape.len(), 3);
                                 assert_eq!(data_shape[1], weight_shape[1]);
+                                assert_eq!(strides.ndim(), 1);
+                                assert_eq!(padding.ndim(), 2);
                                 let output_shape = IxDyn(&[
                                     data_shape[0],
                                     weight_shape[0],
-                                    data_shape[2] - weight_shape[2] + 1,
+                                    // Here we just compute the new shape of the
+                                    // dimension after the convolution. I
+                                    // realize it looks convoluted. I wanted to
+                                    // use the following function because we
+                                    // repeat this calculation all over the
+                                    // codebase, and I want one central place
+                                    // where we implement the calculation. I
+                                    // match on the result just to make sure
+                                    // it's the expected length.
+                                    match access_windows_resulting_shape(
+                                        &IxDyn(&[padding[0] + data_shape[2] + padding[1]]),
+                                        &IxDyn(&[weight_shape[2]]),
+                                        strides,
+                                    )[..]
+                                    {
+                                        [result] => result,
+                                        _ => panic!("unexpected length result"),
+                                    },
                                 ]);
                                 AccessPatternData {
                                     shape: IxDyn(&[]),
@@ -2385,7 +2679,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         || weight.contains_accelerator_calls,
                                 }
                             }
-                            _ => panic!("Conv1D can only accept 2 params"),
+                            _ => panic!("Incorrect conv1d arguments"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -2748,7 +3042,7 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::RelayReLU => {
+                    crate::language::RelayOperator::RelayReLU | RelayNegative | RelaySqrt => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
@@ -3133,7 +3427,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                     );
                     access.zero_regions = HashMap::default();
                 }
-                let axis = MyAnalysis::get_usize(axis_id, egraph);
+                let axis = match egraph[axis_id].data {
+                    MyAnalysisData::Int64(v) => v as usize,
+                    MyAnalysisData::Usize(v) => v,
+                    _ => panic!(),
+                };
 
                 assert!(axis <= access.shape.ndim() + access.item_shape.ndim());
 
@@ -3196,7 +3494,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             &AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
                 let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
-                    _ => panic!(),
+                    _ => panic!("Expected AccessPattern, got {:#?}", &egraph[access_id].data),
                 };
                 let pad_type = match &egraph[pad_type_id].data {
                     MyAnalysisData::PadType(t) => t,
