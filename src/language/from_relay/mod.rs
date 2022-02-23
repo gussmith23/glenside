@@ -1363,7 +1363,15 @@ fn compile_expression(
                             (compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id), Some(operator_call))
                         },
                         // TODO(mike): add operator support for these following
-                        "multiply" => (compute(glenside_expr, ComputeType::ElementwiseMul, pair_id), None),
+                        "multiply" => {
+                            let mult_operator_id = glenside_expr.add(Language::RelayOperator(
+                                crate::language::RelayOperator::RelayMultiply,
+                            ));
+                            let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                                vec![mult_operator_id, a_id, b_id].into_boxed_slice(),
+                            ));
+                            (compute(glenside_expr, ComputeType::ElementwiseMul, pair_id), Some(operator_call))
+                        }
                         "divide" => (compute(glenside_expr, ComputeType::ElementwiseDiv, pair_id), None),
                         _ => unreachable!(),
                     }
@@ -1656,6 +1664,38 @@ fn compile_expression(
                         vec![op_id, data_id, weight_id].into_boxed_slice()
                     ));
                     (conv1d_opcall, None)
+                }
+                "erf" => {
+                    let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayErf));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id].into_boxed_slice()
+                    ));
+                    (opaque_operator_call, None)
+                }
+                "mean" => {
+                    let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayMean));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::reduce::ReduceAttrs>()
+                        .unwrap();
+                    /// TODO(mike): support reducing on multiple axis?
+                    assert_eq!(attrs.axis.len(), 1);
+                    let axis_id;
+                    if let Ok(axis) = attrs.axis.get(0) {
+                        axis_id = glenside_expr.add(Language::Usize(axis.clone()
+                                                                        .downcast::<tvm::ir::tir::IntImm>()
+                                                                        .unwrap()
+                                                                        .value as usize));
+                    } else {
+                        axis_id = glenside_expr.add(Language::Usize(0 as usize));
+                    }
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id, axis_id].into_boxed_slice()
+                    ));
+                    (opaque_operator_call, None)
                 }
                 "concatenate" => {
                     assert_eq!(call.args.len(), 1);
