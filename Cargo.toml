@@ -51,7 +51,7 @@ git = "https://github.com/gussmith23/rplex"
 # git = "https://github.com/hypercubestart/incubator-tvm"
 git = "ssh://git@github.com/uwsampl/3la-tvm.git"
 # branch = "accelerator-call-op"
-rev = "765b16115ae4d8f8a5680a6e9f59ea22d50d3ef1"
+rev = "42c20ca642b941ef48143ba7f15b5d4113e831c9"
 optional = true
 
 [dependencies.egg]
