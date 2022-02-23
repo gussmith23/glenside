@@ -31,6 +31,7 @@ type EGraph = egg::EGraph<Language, MyAnalysis>;
 
 pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) -> bool {
     if match enode {
+        Language::FlexASRMaxPool(_) => todo!(),
         Language::ConstructTuple(_)
         | Language::TupleGetItem(_) => todo!(),
 
@@ -106,6 +107,7 @@ pub fn filter_obviously_less_preferable_nodes(
 ) -> bool {
     fn is_obviously_extractable(enode: &Language) -> bool {
         match enode {
+            Language::FlexASRMaxPool(_) => todo!(),
             Language::ConstructTuple(_) | Language::TupleGetItem(_) => todo!(),
 
             // Things we should never see.
