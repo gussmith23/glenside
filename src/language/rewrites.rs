@@ -933,7 +933,7 @@ pub fn add_bias_add_to_dense() -> RW {
             .apply_one(egraph, eclass, subst)
         }
     }
-    rewrite!("glenside_matmul_to_relay_dense";
+    rewrite!("add_bias_add_to_dense";
              "(relay-operator-call relay-dense ?x ?w)"
              => { ApplierImpl })
 }
