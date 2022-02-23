@@ -2151,15 +2151,54 @@ fn compile_expression(
 
                     let axis = attrs.axis;
                     assert!(axis >= 0);
-                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let axis_id = glenside_expr.add(Language::Int32(axis.try_into().unwrap()));
+                    let relay_operator_id =
+                        glenside_expr.add(Language::RelayOperator(RelayOperator::RelaySplit));
 
+                    // if let Ok(indices_or_sections) = &attrs
+                    //     .indices_or_sections
+                    //     .clone()
+                    //     .downcast::<tvm::runtime::array::Array<
+                    //     tvm::runtime::object::ObjectRef,
+                    // >>() {
+                    //     println!("Array case");
+                    //     let mut indices_or_sections_ids = Vec::default();
+                    //     for i in 0..indices_or_sections.len() {
+                    //         indices_or_sections_ids.push(
+                    //             glenside_expr.add(Language::Usize(
+                    //                 indices_or_sections
+                    //                     .get(i as isize)
+                    //                     .unwrap()
+                    //                     .downcast::<tvm::ir::tir::IntImm>()
+                    //                     .unwrap()
+                    //                     .value as usize,
+                    //             )),
+                    //         );
+                    //     }
+                    //     let indices_or_sections_id = glenside_expr
+                    //         .add(Language::List(indices_or_sections_ids.into_boxed_slice()));
+                    //     let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                    //         vec![relay_operator_id, indices_or_sections_id, axis_id]
+                    //             .into_boxed_slice(),
+                    //     ));
+                    //     (operator_call, None)
+                    // } else {
                     let indices_or_sections = &attrs
                         .indices_or_sections
                         .clone()
-                        .downcast::<tvm::runtime::array::Array<tvm::runtime::object::ObjectRef>>()
+                        .downcast::<tvm::ir::tir::IntImm>()
                         .unwrap();
+                    let indices_or_sections_id =
+                        glenside_expr.add(Language::Usize(indices_or_sections.value as usize));
+                    let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![relay_operator_id, data_id, indices_or_sections_id, axis_id]
+                            .into_boxed_slice(),
+                    ));
+                    (operator_call, None)
+                    // }
+
                     // assume for yolov3
-                    assert_eq!(indices_or_sections.len(), 2);
+                    /*assert_eq!(indices_or_sections.len(), 2);
 
                     let shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
 
@@ -2222,7 +2261,7 @@ fn compile_expression(
                     (
                         glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice()))),
                         None,
-                    )
+                    )*/
                 }
                 "sigmoid" => {
                     assert_eq!(call.args.len(), 1);
@@ -2770,6 +2809,19 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), 
     // )
     // "#
     //     );
+
+//     test!(
+//         relaysplit,
+//         1e-5,
+//         r#"
+// #[version = "0.0.5"]
+// def @main(%input: Tensor[(1, 5, 4), float32]) {
+//     split(%input, indices_or_sections=5, axis=1)
+// }
+// "#,
+//     r#"
+// (relay-operator-call relay-split ?input 5 1)
+// "#);
 
     test!(
         conv2d,
