@@ -892,7 +892,7 @@ fn compile_expression(
         {
             match primitive_op.name.as_str().unwrap() {
                 "nn.batch_norm" => {
-                    // assert!(simplify_batch_norm_for_inference_hack);
+                    assert!(simplify_batch_norm_for_inference_hack);
                     assert!(
                         use_opaque_operators_for
                             .contains(&crate::language::RelayOperator::RelayBatchNormInference),
