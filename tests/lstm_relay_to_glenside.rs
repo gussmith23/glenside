@@ -1,9 +1,13 @@
 #![cfg(feature = "tvm")]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
-use egg::EGraph;
-use glenside::language::{MyAnalysis, MyAnalysisData};
+use egg::{
+    rewrite, Applier, AstSize, CostFunction, EGraph, ENodeOrVar, Extractor, Id,
+    Language as LanguageTrait, Pattern, RecExpr, Runner, Searcher, Var,
+};
+use glenside::language::{Language, MyAnalysis, MyAnalysisData};
+use num_traits::SaturatingAdd;
 
 /// Importing LSTM to Glenside.
 ///
@@ -60,4 +64,76 @@ fn lstm_relay_to_glenside() {
         },
         _ => panic!(),
     }
+
+    // Build the pattern for LSTM.
+    let pattern = {
+        let filename = PathBuf::from(format!(
+            "{}/models/lstm-for-pldi-pattern.relay",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+        let relay = std::fs::read_to_string(&filename).unwrap();
+        let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
+
+        // The pattern in the Glenside language.
+        let (orig_pattern, _, _, _) = glenside::language::from_relay::from_relay(
+            &module,
+            false,
+            // Has to stay the same as the list above...
+            &vec![
+                glenside::language::RelayOperator::RelaySigmoid,
+                glenside::language::RelayOperator::RelayTanh,
+                glenside::language::RelayOperator::RelayLogSoftmax,
+                glenside::language::RelayOperator::RelayAdd,
+            ],
+        );
+
+        // let pattern_ast = RecExpr::from(
+        //     orig_pattern
+        //         .as_ref()
+        //         .iter()
+        //         .map(|enode| {
+        //             if let crate::Language::Symbol(name) = enode {
+        //                 ENodeOrVar::Var(Var::from_str(&format!("?{}", name)).unwrap())
+        //             } else {
+        //                 // Construct the ENode-type node in the pattern AST by first
+        //                 // recursively converting the children of this node.
+        //                 ENodeOrVar::ENode(enode.clone())
+        //             }
+        //         })
+        //         .collect::<Vec<_>>(),
+        // );
+
+        // Here, we don't use any Vars. This means we won't bind anything with
+        // this pattern, BUT the pattern should be much faster according to Max.
+        let pattern_ast = RecExpr::from(
+            orig_pattern
+                .as_ref()
+                .iter()
+                .map(|enode| ENodeOrVar::ENode(enode.clone()))
+                .collect::<Vec<_>>(),
+        );
+
+        Pattern::from(pattern_ast)
+    };
+
+    assert_eq!(pattern.search(&egraph).len(), 1);
+
+    let rewrite = rewrite!("flexlstm"; 
+        { pattern } => "(accelerator-call flexlstm x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)");
+
+    let runner = Runner::default().with_egraph(egraph).run(vec![&rewrite]);
+
+    let matches = "
+     (accelerator-call flexlstm x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search(&runner.egraph);
+    assert_eq!(matches.len(), 1);
+
+    let matches = "
+     (construct-tuple ?a ?b)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id).unwrap();
+    assert_eq!(matches.substs.len(), 1);
 }
