@@ -638,10 +638,12 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
              if is_dot_product("?op".parse().unwrap()))
 }
 
-// pub fn elementwisemul_to_multiply() -> RW {
-//     rewrite!("elementwisemul_to_multiply";
-//             "(compute elementwise-mul ?lhs ?rhs)" => )
-// }
+pub fn conv2d_on_hlscnn() -> RW {
+    rewrite!("conv2d-on-hlscnn";
+            "(relay-operator-call relay-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)"
+            =>
+            "(accelerator-call hlscnn-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)")
+}
 
 pub fn access_reshape_to_relay() -> RW {
     rewrite!("access-reshape-to-reshape";
@@ -688,15 +690,9 @@ pub fn dot_product_to_linear() -> RW {
     struct ApplierImpl(Var, Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            let x_shape = match_shape_data(&egraph[subst[self.0]].data);
+            // let x_shape = match_shape_data(&egraph[subst[self.0]].data);
             let w_shape = match_shape_data(&egraph[subst[self.1]].data);
-            format!("(compute elementwise-add 
-                        (access-pair 
-                            (access (compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1))) 0) 
-                            (access 
-                                (access-broadcast 
-                                    (access-insert-axis (access-tensor (constant-tensor 0 (shape {} {}))) 0) 
-                                    (access-shape (shape {} {}) (shape))) 0)))", x_shape[0], w_shape[1], x_shape[0], w_shape[1])
+            format!("(accelerator-call flex-linear ?x ?w (constant-tensor 0 (shape 1 {})))", w_shape[1])
                                     .parse::<Pattern<_>>()
                                     .unwrap()
                                     .apply_one(egraph, eclass, subst)
