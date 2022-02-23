@@ -315,6 +315,9 @@ pub enum RelayOperator {
     /// (relay-operator relay-reshape <data: access> <shape: shape>)
     RelayReshape,
 
+    /// (relay-operator relay-conv1d <data: access> <kernel: access>)
+    RelayConv1D,
+
     /// (relay-operator relay-add <a: access> <b: access>)
     RelayAdd,
 
@@ -347,6 +350,7 @@ impl FromStr for RelayOperator {
             "relay-leaky-relu" => Ok(RelayOperator::RelayLeakyReLU),
             "relay-dense" => Ok(RelayOperator::RelayDense),
             "relay-reshape" => Ok(RelayOperator::RelayReshape),
+            "relay-conv1d" => Ok(RelayOperator::RelayConv1D),
             _ => Err(()),
         }
     }
@@ -373,6 +377,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayMinimum => "relay-minimum",
                 RelayOperator::RelayDense => "relay-dense",
                 RelayOperator::RelayReshape => "relay-reshape",
+                RelayOperator::RelayConv1D  => "relay-conv1d",
             }
         )
     }
@@ -1540,6 +1545,28 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     }
                                     _ => panic!("Relay Add only supports 2 params currently")
                                 };
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayConv1D => {
+                        let access = match params[1..]
+                                    .iter()
+                                    .map(|id| &egraph[*id].data)
+                                    .collect::<Vec<_>>()[..] {
+                                        [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] => {
+                                            let data_shape = data.shape.slice();
+                                            let weight_shape = weight.shape.slice();
+                                            assert_eq!(data_shape.len(), 3);
+                                            assert_eq!(weight_shape.len(), 3);
+                                            assert_eq!(data_shape[1], weight_shape[1]);
+                                            let output_shape = IxDyn(&[data_shape[0], weight_shape[0], data_shape[2] - weight_shape[2] + 1]);
+                                            AccessPatternData {
+                                                shape: output_shape,
+                                                item_shape: IxDyn(&[]),
+                                                zero_regions: HashMap::default(),
+                                            }
+                                        }
+                                        _ => panic!("Conv1D can only accept 2 params")
+                                    };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayDense => {
