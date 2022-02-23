@@ -12,6 +12,7 @@ use ndarray::Dimension;
 use ndarray::IxDyn;
 use rand::{rngs::OsRng, Rng};
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 type Expr = EGraph<Language, MyAnalysis>;
@@ -208,10 +209,12 @@ pub fn create_hardware_design_monolithic(
                     assert_eq!(expr[row_id].nodes.len(), 1);
                     &expr[row_id].nodes[0]
                 } {
-                    Language::Usize(u) => assert_eq!(
-                        *u, row,
+                    &Language::Num(u) => assert_eq!(
+                        usize::try_from(u).unwrap(),
+                        row,
                         "Found a systolic array with row size {} not equal to {}",
-                        *u, row
+                        u,
+                        row
                     ),
                     _ => panic!(),
                 };
@@ -219,10 +222,12 @@ pub fn create_hardware_design_monolithic(
                     assert_eq!(expr[col_id].nodes.len(), 1);
                     &expr[col_id].nodes[0]
                 } {
-                    Language::Usize(u) => assert_eq!(
-                        *u, col,
+                    &Language::Num(u) => assert_eq!(
+                        usize::try_from(u).unwrap(),
+                        col,
                         "Found a systolic array with col size {} not equal to {}",
-                        *u, col
+                        u,
+                        col
                     ),
                     _ => panic!(),
                 };
@@ -256,14 +261,14 @@ pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Ve
                     assert_eq!(expr[row_id].nodes.len(), 1);
                     &expr[row_id].nodes[0]
                 } {
-                    Language::Usize(u) => u,
+                    Language::Num(u) => u,
                     _ => panic!(),
                 };
                 let col = match {
                     assert_eq!(expr[col_id].nodes.len(), 1);
                     &expr[col_id].nodes[0]
                 } {
-                    Language::Usize(u) => u,
+                    Language::Num(u) => u,
                     _ => panic!(),
                 };
 
@@ -275,8 +280,8 @@ pub fn create_hardware_design_no_sharing(expr: &Expr) -> (HashMap<Id, usize>, Ve
                         SystolicArrayWeightStationaryParams {
                             // TODO(@gussmith23) hardcoded datatype
                             dtype: DType::Fp32,
-                            rows: *row,
-                            cols: *col,
+                            rows: usize::try_from(*row).unwrap(),
+                            cols: usize::try_from(*col).unwrap(),
                         },
                     ),
                 });
@@ -358,12 +363,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             &Language::NotNanFloat64(_) => {}
-            &Language::Usize(_)
-            | &Language::Int32(_)
-            | &Language::Uint8(_)
-            | &Language::Int64(_)
-            | &Language::Int8(_)
-            | &Language::PadType(_) => (),
+            &Language::Num(_) | &Language::PadType(_) => (),
             &Language::Literal(_)
             | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
             | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
@@ -467,11 +467,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | Language::Symbol(_)
             | Language::AcceleratorFunc(_)
             | &Language::NotNanFloat64(_)
-            | &Language::Usize(_)
-            | &Language::Int32(_)
-            | &Language::Int64(_)
-            | &Language::Int8(_)
-            | &Language::Uint8(_)
+            | &Language::Num(_)
             | &Language::DataType(_)
             | &Language::PadType(_) => (),
 
@@ -1441,11 +1437,7 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
 
             Some(out_var_name)
         }
-        &Language::Usize(u) => Some(format!("{}", u)),
-        &Language::Int32(x) => Some(format!("{}", x)),
-        &Language::Uint8(u) => Some(format!("{}", u)),
-        &Language::Int64(x) => Some(format!("{}", x)),
-        &Language::Int8(x) => Some(format!("{}", x)),
+        &Language::Num(u) => Some(format!("{}", u)),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
