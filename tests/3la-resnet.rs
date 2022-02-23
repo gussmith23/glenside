@@ -24,8 +24,12 @@ fn test_resnet_flexmatch() {
     });
     let rws = vec![
         // glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
-        // glenside::language::rewrites::linear_layer_accelerator_rewrites(),
+        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
         glenside::language::rewrites::access_reshape_to_relay(),
+        glenside::language::rewrites::flatten_unflatten_any_access(),
+        glenside::language::rewrites::bubble_reshape_through_cartesian_product(),
+        glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
+        glenside::language::rewrites::dot_product_with_vta(),
     ];
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
@@ -40,7 +44,7 @@ fn test_resnet_flexmatch() {
         .with_node_limit(500000)
         .with_iter_limit(40)
         .run(&rws);
-    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
+    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction(runner.egraph.total_size() as f64));
     let (_cost, best) = extractor.find_best(id);
     // let json_dump = best.serialize();
     let model = best.pretty(80);
