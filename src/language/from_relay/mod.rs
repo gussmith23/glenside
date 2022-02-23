@@ -3012,25 +3012,25 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 "#
     );
 
-// DO NOT MERGE THIS CHANGE
-// TODO(@gussmith23) We disabled grouped convs for PLDI, and so this test
-// doesn't work. We can't ignore tests in this macro yet, so I'm commenting it
-// out. DO NOT MERGE THIS INTO MAIN!
-//    // The first part of a separable convolution, as seen in Mobilenet.
-//    test!(
-//        conv2d_depthwise_separable_stage1,
-//        1e-6,
-//        r#"
-//#[version = "0.0.5"]
-//def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 3, 38, 20), float32] {
-//  nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3)
-//}
-//"#,
-//        // TODO(@gussmith23) I'm being lazy here
-//        r#"
-//(access-concatenate ?a ?b ?c)
-//"#
-//    );
+    // DO NOT MERGE THIS CHANGE
+    // TODO(@gussmith23) We disabled grouped convs for PLDI, and so this test
+    // doesn't work. We can't ignore tests in this macro yet, so I'm commenting it
+    // out. DO NOT MERGE THIS INTO MAIN!
+    //    // The first part of a separable convolution, as seen in Mobilenet.
+    //    test!(
+    //        conv2d_depthwise_separable_stage1,
+    //        1e-6,
+    //        r#"
+    //#[version = "0.0.5"]
+    //def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 3, 38, 20), float32] {
+    //  nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3)
+    //}
+    //"#,
+    //        // TODO(@gussmith23) I'm being lazy here
+    //        r#"
+    //(access-concatenate ?a ?b ?c)
+    //"#
+    //    );
 
     // TODO(@gussmith23) Relay/TVM doesn't seem to like nhwc w/o hwoi
     // So we can't run a test like this til we support hwoi!
