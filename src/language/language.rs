@@ -353,6 +353,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-minimum <a:access> <b: access>)
     RelayMinimum,
+
+    /// (relay-opeartor relay-conv2d <data: access> <kernel: access> <strides: shape> <padding: shape>)
+    RelayConv2D,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -378,6 +381,7 @@ impl FromStr for RelayOperator {
             "relay-erf" => Ok(RelayOperator::RelayErf),
             "relay-mean" => Ok(RelayOperator::RelayMean),
             "relay-multiply" => Ok(RelayOperator::RelayMultiply),
+            "relay-conv2d" => Ok(RelayOperator::RelayConv2D),
             _ => Err(()),
         }
     }
@@ -408,6 +412,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayErf => "relay-erf",
                 RelayOperator::RelayMean => "relay-mean",
                 RelayOperator::RelayMultiply => "relay-mul",
+                RelayOperator::RelayConv2D => "relay-conv2d",
             }
         )
     }
@@ -1670,6 +1675,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let a_ndim = a.shape.ndim() + a.item_shape.ndim();
                         let b_ndim = b.shape.ndim() + b.item_shape.ndim();
 
+                        // println!("{:?}\na: {:?} {:?}\nb: {:?} {:?}", op_type, a.shape.slice(), a.item_shape.slice(), b.shape.slice(), b.item_shape.slice());
+                        // println!("{:?}\n{:?}", &egraph[params[1]].nodes[0], &egraph[params[2]].nodes[0]);
+
                         let new_shape = std::iter::repeat(&1usize)
                             .take(if b_ndim > a_ndim { b_ndim - a_ndim } else { 0 })
                             .chain(a.shape.slice().iter())
@@ -1797,6 +1805,38 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                             _ => panic!("Conv1D can only accept 2 params"),
                         };
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayConv2D => {
+                        let access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..] {
+                                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight),
+                                 MyAnalysisData::Shape(strides), MyAnalysisData::Shape(_padding),
+                                 MyAnalysisData::Usize(_group),
+                                 MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size),
+                                 MyAnalysisData::RelayActivationLayout(_act_layout),  MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
+                                    let data_shape = data.shape
+                                                                .slice()
+                                                                .iter()
+                                                                .chain(data.item_shape.slice().iter())
+                                                                .cloned()
+                                                                .collect::<Vec<_>>();
+                                    let n = data_shape[0].clone();
+                                    let c = channels.clone();
+                                    let access_window_shape = access_windows_resulting_shape(&IxDyn(&data_shape[1..]), &kernel_size.shape, &strides.shape);
+                                    let h = access_window_shape[1];
+                                    let w = access_window_shape[2];
+                                    AccessPatternData {
+                                        shape: IxDyn(&[n, c, h, w]),
+                                        item_shape: IxDyn(&[]),
+                                        relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                        zero_regions: HashMap::default()
+                                    }
+                                 }
+                                 _ => panic!("Cannot parse arguments for Conv2D")
+                            };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayDense => {
