@@ -1075,7 +1075,7 @@ pub fn access_windows_resulting_shape(
     .map(
         |(&dim_len, &kernel_dim_len, &stride): (&usize, &usize, &usize)| {
             let total_dim_len = dim_len;
-            assert!(total_dim_len >= kernel_dim_len);
+            assert!(total_dim_len >= kernel_dim_len, "{} !>= {}", total_dim_len, kernel_dim_len);
             let num_spots = total_dim_len - (kernel_dim_len - 1);
             (num_spots + stride - 1) / stride
         },
