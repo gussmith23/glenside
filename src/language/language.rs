@@ -2174,22 +2174,22 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let c = channels.clone();
                                 match *group {
                                     1 => {
-                                let access_window_shape = access_windows_resulting_shape(
-                                    &IxDyn(&data_shape[1..]),
-                                    &kernel_size.shape,
-                                    &strides.shape,
-                                );
-                                let h = access_window_shape[1];
-                                let w = access_window_shape[2];
-                                AccessPatternData {
-                                    shape: IxDyn(&[n, c, h, w]),
-                                    item_shape: IxDyn(&[]),
-                                    relay_shape: Some(IxDyn(&[n, c, h, w])),
-                                    zero_regions: HashMap::default(),
-                                    contains_accelerator_calls: data.contains_accelerator_calls
-                                        || weight.contains_accelerator_calls,
-                                }
-
+                                        let access_window_shape = access_windows_resulting_shape(
+                                            &IxDyn(&data_shape[1..]),
+                                            &kernel_size.shape,
+                                            &strides.shape,
+                                        );
+                                        let h = access_window_shape[1];
+                                        let w = access_window_shape[2];
+                                        AccessPatternData {
+                                            shape: IxDyn(&[n, c, h, w]),
+                                            item_shape: IxDyn(&[]),
+                                            relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                            zero_regions: HashMap::default(),
+                                            contains_accelerator_calls: data
+                                                .contains_accelerator_calls
+                                                || weight.contains_accelerator_calls,
+                                        }
                                     }
                                     c => {
                                         match act_layout {
@@ -2212,7 +2212,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             .cloned()
                                             .collect::<Vec<_>>();
 
-                                        assert_eq!(weight_shape[1], data_shape[1]/group);
+                                        assert_eq!(weight_shape[1], data_shape[1] / group);
 
                                         let access_window_shape = access_windows_resulting_shape(
                                             &IxDyn(&data_shape[2..]),
@@ -2228,7 +2228,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             item_shape: IxDyn(&[]),
                                             relay_shape: Some(IxDyn(&[n, c, h, w])),
                                             zero_regions: HashMap::default(),
-                                            contains_accelerator_calls: data.contains_accelerator_calls
+                                            contains_accelerator_calls: data
+                                                .contains_accelerator_calls
                                                 || weight.contains_accelerator_calls,
                                         }
                                     }
