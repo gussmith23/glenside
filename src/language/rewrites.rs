@@ -4957,7 +4957,7 @@ mod tests {
         test_logger::ensure_env_logger_initialized();
 
         let mut map = HashMap::default();
-        map.insert("data".to_string(), vec![16, 4]);
+        map.insert("data".to_string(), vec![16, 4, 4]);
 
         // TODO(@gussmith23) change to rn50 maxpool shape
         // Very simple "max pool" layer with unrealistic shapes.
@@ -4965,7 +4965,7 @@ mod tests {
          (compute reduce-max 
           (access-windows 
            (access (access-tensor data) 1) 
-           (shape 4) (shape 4)))
+           (shape 2 2) (shape 2 2)))
          "
         .parse()
         .unwrap();
@@ -4979,26 +4979,48 @@ mod tests {
             super::reassociate_max(2, 2),
             // Tensorize.
             super::flexasr_maxpool(),
-
+            //
             super::flatten_unflatten_any_access(),
+            super::bubble_access_reshape_through_compute_reduce_max(),
         ];
 
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
-            .with_iter_limit(60)
             .run(&rws);
 
         runner.print_report();
 
         let matches = "
-            (compute reduce-max
-             (access
-              (compute reduce-max
-               (access-windows
-                (access-reshape (access-flatten (access-windows (access (access-tensor data) 1) (shape 4) (shape 4))) ?shape0)
-                (shape 2)
-                (shape 2)))
-              2))
+         (access-reshape
+          (compute reduce-max
+           (access
+            (access
+             (access-transpose
+              (flexasr-maxpool
+               (access
+                (access-transpose
+                 (access
+                  (access
+                   (access-transpose
+                    (flexasr-maxpool
+                     (access
+                      (access-transpose
+                       (access-flatten
+                        (access-windows
+                         (access (access-tensor data) 1)
+                         (shape 2 2)
+                         (shape 2 2)))
+                       (list 1 0))
+                      0))
+                    (list 1 0))
+                   1)
+                  1)
+                 (list 1 0))
+                0))
+              (list 1 0))
+             1)
+            1))
+          (access-shape (shape 16 2 2) (shape)))
         "
         .parse::<Pattern<_>>()
         .unwrap()
