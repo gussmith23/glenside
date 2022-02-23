@@ -306,6 +306,8 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-minimum <a:access> <b: access>)
     RelayMinimum,
+
+    RelayCopy
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -349,6 +351,8 @@ impl Display for RelayOperator {
                 RelayOperator::RelayUpSampling => "relay-upsampling",
                 RelayOperator::RelayMaximum => "relay-maximum",
                 RelayOperator::RelayMinimum => "relay-minimum",
+                // vishal
+                RelayOperator::RelayCopy => "relay-copy"
             }
         )
     }
@@ -1348,6 +1352,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayCopy => {
+                        // create correct analysis data for relay ope
+                        egraph[params[1]].data.clone()
+                    }
                     crate::language::RelayOperator::RelayAdd
                     | crate::language::RelayOperator::RelayMaximum
                     | crate::language::RelayOperator::RelayMinimum => {
@@ -2231,6 +2239,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                 ),
             }),
             &AccessReshape([access_id, access_shape_id]) => {
+                println!("{:#?}", egraph[access_id]);
+                println!("{:#?}", egraph[access_shape_id]);
+                println!("{:#?}", {
+                    assert_eq!(egraph[access_id].nodes.len(), 1);
+                    match &egraph[access_id].nodes[0] {
+                        Language::Compute([op_id, _]) => &egraph[*op_id],
+                        _ => panic!(),
+                    } });
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!("Expected an access as the first argument to access-reshape"),
