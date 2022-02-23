@@ -2588,14 +2588,16 @@ mod tests {
     #[test]
     fn flexasr_maxpool() {
         let mut map = HashMap::default();
-        map.insert("a".to_string(), vec![32, 2]);
+        map.insert("a".to_string(), vec![32, 32]);
         let program = "
-         (compute reduce-max (access (access-tensor a) 1))
+         (compute reduce-max (access-windows (access (access-tensor a) 1) (shape 2) (shape 2)))
         "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::flexasr_maxpool()];
@@ -2609,11 +2611,20 @@ mod tests {
         };
 
         let matches = "
-          (flexasr-maxpool (access (access-tensor a) 1))"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+            (access
+             (access-transpose
+              (accelerator-call flex-maxpool
+               (access 
+                (access-transpose 
+                 (access (access-tensor a) 1)
+                 (list 1 0))
+                 0) ?shape)
+              (list 1 0))
+             1)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5146,49 +5157,6 @@ mod tests {
         .unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
-    }
-
-    #[test]
-    fn flexasr_maxpool() {
-        let mut map = HashMap::default();
-        map.insert("a".to_string(), vec![32, 32]);
-        let program = "
-         (compute reduce-max (access-windows (access (access-tensor a) 1) (shape 2) (shape 2)))
-        "
-        .parse()
-        .unwrap();
-        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
-            name_to_shape: map,
-            name_to_dtype: HashMap::default(),
-        });
-        let id = egraph.add_expr(&program);
-
-        let rws = vec![super::flexasr_maxpool()];
-
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
-        match runner.stop_reason.unwrap() {
-            egg::StopReason::Saturated => (),
-            _ => panic!(),
-        };
-
-        let matches = "
-            (access
-             (access-transpose
-              (accelerator-call flex-maxpool
-               (access 
-                (access-transpose 
-                 (access (access-tensor a) 1)
-                 (list 1 0))
-                 0) ?shape)
-              (list 1 0))
-             1)"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
-        .unwrap();
-        assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
