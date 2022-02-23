@@ -78,6 +78,15 @@ define_language! {
         "systolic-array-conv2d-im2col-nchw-oihw-with-blocking" = SystolicArrayConv2dIm2colNchwOihwWithBlocking([Id; 8]),
         "systolic-array-conv2d-im2col-nhwc-hwio-with-blocking" = SystolicArrayConv2dIm2colNhwcHwioWithBlocking([Id; 8]),
 
+        // (flexasr-maxpool <access>)
+        //
+        // Compute's FlexASR's maxpool operator. The input access should be of
+        // shape ((),(t, h)) where t is the number of timesteps and h is the
+        // number of hidden states. t should be divisible by 2; h should be
+        // divisible by 16. The result is an access pattern with shape ((),(t/2,
+        // h)).
+        //
+        // TODO(@gussmith23) Add tests for flexasr-maxpool.
         "flexasr-maxpool" = FlexASRMaxPool([Id; 1]),
 
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
@@ -1264,13 +1273,18 @@ impl egg::Analysis<Language> for MyAnalysis {
         use Language::*;
         match enode {
             &Language::FlexASRMaxPool([access_id]) => {
-                let mut access = match &egraph[access_id].data  {
+                let mut access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
 
-                assert_eq!(access.item_shape.slice(), &[2]);
-                access.item_shape = IxDyn(&[]);
+                assert_eq!(access.item_shape.ndim(), 2);
+                assert_eq!(access.shape.ndim(), 0);
+                let t = access.item_shape[0];
+                let h = access.item_shape[1];
+                assert_eq!(t%2, 0);
+                assert_eq!(h%16, 0);
+                access.item_shape[0] = access.item_shape[0] / 2;
 
                 MyAnalysisData::AccessPattern(access)
             }
@@ -2668,6 +2682,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         std::line!()
                     );
                 }
+                // TODO(@gussmith23) this should definitely not be commented out...
                 // assert_eq!(
                 //     a.shape.as_array_view().iter().product::<usize>(),
                 //     new_shape.shape.as_array_view().iter().product::<usize>(),
