@@ -9,7 +9,7 @@ fn lstm_relay_to_glenside() {
     test_logger::ensure_env_logger_initialized();
     let relay = r#"
 #[version = "0.0.5"]
-def @main(%data: Tensor[(35, 10), int64], %hidden: (Tensor[(1, 10, 128), float32], Tensor[(1, 10, 128), float32]), %encoder_weight: Tensor[(33278, 128), float32], %rnn_weight_ih_l0: Tensor[(512, 128), float32], %rnn_weight_hh_l0: Tensor[(512, 128), float32], %rnn_bias_ih_l0: Tensor[(512), float32], %rnn_bias_hh_l0: Tensor[(512), float32], %decoder_weight: Tensor[(33278, 128), float32], %decoder_bias: Tensor[(33278), float32]) {
+def @main(%data: Tensor[(35, 10), int64], %hidden0: Tensor[(1, 10, 128), float32], %hidden1: Tensor[(1, 10, 128), float32], %encoder_weight: Tensor[(33278, 128), float32], %rnn_weight_ih_l0: Tensor[(512, 128), float32], %rnn_weight_hh_l0: Tensor[(512, 128), float32], %rnn_bias_ih_l0: Tensor[(512), float32], %rnn_bias_hh_l0: Tensor[(512), float32], %decoder_weight: Tensor[(33278, 128), float32], %decoder_bias: Tensor[(33278), float32]) {
   %0 = cast(%data, dtype="int32");
   %1 = take(%encoder_weight, %0, axis=0);
   %2 = nn.dropout(%1, rate=0.2f);
