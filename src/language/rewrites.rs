@@ -2366,15 +2366,16 @@ pub fn simplify_reduce_max() -> RW {
         }
     }
     rewrite!("simplify-reduce-max";
-             "(compute reduce-max ?a)" => 
-             {ApplierImpl("?a".parse().unwrap())}
-            if constrain_access("?a".parse().unwrap(), |access| {
-                // Lets all of the following pass:
-                // - `((...), ())`
-                // - `((...), (1))`
-                // - `((...), (1, 1, ..., 1))`
-                access.item_shape.slice().iter().product::<usize>() == 1
-            }))
+     "(compute reduce-max ?a)" =>
+     {ApplierImpl("?a".parse().unwrap())}
+    if constrain_access("?a".parse().unwrap(), |access| {
+        // Lets all of the following pass:
+        // - `((...), ())`
+        // - `((...), (1))`
+        // - `((...), (1, 1, ..., 1))`
+        access.item_shape.slice().iter().product::<usize>() == 1
+    }))
+}
 }
 
 #[cfg(test)]
