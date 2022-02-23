@@ -1817,9 +1817,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let a_ndim = a.shape.ndim() + a.item_shape.ndim();
                         let b_ndim = b.shape.ndim() + b.item_shape.ndim();
 
-                        // println!("{:?}\na: {:?} {:?}\nb: {:?} {:?}", op_type, a.shape.slice(), a.item_shape.slice(), b.shape.slice(), b.item_shape.slice());
-                        // println!("{:?}\n{:?}", &egraph[params[1]].nodes[0], &egraph[params[2]].nodes[0]);
-
                         let new_shape = std::iter::repeat(&1usize)
                             .take(if b_ndim > a_ndim { b_ndim - a_ndim } else { 0 })
                             .chain(a.shape.slice().iter())
