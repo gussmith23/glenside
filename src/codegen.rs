@@ -772,12 +772,18 @@ batchNormInference((float*) {X}, (float*) {Y}, {N}, {H}, {W}, {C}, (float*) {gam
                 RelayOperator::RelaySoftmax => {
                     let data = get_c_variable_for_id(expr, ids[1]);
 
-                    // TODO: axis not used since
-                    // softmax c function does softmax over all values
-                    let axis = MyAnalysis::get_usize(ids[2], expr);
-
                     let new_shape = match &expr[id].data {
                         MyAnalysisData::AccessPattern(a) => a.as_vec(),
+                        _ => panic!(),
+                    };
+
+                    // TODO: axis not used since
+                    // softmax c function does softmax over all values
+                    let axis = match expr[ids[2]].data {
+                        MyAnalysisData::Num(v) if v < 0 => {
+                            v + i64::try_from(new_shape.len()).unwrap()
+                        }
+                        MyAnalysisData::Num(v) if v >= 0 => v,
                         _ => panic!(),
                     };
 
