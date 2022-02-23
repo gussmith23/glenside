@@ -297,6 +297,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
         } {
             Language::RelayOperator(_) => {}
             Language::ConstantTensor(_) => {}
+            Language::DataType(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
             Language::AcceleratorFunc(_) => {}
@@ -467,6 +468,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::Usize(_)
             | &Language::Int32(_)
             | &Language::Uint8(_)
+            | &Language::DataType(_)
             | &Language::PadType(_) => (),
 
             &Language::Literal(_)
@@ -670,6 +672,7 @@ fn codegen_helper(
         Language::AcceleratorCall(_ids) => None,
         Language::ConstantTensor(_ids) => None,
         Language::AcceleratorFunc(_) => None,
+        Language::DataType(_) => None,
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
@@ -680,6 +683,7 @@ fn codegen_helper(
                 RelayOperator::RelayConv1D => todo!(),
                 RelayOperator::RelayConv2D => todo!(),
                 RelayOperator::RelayErf => todo!(),
+                RelayOperator::RelayCast => todo!(),
                 RelayOperator::RelayMean => todo!(),
                 RelayOperator::RelaySplit => todo!(),
                 RelayOperator::RelayMultiply => todo!(),

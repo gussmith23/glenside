@@ -130,6 +130,7 @@ where
         &Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
         &Language::RelayOperatorCall(_) => todo!(),
         &Language::RelayOperator(_) => todo!(),
+        &Language::DataType(_) => todo!(),
         &Language::RelayActivationLayout(_) => todo!(),
         &Language::RelayKernelLayout(_) => todo!(),
         &Language::ConstructTuple(_) => todo!(),
