@@ -9,7 +9,7 @@ FROM ubuntu:18.04
 # https://stackoverflow.com/questions/44331836/apt-get-install-tzdata-noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update
-RUN apt install -y git libgtest-dev cmake wget unzip libtinfo-dev libz-dev libcurl4-openssl-dev libopenblas-dev g++ sudo python3-dev libclang-dev curl lsb-release wget software-properties-common python3-pip libssl-dev pkg-config
+RUN apt install -y git libgtest-dev cmake wget unzip libtinfo-dev libz-dev libcurl4-openssl-dev libopenblas-dev g++ sudo python3-dev libclang-dev curl lsb-release wget software-properties-common python3-pip
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -26,14 +26,13 @@ RUN sudo ./llvm.sh 10
 ENV LLVM_CONFIG_PATH=/usr/lib/llvm-10/bin/llvm-config
 
 # Build TVM with Rust bindings
-WORKDIR /root/.ssh
-RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
-WORKDIR /root
-RUN --mount=type=ssh git clone --recursive git@github.com:uwsampl/3la-tvm.git tvm
+# TODO(@gussmith23) Switch this to TVM mainline
+# once https://github.com/apache/incubator-tvm/pull/6563 is merged
+RUN cd /root && git clone https://github.com/hypercubestart/incubator-tvm tvm --recursive
 WORKDIR /root/tvm
-RUN --mount=type=ssh git fetch
-RUN git checkout 405c12370e9195854c533fdd2b1307d43b8335a2
-RUN --mount=type=ssh git submodule sync && git submodule update
+RUN git fetch
+RUN git checkout 4ed759f6b6cafbab707f95b57762913a1f57c021
+RUN git submodule sync && git submodule update
 RUN echo 'set(USE_LLVM $ENV{LLVM_CONFIG_PATH})' >> config.cmake
 RUN echo 'set(USE_RPC ON)' >> config.cmake
 RUN echo 'set(USE_SORT ON)' >> config.cmake
@@ -63,4 +62,4 @@ RUN pip3 install -r requirements.txt
 # Build Glenside.
 WORKDIR /root/glenside
 COPY . .
-RUN --mount=type=ssh cargo build --no-default-features --features "tvm"
+RUN cargo build --no-default-features --features "tvm"
