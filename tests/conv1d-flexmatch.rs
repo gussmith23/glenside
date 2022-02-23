@@ -1,7 +1,7 @@
 #![cfg(feature = "tvm")]
-use egg::{EGraph, Runner, Extractor};
-use glenside::language::{MyAnalysis, serialize_analysis_data};
+use egg::{EGraph, Extractor, Runner};
 use glenside::extraction::AcceleratorCostFunction;
+use glenside::language::{serialize_analysis_data, MyAnalysis};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -25,7 +25,8 @@ fn test_conv1d_flexmatch() {
     // ));
     // let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-    let (expr, shape_info, equiv_worklist) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shape_info, equiv_worklist) =
+        glenside::language::from_relay::from_relay(&module, false, &vec![]);
     let mut env = HashMap::default();
     for (name, shape) in &shape_info {
         env.insert(name.clone(), shape.clone());
@@ -43,9 +44,9 @@ fn test_conv1d_flexmatch() {
         glenside::language::rewrites::dot_product_with_vta(),
         // glenside::language::rewrites::dot_product_to_linear(),
         // glenside::language::rewrites::linear_layer_accelerator_rewrites(),
-    //    glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
-    //    glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
-    //    glenside::language::rewrites::linear_layer_accelerator_rewrites(),
+        //    glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
+        //    glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
+        //    glenside::language::rewrites::linear_layer_accelerator_rewrites(),
     ];
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
@@ -70,7 +71,7 @@ fn test_conv1d_flexmatch() {
     let output_file = PathBuf::from(format!("{}/models/conv2d.json", env!("CARGO_MANIFEST_DIR")));
     let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
     egraph = EGraph::new(MyAnalysis {
-        name_to_shape: env.clone()
+        name_to_shape: env.clone(),
     });
     let (_, id_map) = egraph.add_expr_with_record(&best);
     let mut native_map = HashMap::new();
@@ -78,7 +79,10 @@ fn test_conv1d_flexmatch() {
         native_map.insert(k, v);
     }
     let data_json_dump = serialize_analysis_data(&egraph, &native_map);
-    let data_output = PathBuf::from(format!("{}/models/conv2d_data.json", env!("CARGO_MANIFEST_DIR")));
+    let data_output = PathBuf::from(format!(
+        "{}/models/conv2d_data.json",
+        env!("CARGO_MANIFEST_DIR")
+    ));
     let _ = std::fs::write(data_output, data_json_dump.to_string()).unwrap();
     // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
     // let _ = std::fs::write(output_file, model).unwrap();
