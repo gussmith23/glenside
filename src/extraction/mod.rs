@@ -101,6 +101,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::Compute(_)
             | Language::AccessTranspose(_) => 1,
             | Language::AcceleratorCall(_) => 0,
+            | Language::AcceleratorFunc(_) => 0,
 
             // Penalize specific compute types. In the future, these constructs
             // shouldn't be extractable at all.
@@ -172,6 +173,8 @@ impl CostFunction<Language> for SimpleCostFunction {
 
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,
+            AcceleratorFunc(_) => 1,
+            AcceleratorCall(_) => 1,
             // Extracting hardware atoms is encouraged
             SystolicArray(_) => {
                 if !self.prefer_systolic_arrays_with_blocking {
@@ -227,6 +230,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             // extracting a model
             Language::RelayOperatorCall(_) => 1,
             Language::AcceleratorCall(_)   => 0,
+            Language::AcceleratorFunc(_) => 0,
             _ => usize::MAX
         };
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
