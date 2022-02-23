@@ -201,42 +201,41 @@ pub fn conv2d(
         _ => unreachable!(),
     };
 
+    let operator_data_id = data_id;
+    let operator_weights_id = weights_id;
+
     let activation_layout_id = expr.add(Language::RelayActivationLayout(activation_layout));
     let kernel_layout_id = expr.add(Language::RelayKernelLayout(kernel_layout));
 
     let pad_axis_id = expr.add(Language::Usize(2));
-    let pad_before_id = expr.add(Language::Usize(padding[0]));
+    let pad_top = expr.add(Language::Usize(padding[0]));
+    let pad_bottom = expr.add(Language::Usize(padding[2]));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_top,
+        pad_bottom,
+    ]));
+
+    let groups_id = expr.add(Language::Usize(groups.clone()));
+
+    let pad_axis_id = expr.add(Language::Usize(3));
     let pad_left = expr.add(Language::Usize(padding[1]));
-    let pad_after_id = expr.add(Language::Usize(padding[2]));
     let pad_right = expr.add(Language::Usize(padding[3]));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
         zero_padding_id,
         pad_axis_id,
-        pad_before_id,
-        pad_after_id,
+        pad_left,
+        pad_right,
     ]));
 
     let padding_id = expr.add(Language::Shape(Box::new([
-        pad_before_id,
-        pad_left,
-        pad_after_id,
-        pad_right,
+        pad_top, pad_left, pad_bottom, pad_right,
     ])));
-    let groups_id = expr.add(Language::Usize(groups.clone()));
-
-    let pad_axis_id = expr.add(Language::Usize(3));
-    let pad_before_id = expr.add(Language::Usize(padding[1]));
-    let pad_after_id = expr.add(Language::Usize(padding[3]));
-    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
-    let data_id = expr.add(Language::AccessPad([
-        data_id,
-        zero_padding_id,
-        pad_axis_id,
-        pad_before_id,
-        pad_after_id,
-    ]));
 
     let in_channels = data_shape[1];
 
@@ -267,8 +266,8 @@ pub fn conv2d(
             let operator_call_id = expr.add(Language::RelayOperatorCall(
                 vec![
                     operator_id,
-                    data_id,
-                    weights_id,
+                    operator_data_id,
+                    operator_weights_id,
                     stride_shape_id,
                     padding_id,
                     groups_id,
