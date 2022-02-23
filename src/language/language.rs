@@ -1475,8 +1475,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                             (Some(inp_shape), Some(wgt_shape)) => IxDyn(&[inp_shape[0], wgt_shape[0]]),
                             (_, _) => panic!("Cannot infer type for {:?}", accelerator_func_data.pattern),
                         };
-                        MyAnalysisData::Shape(ShapeData {
-                            shape: out_shape
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            zero_regions: HashMap::default(),
+                            shape: IxDyn(&[]),
+                            item_shape: out_shape.clone(),
+                            relay_shape: Some(out_shape)
                         })
                     },
                       crate::language::AcceleratorFunc::VTAConv1D
