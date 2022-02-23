@@ -235,38 +235,68 @@ impl CostFunction<Language> for AcceleratorCostFunction {
         let base_cost: f64 = match enode {
             // We only consider accelerator calls and relay operators for now when
             // extracting a model
-            Language::List(_)
+            Language::Access(_)
+            | Language::List(_)
             | Language::Shape(_)
-            | Language::RelayKernelLayout(_)
-            | Language::RelayActivationLayout(_)
             | Language::Usize(_)
-            | Language::NotNanFloat64(_)
+            | Language::AcceleratorCall(_)
             | Language::AccessShape(_)
             | Language::AcceleratorFunc(_)
             | Language::Symbol(_)
+            | Language::RelayOperatorCall(_)
             | Language::PadType(_)
             | Language::Int32(_)
             | Language::Uint8(_)
-            | Language::Literal(_)
-            | Language::AccessTensor(_) => 1.0,
-            Language::RelayOperatorCall(_) => self.0 / 100.0,
-            Language::RelayOperator(_) => 1.0,
+            | Language::AccessTensor(_) => 0.0,
+            Language::RelayOperator(op) => match op {
+                crate::language::RelayOperator::RelayReshape
+                | crate::language::RelayOperator::RelayBatchFlatten => 1.0,
+                crate::language::RelayOperator::RelayAdd
+                | crate::language::RelayOperator::RelayMaximum
+                | crate::language::RelayOperator::RelayMinimum
+                | crate::language::RelayOperator::RelayMean
+                | crate::language::RelayOperator::RelayMultiply
+                | crate::language::RelayOperator::RelayErf
+                | crate::language::RelayOperator::RelayReLU
+                | crate::language::RelayOperator::RelaySoftmax
+                | crate::language::RelayOperator::RelayBiasAdd
+                | crate::language::RelayOperator::RelaySigmoid
+                | crate::language::RelayOperator::RelayLeakyReLU => 2.0,
+                crate::language::RelayOperator::RelayDense
+                | crate::language::RelayOperator::RelaySplit => 3.0,
+                crate::language::RelayOperator::RelayConv1D
+                | crate::language::RelayOperator::RelayConv2D
+                | crate::language::RelayOperator::RelayUpSampling
+                | crate::language::RelayOperator::RelayBatchNormInference
+                | crate::language::RelayOperator::RelayAvgPool2D
+                | crate::language::RelayOperator::RelayGlobalAvgPool2D
+                | crate::language::RelayOperator::RelayMaxPool2D => 4.0,
+            },
             Language::AccessTranspose(_)
+            | Language::RelayKernelLayout(_)
+            | Language::RelayActivationLayout(_)
+            | Language::NotNanFloat64(_)
             | Language::AccessPad(_)
-            | Language::Access(_)
             | Language::AccessFlatten(_)
             | Language::AccessWindows(_)
             | Language::AccessBroadcast(_)
-            | Language::AccessInsertAxis(_)
-            | Language::AccessSqueeze(_) => self.0 / 10.0,
+            | Language::AccessSqueeze(_) => 2.0,
 
-            Language::Compute(_)
-            | Language::AccessReshape(_)
-            | Language::ComputeType(_)
-            | Language::AccessSlice(_)
-            | Language::AccessCartesianProduct(_)
-            | Language::AccessPair(_) => self.0,
-            _ => self.0 / 20.0,
+            Language::AccessInsertAxis(_) | Language::AccessCartesianProduct(_) => 5.0,
+
+            Language::Compute(_) => 1.0,
+            Language::AccessReshape(_) => self.0,
+            Language::ComputeType(compute_type) => match compute_type {
+                ComputeType::ReLU
+                | ComputeType::ReduceMean
+                | ComputeType::ElementwiseAdd
+                | ComputeType::ElementwiseMul
+                | ComputeType::DotProduct
+                | ComputeType::ReduceMax => self.0,
+                _ => 100.0,
+            },
+            Language::AccessPair(_) => self.0,
+            _ => self.0 / 10.0,
         };
         enode.fold(base_cost, |sum, id| sum + costs(id))
     }
