@@ -23,12 +23,12 @@ fn test_resmlp() {
         name_to_shape: env.clone(),
         name_to_dtype: dtype_info.iter().cloned().collect(),
     });
-    let rws = vec![
+    let mut rws = vec![
         //    glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
-        glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
-        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
         glenside::language::rewrites::access_reshape_to_relay(),
+        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
     ];
+    rws.extend(glenside::language::rewrites::bubble_reshape_through_linear_generalized());
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
         if let (Some(&new_left), Some(&new_right)) = (id_map.get(&left), id_map.get(&right)) {
@@ -38,9 +38,9 @@ fn test_resmlp() {
     egraph.rebuild();
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
-        .with_time_limit(std::time::Duration::from_secs(5))
+        .with_time_limit(std::time::Duration::from_secs(10))
         .with_node_limit(500000)
-        .with_iter_limit(40)
+        .with_iter_limit(100)
         .run(&rws);
     let extractor = Extractor::new(
         &runner.egraph,
