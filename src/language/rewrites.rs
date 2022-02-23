@@ -5008,8 +5008,10 @@ mod tests {
             super::reassociate_max(2, 2),
             // Tensorize.
             super::flexasr_maxpool(),
-            //
+            // Performs initial flattening of pooling windows into vectors.
             super::flatten_unflatten_any_access(),
+            // Moves the access-reshape coming from the above rewrite upwards
+            // through the program.
             super::bubble_access_reshape_through_compute_reduce_max(),
             // Collapses adjacent operators.
             super::simplify_multiple_accesses(),
