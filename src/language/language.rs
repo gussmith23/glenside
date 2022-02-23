@@ -1,4 +1,4 @@
-use egg::{define_language, merge_if_different, EGraph, Id};
+use egg::{define_language, EGraph, Id};
 use itertools::{multizip, EitherOrBoth::*, Itertools};
 use log::debug;
 use ndarray::{s, Dimension, Ix, IxDyn};
@@ -7,6 +7,16 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
+use std::cmp::Ordering;
+
+pub fn merge_if_different<D: PartialEq>(to: &mut D, new: D) -> bool {
+    if *to == new {
+        false
+    } else {
+        *to = new;
+        true
+    }
+}
 
 define_language! {
     pub enum Language {
@@ -229,6 +239,8 @@ define_language! {
         // (relay-operator-call <relay-operator: RelayOperator> <args>...)
         "relay-operator-call" = RelayOperatorCall(Box<[Id]>),
 
+        "accelerator-call" = AcceleratorCall(Box<[Id]>),
+
         Usize(usize),
 
         // Important that this go after usize, so that usizes are parsed as
@@ -246,6 +258,8 @@ define_language! {
         ComputeType(ComputeType),
 
         Symbol(String),
+
+        AcceleratorFunc(AcceleratorFunc),
     }
 }
 
@@ -298,6 +312,9 @@ pub enum RelayOperator {
     /// (relay-operator relay-dense <data: access> <weight: access>)
     RelayDense,
 
+    /// (relay-operator relay-reshape <data: access> <shape: shape>)
+    RelayReshape,
+
     /// (relay-operator relay-add <a: access> <b: access>)
     RelayAdd,
 
@@ -329,6 +346,7 @@ impl FromStr for RelayOperator {
             "relay-minimum" => Ok(RelayOperator::RelayMinimum),
             "relay-leaky-relu" => Ok(RelayOperator::RelayLeakyReLU),
             "relay-dense" => Ok(RelayOperator::RelayDense),
+            "relay-reshape" => Ok(RelayOperator::RelayReshape),
             _ => Err(()),
         }
     }
@@ -354,6 +372,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayMaximum => "relay-maximum",
                 RelayOperator::RelayMinimum => "relay-minimum",
                 RelayOperator::RelayDense => "relay-dense",
+                RelayOperator::RelayReshape => "relay-reshape",
             }
         )
     }
@@ -516,6 +535,45 @@ impl Display for PadType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AcceleratorFunc {
+    FlexLinear,
+    FlexLSTM,
+    VTADense,
+    VTAConv1D,
+}
+
+impl FromStr for AcceleratorFunc {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<AcceleratorFunc, Self::Err> {
+        match s {
+            "flex-linear" => Ok(AcceleratorFunc::FlexLinear),
+            "flex-lstm"   => Ok(AcceleratorFunc::FlexLSTM),
+            "vta-dense"   => Ok(AcceleratorFunc::VTADense),
+            "vta-conv1d"  => Ok(AcceleratorFunc::VTAConv1D),
+            _             => Err(()),
+        }
+    }
+}
+
+impl Display for AcceleratorFunc {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            AcceleratorFunc::FlexLinear => "flex-linear",
+            AcceleratorFunc::FlexLSTM   => "flex-lstm",
+            AcceleratorFunc::VTADense   => "vta-dense",
+            AcceleratorFunc::VTAConv1D  => "vta-conv1d",
+        })
+    }
+}
+
+pub struct AcceleratorFuncData {
+    name: String,
+    accelerator: String,
+    get_output_shape: Box<dyn Fn(&Vec<MyAnalysisDataLegacyData>) -> MyAnalysisDataLegacyData>,
+}
+
 // TODO(@gussmith23) Pick a better analysis name.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MyAnalysisData {
@@ -532,6 +590,7 @@ pub enum MyAnalysisData {
     RelayOperator(RelayOperator),
     RelayActivationLayout(RelayActivationLayout),
     RelayKernelLayout(RelayKernelLayout),
+    AcceleratorFunc(AcceleratorFuncData),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1025,7 +1084,7 @@ impl MyAnalysis {
 impl egg::Analysis<Language> for MyAnalysis {
     type Data = MyAnalysisData;
 
-    fn merge(&self, to: &mut Self::Data, from: Self::Data) -> bool {
+    fn merge(&self, to: &mut Self::Data, from: Self::Data) -> Option<Ordering> {
         match (to, &from) {
             (
                 MyAnalysisData::AccessPattern(AccessPatternData {
@@ -1039,8 +1098,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     zero_regions: from_zero_regions,
                 }),
             ) => {
-                assert_eq!(to_shape, from_shape);
-                assert_eq!(to_item_shape, from_item_shape);
+                // assert_eq!(to_shape, from_shape);
+                // assert_eq!(to_item_shape, from_item_shape);
 
                 // Merge zero regions.
                 // TODO(@gussmith23) Make sure merge returns `true` infrequently
@@ -1116,11 +1175,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                 }
 
-                changed
+                // changed
+                None
             }
             (to @ _, _) => {
                 // assert_eq!(*to, from);
-                merge_if_different(to, from)
+                merge_if_different(to, from);
+                None
             }
         }
     }
@@ -1326,6 +1387,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                 })
             }
+            AcceleratorCall(ids) => {
+                let accelerator_call = egraph[ids[0]].data;
+                match accelerator_call {
+                    MyAnalysisData::Legacy()
+                }
+            }
             RelayActivationLayout(l) => MyAnalysisData::RelayActivationLayout(l.clone()),
             RelayKernelLayout(l) => MyAnalysisData::RelayKernelLayout(l.clone()),
             ConstructTuple(ids) => {
@@ -1405,13 +1472,41 @@ impl egg::Analysis<Language> for MyAnalysis {
                         })
                     }
                     crate::language::RelayOperator::RelayDense => {
+                        let zero_regions = HashMap::default();
                         let access = match params[1..]
                                         .iter()
                                         .map(|id| &egraph[*id].data)
                                         .collect::<Vec<_>>()[..] {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_)] => { a.clone() }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
+                                let batch = a.shape[0];
+                                let in_feat = a.shape[1];
+                                let out_feat = b.shape[0];
+                                let new_shape = [batch, out_feat, 0, 0];
+                                AccessPatternData {
+                                    shape: IxDyn(&new_shape),
+                                    item_shape: IxDyn(&[]),
+                                    zero_regions,
+                                }
+                            }
                             _ => panic!("Dense current only support 2 parameters")
                         };
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayReshape => {
+                        let zero_regions = HashMap::default();
+                        let access = match params[1..]
+                                    .iter()
+                                    .map(|id| &egraph[*id].data)
+                                    .collect::<Vec<_>>()[..] {
+                                        [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(shape_data)] => {
+                                            AccessPatternData {
+                                                shape: IxDyn(shape_data.shape.slice()),
+                                                item_shape: IxDyn(&[]),
+                                                zero_regions,
+                                            }
+                                        }
+                                        _ => panic!("Cannot match parameters for RelayReshape operator")
+                                    };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayBiasAdd => {
@@ -2262,18 +2357,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                         std::line!()
                     );
                 }
-                assert_eq!(
-                    a.shape.as_array_view().iter().product::<usize>(),
-                    new_shape.shape.as_array_view().iter().product::<usize>(),
-                );
-                assert_eq!(
-                    a.item_shape.as_array_view().iter().product::<usize>(),
-                    new_shape
-                        .item_shape
-                        .as_array_view()
-                        .iter()
-                        .product::<usize>(),
-                );
+                // assert_eq!(
+                //     a.shape.as_array_view().iter().product::<usize>(),
+                //     new_shape.shape.as_array_view().iter().product::<usize>(),
+                // );
                 MyAnalysisData::AccessPattern(new_shape)
             }
             &AccessFlatten(access_id) => {
