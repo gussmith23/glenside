@@ -2279,6 +2279,7 @@ pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
         } }
      if constrain_access("?a".parse().unwrap(),
                          move |a| a.item_shape.ndim() == 1
+                                    && a.item_shape[0] != 0
                                     && a.item_shape[0] % window_len == 0)
     )
 }
