@@ -183,7 +183,11 @@ pub fn conv2d(
 
     // Transpose to OIHW
     let (weights_id, weights_shape, kernel_layout) = match kernel_layout {
-        "OIHW" => (weights_id, Vec::from(weights_shape), RelayKernelLayout::OIHW,),
+        "OIHW" => (
+            weights_id,
+            Vec::from(weights_shape),
+            RelayKernelLayout::OIHW,
+        ),
         "HWIO" => (
             access_transpose(expr, weights_id, &[3, 2, 0, 1]),
             vec![
@@ -214,7 +218,12 @@ pub fn conv2d(
         pad_after_id,
     ]));
 
-    let padding_id = expr.add(Language::Shape(Box::new([pad_before_id, pad_left, pad_after_id, pad_right])));
+    let padding_id = expr.add(Language::Shape(Box::new([
+        pad_before_id,
+        pad_left,
+        pad_after_id,
+        pad_right,
+    ])));
     let groups_id = expr.add(Language::Usize(groups.clone()));
 
     let pad_axis_id = expr.add(Language::Usize(3));
@@ -255,12 +264,21 @@ pub fn conv2d(
                 usize_kw_id,
             ])));
 
-            let operator_call_id = expr.add(Language::RelayOperatorCall(vec![
-                operator_id,
-                data_id, weights_id, stride_shape_id, padding_id,
-                groups_id, channel_id, weights_shape_id,
-                activation_layout_id, kernel_layout_id
-            ].into_boxed_slice()));
+            let operator_call_id = expr.add(Language::RelayOperatorCall(
+                vec![
+                    operator_id,
+                    data_id,
+                    weights_id,
+                    stride_shape_id,
+                    padding_id,
+                    groups_id,
+                    channel_id,
+                    weights_shape_id,
+                    activation_layout_id,
+                    kernel_layout_id,
+                ]
+                .into_boxed_slice(),
+            ));
 
             let data_id = expr.add(Language::AccessWindows([
                 data_id,
@@ -1441,7 +1459,7 @@ fn compile_expression(
                     let mut b_id = get_compiled_expression(call.args.get(1).unwrap());
                     let mut b_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
-                    
+
                     let operator_call_a_id = a_id;
                     let operator_call_b_id = b_id;
 
@@ -1531,7 +1549,8 @@ fn compile_expression(
                                 crate::language::RelayOperator::RelayAdd,
                             ));
                             let operator_call = glenside_expr.add(Language::RelayOperatorCall(
-                                vec![add_operator_id, operator_call_a_id, operator_call_b_id].into_boxed_slice(),
+                                vec![add_operator_id, operator_call_a_id, operator_call_b_id]
+                                    .into_boxed_slice(),
                             ));
                             (
                                 compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id),
@@ -1544,7 +1563,8 @@ fn compile_expression(
                                 crate::language::RelayOperator::RelayMultiply,
                             ));
                             let operator_call = glenside_expr.add(Language::RelayOperatorCall(
-                                vec![mult_operator_id, operator_call_a_id, operator_call_b_id].into_boxed_slice(),
+                                vec![mult_operator_id, operator_call_a_id, operator_call_b_id]
+                                    .into_boxed_slice(),
                             ));
                             (
                                 compute(glenside_expr, ComputeType::ElementwiseMul, pair_id),

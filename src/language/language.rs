@@ -1811,32 +1811,35 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
-                            .collect::<Vec<_>>()[..] {
-                                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight),
-                                 MyAnalysisData::Shape(strides), MyAnalysisData::Shape(_padding),
-                                 MyAnalysisData::Usize(_group),
-                                 MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size),
-                                 MyAnalysisData::RelayActivationLayout(_act_layout),  MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
-                                    let data_shape = data.shape
-                                                                .slice()
-                                                                .iter()
-                                                                .chain(data.item_shape.slice().iter())
-                                                                .cloned()
-                                                                .collect::<Vec<_>>();
-                                    let n = data_shape[0].clone();
-                                    let c = channels.clone();
-                                    let access_window_shape = access_windows_resulting_shape(&IxDyn(&data_shape[1..]), &kernel_size.shape, &strides.shape);
-                                    let h = access_window_shape[1];
-                                    let w = access_window_shape[2];
-                                    AccessPatternData {
-                                        shape: IxDyn(&[n, c, h, w]),
-                                        item_shape: IxDyn(&[]),
-                                        relay_shape: Some(IxDyn(&[n, c, h, w])),
-                                        zero_regions: HashMap::default()
-                                    }
-                                 }
-                                 _ => panic!("Cannot parse arguments for Conv2D")
-                            };
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(_padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            {
+                                let data_shape = data
+                                    .shape
+                                    .slice()
+                                    .iter()
+                                    .chain(data.item_shape.slice().iter())
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                let n = data_shape[0].clone();
+                                let c = channels.clone();
+                                let access_window_shape = access_windows_resulting_shape(
+                                    &IxDyn(&data_shape[1..]),
+                                    &kernel_size.shape,
+                                    &strides.shape,
+                                );
+                                let h = access_window_shape[1];
+                                let w = access_window_shape[2];
+                                AccessPatternData {
+                                    shape: IxDyn(&[n, c, h, w]),
+                                    item_shape: IxDyn(&[]),
+                                    relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                    zero_regions: HashMap::default(),
+                                }
+                            }
+                            _ => panic!("Cannot parse arguments for Conv2D"),
+                        };
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayDense => {
