@@ -2335,6 +2335,12 @@ pub fn simplify_multiple_transposes() -> RW {
     })
 }
 
+/// Both directions of this rewrite are trivial.
+pub fn bubble_access_through_access_transpose() -> RW {
+    rewrite!("bubble-access-through-access-transpose";
+             "(access-transpose (access ?a ?dim) ?list)" => "(access (access-transpose ?a ?list) ?dim)")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -5005,8 +5011,11 @@ mod tests {
             //
             super::flatten_unflatten_any_access(),
             super::bubble_access_reshape_through_compute_reduce_max(),
-            // Collapses adjacent access operators into a single access.
+            // Collapses adjacent operators.
             super::simplify_multiple_accesses(),
+            super::simplify_multiple_transposes(),
+            // Move access through access-transpose, to enable more collapsing.
+            super::bubble_access_through_access_transpose(),
         ];
 
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
@@ -5022,9 +5031,6 @@ mod tests {
              (access-transpose
               (flexasr-maxpool
                (access
-                (access-transpose
-                 (access
-                   (access-transpose
                     (flexasr-maxpool
                      (access
                       (access-transpose
@@ -5035,9 +5041,6 @@ mod tests {
                          (shape 2 2)))
                        (list 1 0))
                       0))
-                    (list 1 0))
-                  1)
-                 (list 1 0))
                 0))
               (list 1 0))
             1))
