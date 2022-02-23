@@ -41,7 +41,7 @@ fn test_resmlp() {
         .with_node_limit(500000)
         .with_iter_limit(40)
         .run(&rws);
-    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
+    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction(runner.egraph.total_size() as f64));
     let (_cost, best) = extractor.find_best(id);
     // let model = best.pretty(80);
     println!("{}", best.pretty(80));

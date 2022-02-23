@@ -639,10 +639,17 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
 }
 
 pub fn conv2d_on_hlscnn() -> RW {
+    fn is_one(g: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match &egraph[subst[g]].data {
+            MyAnalysisData::Usize(group) => *group == 1 as usize,
+            _ => false,
+        }
+    }
     rewrite!("conv2d-on-hlscnn";
             "(relay-operator-call relay-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)"
             =>
-            "(accelerator-call hlscnn-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)")
+            "(accelerator-call hlscnn-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)"
+            if is_one("?group".parse().unwrap()))
 }
 
 pub fn access_reshape_to_relay() -> RW {
