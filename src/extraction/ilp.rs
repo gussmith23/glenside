@@ -529,7 +529,7 @@ pub fn extract_single_expression(
         // will guarantee that its dependent eclasses are extracted. So this
         // check truly just exists because of my own curiosity...if it fails, it
         // shouldn't actually break anything, other than my hypothesis.
-        debug_assert_eq!(variants.len(), 1);
+        debug_assert!(variants.len() == 1, "{:?}", variants);
 
         let selected_variant = variants[0];
 
