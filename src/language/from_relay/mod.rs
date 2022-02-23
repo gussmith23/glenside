@@ -2141,6 +2141,32 @@ fn compile_expression(
 
                     (concatted_id, None)
                 }
+                "round" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let round_op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayRound));
+                    (glenside_expr.add(Language::RelayOperatorCall(
+                        vec![round_op_id, data_id].into_boxed_slice(),
+                    )), None)
+                }
+                "left_shift" => {
+                    assert_eq!(call.args.len(), 2);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let nbits_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let shift_op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayLeftShift));
+                    (glenside_expr.add(Language::RelayOperatorCall(
+                        vec![shift_op_id, data_id, nbits_id].into_boxed_slice(),
+                    )), None)
+                }
+                "right_shift" => {
+                    assert_eq!(call.args.len(), 2);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let nbits_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let shift_op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayRightShift));
+                    (glenside_expr.add(Language::RelayOperatorCall(
+                        vec![shift_op_id, data_id, nbits_id].into_boxed_slice(),
+                    )), None)
+                }
                 "cast" => {
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let attrs = call
