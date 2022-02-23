@@ -1776,7 +1776,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::AcceleratorFunc::HlsCNNConv2D => {
-                        let access = match ids[1..]
+                        let access = match ids[1..ids.len() - 1]
                             .iter()
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
