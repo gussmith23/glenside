@@ -1813,15 +1813,17 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(_padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
                             {
-                                let data_shape = data
+                                let mut data_shape = data
                                     .shape
                                     .slice()
                                     .iter()
                                     .chain(data.item_shape.slice().iter())
                                     .cloned()
                                     .collect::<Vec<_>>();
+                                data_shape[2] += padding.shape[0] + padding.shape[2];
+                                data_shape[3] += padding.shape[1] + padding.shape[3];
                                 let n = data_shape[0].clone();
                                 let c = channels.clone();
                                 let access_window_shape = access_windows_resulting_shape(
