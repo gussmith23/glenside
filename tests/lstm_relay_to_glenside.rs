@@ -900,6 +900,7 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
         &vec![
             glenside::language::RelayOperator::RelaySigmoid,
             glenside::language::RelayOperator::RelayTanh,
+            glenside::language::RelayOperator::RelayLogSoftmax,
         ],
     );
 
