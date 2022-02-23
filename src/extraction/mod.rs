@@ -510,7 +510,10 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 

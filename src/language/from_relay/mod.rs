@@ -627,6 +627,28 @@ pub fn access_pair(
     expr.add(Language::AccessPair([a_id, b_id]))
 }
 
+pub fn dtype_from_type(t: tvm::ir::ty::Type) -> crate::language::DataType {
+    let tensor_type = t
+        .clone()
+        .downcast::<tvm::ir::ty::TensorType>()
+        .unwrap_or_else(|_| {
+            panic!(
+                "Expected type {:?} to have tensor type",
+                *t.upcast::<tvm::runtime::ObjectRef>()
+            )
+        });
+    let dtype = tensor_type.dtype.clone();
+    if dtype == "float32".parse().unwrap() {
+        crate::language::DataType::Float(32)
+    } else if dtype == "int32".parse().unwrap() {
+        crate::language::DataType::Int(32)
+    } else if dtype == "uint8".parse().unwrap() {
+        crate::language::DataType::Uint(8)
+    } else {
+        panic!("Unsupported data type: {:?}", dtype)
+    }
+}
+
 /// Get shape from type
 pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
     let tensor_type = t
@@ -680,16 +702,26 @@ pub fn from_relay(
     module: &IRModule,
     simplify_batch_norm_for_inference_hack: bool,
     use_opaque_operators_for: &Vec<RelayOperator>,
-) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>, Vec<(Id, Id)>) {
+) -> (
+    RecExpr<Language>,
+    Vec<(String, Vec<usize>)>,
+    Vec<(String, crate::language::DataType)>,
+    Vec<(Id, Id)>,
+) {
     let main = module
         .lookup(module.get_global_var("main").unwrap())
         .unwrap();
     let func = main.downcast::<tvm::ir::relay::Function>().unwrap();
     let mut names_and_shapes = Vec::default();
+    let mut names_to_dtype = Vec::default();
     for i in 0..func.params.len() {
         let var = func.params.get(i as isize).unwrap();
         let t = shape_from_type(var.type_annotation.clone());
         names_and_shapes.push((var.name_hint().as_str().unwrap().to_string(), t));
+        names_to_dtype.push((
+            var.name_hint().as_str().unwrap().into(),
+            dtype_from_type(var.type_annotation.clone()),
+        ));
     }
     let mut glenside_expr = RecExpr::default();
     let mut worklist = Vec::default();
@@ -715,7 +747,12 @@ pub fn from_relay(
         }
     }
 
-    (glenside_expr, names_and_shapes, relay_op_equivs)
+    (
+        glenside_expr,
+        names_and_shapes,
+        names_to_dtype,
+        relay_op_equivs,
+    )
 }
 
 // fn to_opaque_relay_call(expr: Expr) -> Option<RecExpr<Language>> {
@@ -2449,7 +2486,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
-                let (expr, shapes_vec, _) = super::from_relay(&module, false, &vec![]);
+                let (expr, shapes_vec, dtypes_vec, _) = super::from_relay(&module, false, &vec![]);
 
                 let mut env = HashMap::default();
                 for (k, v) in &shapes_vec {
@@ -2462,6 +2499,7 @@ mod tests {
                 // from_relay.py. It can be simpler (e.g. collapsing accesses).
                 let mut egraph = EGraph::new(MyAnalysis {
                     name_to_shape: env.clone(),
+                    name_to_dtype: dtypes_vec.into_iter().collect(),
                 });
                 let id = egraph.add_expr(&expr);
 
