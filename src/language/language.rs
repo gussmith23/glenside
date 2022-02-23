@@ -399,6 +399,8 @@ pub enum RelayOperator {
     RelayLayerNorm,
 
     RelayBatchMatmul,
+
+    RelayZeros,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -438,6 +440,7 @@ impl FromStr for RelayOperator {
             "relay-strided-slice" => Ok(RelayOperator::RelayStridedSlice),
             "relay-layer-norm" => Ok(RelayOperator::RelayLayerNorm),
             "relay-batch-matmul" => Ok(RelayOperator::RelayBatchMatmul),
+            "relay-zeros" => Ok(RelayOperator::RelayZeros),
             _ => Err(()),
         }
     }
@@ -483,6 +486,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayLogSoftmax => "relay-log-softmax",
                 RelayOperator::RelayLayerNorm => "relay-layer-norm",
                 RelayOperator::RelayBatchMatmul => "relay-batch-matmul",
+                RelayOperator::RelayZeros => "relay-zeros",
             }
         )
     }
@@ -1870,6 +1874,24 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayZeros => {
+                        let s = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::Shape(s)] => s.shape.clone(),
+
+                            _ => panic!(),
+                        };
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: s.clone(),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(s),
+                            contains_accelerator_calls: false,
+                        })
+                    }
                     crate::language::RelayOperator::RelayBatchMatmul => {
                         let (a0, a1) = match params[1..]
                             .iter()
