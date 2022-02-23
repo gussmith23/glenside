@@ -3597,7 +3597,6 @@ int main() {{
     }
 
     #[test]
-    #[ignore = "DO NOT MERGE. This can pass. I'm pretty sure it has to do with the usize/i32 issue."]
     fn relay_op_softmax() {
         let relay = r#"
 #[version = "0.0.5"]
