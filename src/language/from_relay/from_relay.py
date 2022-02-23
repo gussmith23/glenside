@@ -144,6 +144,11 @@ def _recursive_helper(expr):
             elif expr.op == tvm.ir.Op.get('negative'):
                 return '(compute negative {})' \
                     .format(_recursive_helper(expr.args[0]))
+        
+        elif expr.op.name == "reshape":
+            lhs = _recursive_helper(expr.args[0])
+            shape = expr.attrs.newshape
+            return '(access-reshape {} (shape {}))'.format(lhs, ' '.join(map(str, shape)))
 
         elif expr.op == tvm.ir.Op.get('add') \
            or expr.op == tvm.ir.Op.get('multiply') \
