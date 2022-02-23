@@ -288,7 +288,8 @@ def @main(%data: Tensor[(1, 3, 224, 224), float32], %bn_data_gamma: Tensor[(3), 
 
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shapes_vec, dtypes_vec, _) =
+        glenside::language::from_relay::from_relay(&module, false, &vec![]);
 
     let mut env = HashMap::default();
     for (k, v) in &shapes_vec {
@@ -301,6 +302,7 @@ def @main(%data: Tensor[(1, 3, 224, 224), float32], %bn_data_gamma: Tensor[(3), 
     // from_relay.py. It can be simpler (e.g. collapsing accesses).
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
+        name_to_dtype: dtypes_vec.into_iter().collect(),
     });
 
     egraph.add_expr(&expr);

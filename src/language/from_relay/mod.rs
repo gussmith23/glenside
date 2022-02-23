@@ -1,17 +1,18 @@
 // TODO(@gussmith23) Make sure TVM feature flag is getting tested in CI
 #![cfg(feature = "tvm")]
 
-use crate::language::Language;
+use crate::language::{Language, RelayActivationLayout, RelayKernelLayout};
 use egg::{Id, RecExpr};
 use ordered_float::NotNan;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use tvm::ir::module::*;
 use tvm::ir::relay::*;
 use tvm::ir::tir::*;
 use tvm::ir::ty::*;
+use tvm::runtime::array::Array;
 use tvm::runtime::IsObjectRef;
-use tvm::DataType;
 
 use super::ComputeType;
 use super::PadType;
@@ -31,7 +32,111 @@ pub fn access_transpose(expr: &mut RecExpr<Language>, data_id: Id, transpose_lis
 
     expr.add(Language::AccessTranspose([data_id, transpose_list_id]))
 }
+pub fn conv1d(
+    expr: &mut RecExpr<Language>,
+    data_id: Id,
+    data_shape: &[usize],
+    weights_id: Id,
+    weights_shape: &[usize],
+    strides: &[usize],
+    padding: &[usize],
+    dilation: &[usize],
+    groups: usize,
+    data_layout: &str,
+    kernel_layout: &str,
+    out_layout: &str,
+) -> Id {
+    assert_eq!(data_shape.len(), 3);
+    assert_eq!(weights_shape.len(), 3);
+    assert_eq!(strides.len(), 1);
+    assert_eq!(padding.len(), 2);
+    assert_eq!(dilation.len(), 1);
+    assert_eq!(groups, 1);
 
+    assert!(&["NCW"].contains(&data_layout));
+    assert!(&["OIW"].contains(&kernel_layout));
+    // check if alternative layouts are correct
+    assert_eq!(dilation, [1]);
+    assert_eq!(out_layout, "");
+    /*VISHAL: not sure what this is; are we saying that we always want the output
+    layout to be the same as data_layout */
+
+    //TODO: Make syre data layout is corect (look at Conv2d shuffling for inspiration, or ask Mike which data layout
+    // we need for the minimum and just only assert for that :)
+
+    // let (data_id, data_shape) = match data_layout {
+    //     "NCHW" => (data_id, Vec::from(data_shape)),
+    //     "NHWC" => (
+    //         access_transpose(expr, data_id, &[0, 3, 1, 2]),
+    //         vec![data_shape[0], data_shape[3], data_shape[1], data_shape[2]],
+    //     ),
+    //     _ => unreachable!(),
+    // };
+
+    // // Transpose to OIHW
+    // let (weights_id, weights_shape) = match kernel_layout {
+    //     "OIHW" => (weights_id, Vec::from(weights_shape)),
+    //     "HWIO" => (
+    //         access_transpose(expr, weights_id, &[3, 2, 0, 1]),
+    //         vec![
+    //             weights_shape[3],
+    //             weights_shape[2],
+    //             weights_shape[0],
+    //             weights_shape[1],
+    //         ],
+    //     ),
+    //     _ => unreachable!(),
+    // };
+
+    let pad_axis_id = expr.add(Language::Usize(2));
+    // let access_dim_id = expr.add(Language::Usize(1));
+    let pad_before_id = expr.add(Language::Usize(padding[0]));
+    let pad_after_id = expr.add(Language::Usize(padding[1]));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_before_id,
+        pad_after_id,
+    ]));
+    //gets the inner access-pad (or in the case of conv1d, the singular access-pad)
+
+    //SKIP SECOND ACCESS-PAD (Conv1d is simpler)
+
+    // SKIP ACCESS (Conv1d is easier; double check if we can do this)
+
+    //TODO: Figure out how stride_list changes
+    let mut stride_list = Vec::default();
+    stride_list.push(expr.add(Language::Usize(1)));
+    stride_list.push(expr.add(Language::Usize(strides[0])));
+    let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
+    let _usize_o_id = expr.add(Language::Usize(1));
+    let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
+    let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
+    let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
+    let data_id = access(expr, data_id, 1);
+    // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
+    let data_id = expr.add(Language::AccessWindows([
+        data_id,
+        weights_shape_id,
+        stride_shape_id,
+    ]));
+    let dim_id_1 = expr.add(Language::Usize(1));
+    // data_id = cartProd (data_id, (access weights 1))
+    let weights_id = access(expr, weights_id, 1);
+    let data_id = expr.add(Language::AccessSqueeze([data_id, dim_id_1]));
+    let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+
+    let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
+    let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
+
+    let data_id = access_transpose(expr, data_id, &[1, 0, 2]);
+
+    data_id
+}
 pub fn conv2d(
     expr: &mut RecExpr<Language>,
     data_id: Id,
@@ -48,7 +153,7 @@ pub fn conv2d(
     data_layout: &str,
     kernel_layout: &str,
     out_layout: &str,
-) -> Id {
+) -> (Id, Option<Id>) {
     assert_eq!(data_shape.len(), 4);
     assert_eq!(weights_shape.len(), 4);
     assert_eq!(strides.len(), 2);
@@ -68,18 +173,23 @@ pub fn conv2d(
     assert_eq!(out_layout, "");
 
     // Transpose to NCHW
-    let (data_id, data_shape) = match data_layout {
-        "NCHW" => (data_id, Vec::from(data_shape)),
+    let (data_id, data_shape, activation_layout) = match data_layout {
+        "NCHW" => (data_id, Vec::from(data_shape), RelayActivationLayout::NCHW),
         "NHWC" => (
             access_transpose(expr, data_id, &[0, 3, 1, 2]),
             vec![data_shape[0], data_shape[3], data_shape[1], data_shape[2]],
+            RelayActivationLayout::NHWC,
         ),
         _ => unreachable!(),
     };
 
     // Transpose to OIHW
-    let (weights_id, weights_shape) = match kernel_layout {
-        "OIHW" => (weights_id, Vec::from(weights_shape)),
+    let (weights_id, weights_shape, kernel_layout) = match kernel_layout {
+        "OIHW" => (
+            weights_id,
+            Vec::from(weights_shape),
+            RelayKernelLayout::OIHW,
+        ),
         "HWIO" => (
             access_transpose(expr, weights_id, &[3, 2, 0, 1]),
             vec![
@@ -88,35 +198,52 @@ pub fn conv2d(
                 weights_shape[0],
                 weights_shape[1],
             ],
+            RelayKernelLayout::HWIO,
         ),
         _ => unreachable!(),
     };
 
+    let operator_data_id = data_id;
+    let operator_weights_id = weights_id;
+
+    let activation_layout_id = expr.add(Language::RelayActivationLayout(activation_layout));
+    let kernel_layout_id = expr.add(Language::RelayKernelLayout(kernel_layout));
+
     let pad_axis_id = expr.add(Language::Usize(2));
-    let pad_before_id = expr.add(Language::Usize(padding[0]));
-    let pad_after_id = expr.add(Language::Usize(padding[2]));
+    let pad_top = expr.add(Language::Usize(padding[0]));
+    let pad_bottom = expr.add(Language::Usize(padding[2]));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
         zero_padding_id,
         pad_axis_id,
-        pad_before_id,
-        pad_after_id,
+        pad_top,
+        pad_bottom,
     ]));
+
+    let groups_id = expr.add(Language::Usize(groups.clone()));
 
     let pad_axis_id = expr.add(Language::Usize(3));
-    let pad_before_id = expr.add(Language::Usize(padding[1]));
-    let pad_after_id = expr.add(Language::Usize(padding[3]));
+    let pad_left = expr.add(Language::Usize(padding[1]));
+    let pad_right = expr.add(Language::Usize(padding[3]));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
         zero_padding_id,
         pad_axis_id,
-        pad_before_id,
-        pad_after_id,
+        pad_left,
+        pad_right,
     ]));
 
+    let padding_id = expr.add(Language::Shape(Box::new([
+        pad_top, pad_left, pad_bottom, pad_right,
+    ])));
+
     let in_channels = data_shape[1];
+
+    let channel_id = expr.add(Language::Usize(weights_shape[0]));
+
+    let operator_id = expr.add(Language::RelayOperator(RelayOperator::RelayConv2D));
 
     let data_id = match groups as usize {
         1 => {
@@ -137,6 +264,22 @@ pub fn conv2d(
                 usize_kh_id,
                 usize_kw_id,
             ])));
+
+            let operator_call_id = expr.add(Language::RelayOperatorCall(
+                vec![
+                    operator_id,
+                    operator_data_id,
+                    operator_weights_id,
+                    stride_shape_id,
+                    padding_id,
+                    groups_id,
+                    channel_id,
+                    weights_shape_id,
+                    activation_layout_id,
+                    kernel_layout_id,
+                ]
+                .into_boxed_slice(),
+            ));
 
             let data_id = expr.add(Language::AccessWindows([
                 data_id,
@@ -161,7 +304,7 @@ pub fn conv2d(
 
             let data_id = access_transpose(expr, data_id, &[1, 0, 2, 3]);
 
-            data_id
+            (data_id, Some(operator_call_id))
         }
         // If groups = num input channels (ie in depthwise separable mobilenet convs)
         // TODO(@gussmith23) Layout assumption
@@ -169,14 +312,22 @@ pub fn conv2d(
             // TODO(@gussmith23) Make grouped conv take advantage of new
             // access-windows semantics
 
-            let data_id = access(expr, data_id, 0);
+            let _data_id = access(expr, data_id, 0);
 
             let mut stride_list = Vec::default();
             stride_list.push(expr.add(Language::Usize(1)));
             stride_list.push(expr.add(Language::Usize(1)));
             stride_list.push(expr.add(Language::Usize(strides[0])));
             stride_list.push(expr.add(Language::Usize(strides[1])));
-            let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+            let _stride_shape_id =
+                expr.add(Language::Shape(Box::from(stride_list.clone().as_slice())));
+            let operator_call_stride_id = expr.add(Language::Shape(
+                stride_list[1..]
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ));
 
             // Kernel size is the same for each group. Each
             // kernel's shape is (1,1,kH,kW) where the first 1
@@ -191,58 +342,80 @@ pub fn conv2d(
             for v in weights_shape[2..].iter() {
                 list.push(expr.add(Language::Usize(*v as usize)));
             }
-            let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+            let _weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+            let o_id = expr.add(Language::Usize(weights_shape[0]));
+            let relay_operator_weight_shape_id = expr.add(Language::Shape(
+                vec![o_id, list[2], list[3]].into_boxed_slice(),
+            ));
 
-            let mut to_be_concatted = Vec::default();
+            let operator_call_id = expr.add(Language::RelayOperatorCall(
+                vec![
+                    operator_id,
+                    operator_data_id,
+                    operator_weights_id,
+                    operator_call_stride_id,
+                    padding_id,
+                    groups_id,
+                    channel_id,
+                    relay_operator_weight_shape_id,
+                    activation_layout_id,
+                    kernel_layout_id,
+                ]
+                .into_boxed_slice(),
+            ));
 
-            for channel_idx in 0..in_channels {
-                // Get this group's input channel
-                // TODO(@gussmith23) layout assumption
-                let data_id = access_slice(
-                    expr,
-                    data_id,
-                    1,
-                    channel_idx.try_into().unwrap(),
-                    (channel_idx + 1).try_into().unwrap(),
-                );
-                let data_id = expr.add(Language::AccessWindows([
-                    data_id,
-                    weights_shape_id,
-                    stride_shape_id,
-                ]));
-                let data_id = access(expr, data_id, 4);
-                // Result should be
-                // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
+            (operator_call_id, None)
+            // mike: we comment out these code for flexible matching
+            // it will blow up the size of egraph, which prevent
+            // im2col rewrite rules from being fired
+            // let mut to_be_concatted = Vec::default();
 
-                // Get this group's kernel
-                // TODO(@gussmith23) layout assumption
-                let weights_id = access_slice(
-                    expr,
-                    weights_id,
-                    0,
-                    channel_idx.try_into().unwrap(),
-                    (channel_idx + 1).try_into().unwrap(),
-                );
-                let weights_id = access(expr, weights_id, 0);
+            // for channel_idx in 0..in_channels {
+            //     // Get this group's input channel
+            //     // TODO(@gussmith23) layout assumption
+            //     let data_id = access_slice(
+            //         expr,
+            //         data_id,
+            //         1,
+            //         channel_idx.try_into().unwrap(),
+            //         (channel_idx + 1).try_into().unwrap(),
+            //     );
+            //     let data_id = expr.add(Language::AccessWindows([
+            //         data_id,
+            //         weights_shape_id,
+            //         stride_shape_id,
+            //     ]));
+            //     let data_id = access(expr, data_id, 4);
+            //     // Result should be
+            //     // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
 
-                let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
-                // Results should be
-                // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
+            //     // Get this group's kernel
+            //     // TODO(@gussmith23) layout assumption
+            //     let weights_id = access_slice(
+            //         expr,
+            //         weights_id,
+            //         0,
+            //         channel_idx.try_into().unwrap(),
+            //         (channel_idx + 1).try_into().unwrap(),
+            //     );
+            //     let weights_id = access(expr, weights_id, 0);
 
-                let data_id = compute(expr, ComputeType::DotProduct, data_id);
-                // Results should be
-                // [1 1 new_H new_W]
+            //     let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+            //     // Results should be
+            //     // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
 
-                to_be_concatted.push(data_id);
-            }
+            //     let data_id = compute(expr, ComputeType::DotProduct, data_id);
+            //     // Results should be
+            //     // [1 1 new_H new_W]
 
-            let mut concatted_id = to_be_concatted[0];
-            for to_be_concatted_id in to_be_concatted[1..].iter() {
-                // TODO(@gussmith23) Layout assumption
-                concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
-            }
+            //     to_be_concatted.push(data_id);
+            // }
 
-            concatted_id
+            // let mut concatted_id = to_be_concatted[0];
+            // for to_be_concatted_id in to_be_concatted[1..].iter() {
+            //     // TODO(@gussmith23) Layout assumption
+            //     concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
+            // }
         }
         _ => panic!("Groups not implemented for groups={}", groups),
     };
@@ -250,7 +423,7 @@ pub fn conv2d(
     // Transpose from NCHW to original layout
     match data_layout {
         "NCHW" => data_id,
-        "NHWC" => access_transpose(expr, data_id, &[0, 2, 3, 1]),
+        "NHWC" => (access_transpose(expr, data_id.0, &[0, 2, 3, 1]), data_id.1),
         _ => unreachable!(),
     }
 }
@@ -278,6 +451,27 @@ pub fn access_shape(expr: &mut RecExpr<Language>, shape: &[usize], item_shape: &
     let shape_id = expr.add(Language::Shape(shape_ids.into_boxed_slice()));
     let item_shape_id = expr.add(Language::Shape(item_shape_ids.into_boxed_slice()));
     expr.add(Language::AccessShape([shape_id, item_shape_id]))
+}
+
+pub fn access_shape_with_shape(
+    expr: &mut RecExpr<Language>,
+    shape: &[usize],
+    item_shape: &[usize],
+) -> (Id, Id) {
+    let mut shape_ids = Vec::default();
+    for s in shape {
+        shape_ids.push(expr.add(Language::Usize(*s)));
+    }
+    let mut item_shape_ids = Vec::default();
+    for i in item_shape {
+        item_shape_ids.push(expr.add(Language::Usize(*i)));
+    }
+    let shape_id = expr.add(Language::Shape(shape_ids.into_boxed_slice()));
+    let item_shape_id = expr.add(Language::Shape(item_shape_ids.into_boxed_slice()));
+    (
+        expr.add(Language::AccessShape([shape_id, item_shape_id])),
+        shape_id,
+    )
 }
 
 /// Concatenate accesses
@@ -458,6 +652,28 @@ pub fn access_pair(
     expr.add(Language::AccessPair([a_id, b_id]))
 }
 
+pub fn dtype_from_type(t: tvm::ir::ty::Type) -> crate::language::DataType {
+    let tensor_type = t
+        .clone()
+        .downcast::<tvm::ir::ty::TensorType>()
+        .unwrap_or_else(|_| {
+            panic!(
+                "Expected type {:?} to have tensor type",
+                *t.upcast::<tvm::runtime::ObjectRef>()
+            )
+        });
+    let dtype = tensor_type.dtype.clone();
+    if dtype == "float32".parse().unwrap() {
+        crate::language::DataType::Float(32)
+    } else if dtype == "int32".parse().unwrap() {
+        crate::language::DataType::Int(32)
+    } else if dtype == "uint8".parse().unwrap() {
+        crate::language::DataType::Uint(8)
+    } else {
+        panic!("Unsupported data type: {:?}", dtype)
+    }
+}
+
 /// Get shape from type
 pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
     let tensor_type = t
@@ -511,41 +727,77 @@ pub fn from_relay(
     module: &IRModule,
     simplify_batch_norm_for_inference_hack: bool,
     use_opaque_operators_for: &Vec<RelayOperator>,
-) -> (RecExpr<Language>, Vec<(String, Vec<usize>)>) {
+) -> (
+    RecExpr<Language>,
+    Vec<(String, Vec<usize>)>,
+    Vec<(String, crate::language::DataType)>,
+    Vec<(Id, Id)>,
+) {
     let main = module
         .lookup(module.get_global_var("main").unwrap())
         .unwrap();
     let func = main.downcast::<tvm::ir::relay::Function>().unwrap();
     let mut names_and_shapes = Vec::default();
+    let mut names_to_dtype = Vec::default();
     for i in 0..func.params.len() {
         let var = func.params.get(i as isize).unwrap();
         let t = shape_from_type(var.type_annotation.clone());
         names_and_shapes.push((var.name_hint().as_str().unwrap().to_string(), t));
+        names_to_dtype.push((
+            var.name_hint().as_str().unwrap().into(),
+            dtype_from_type(var.type_annotation.clone()),
+        ));
     }
     let mut glenside_expr = RecExpr::default();
     let mut worklist = Vec::default();
     let mut visited = HashSet::new();
     create_worklist(func.body.clone(), &mut worklist, &mut visited);
     let mut map = HashMap::new();
+    let mut relay_op_equivs = Vec::new();
     for expr in worklist {
-        map.insert(
+        let (glenside_id, opaque_call) = compile_expression(
             expr.clone(),
-            compile_expression(
-                expr.clone(),
-                &mut glenside_expr,
-                |expr| {
-                    *map.get(&expr).unwrap_or_else(|| {
-                        panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
-                    })
-                },
-                simplify_batch_norm_for_inference_hack,
-                use_opaque_operators_for,
-            ),
+            &mut glenside_expr,
+            |expr| {
+                *map.get(&expr).unwrap_or_else(|| {
+                    panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
+                })
+            },
+            simplify_batch_norm_for_inference_hack,
+            use_opaque_operators_for,
         );
+        map.insert(expr.clone(), glenside_id);
+        if let Some(call_id) = opaque_call {
+            relay_op_equivs.push((glenside_id, call_id));
+        }
     }
 
-    (glenside_expr, names_and_shapes)
+    (
+        glenside_expr,
+        names_and_shapes,
+        names_to_dtype,
+        relay_op_equivs,
+    )
 }
+
+// fn to_opaque_relay_call(expr: Expr) -> Option<RecExpr<Language>> {
+//     if let Ok(call) = expr.clone().downcast::<tvm::ir::relay::Call>() {
+//         if let Ok(primitive_op) = call
+//             .op
+//             .clone()
+//             .upcast::<tvm::ir::expr::BaseExpr>()
+//             .downcast::<tvm::ir::op::Op>()
+//         {
+//             match primitive_op.name.as_str().unwrap() {
+//                 "nn.dense" => {
+//                     RelayOperatorCall()
+//                 }
+//             }
+//         }
+//     } else {
+//         None
+//     }
+// }
 
 /// Generates an ordered list of Relay expressions to compile.
 ///
@@ -625,10 +877,11 @@ fn compile_expression(
     get_compiled_expression: impl Fn(Expr) -> Id,
     simplify_batch_norm_for_inference_hack: bool,
     use_opaque_operators_for: &Vec<RelayOperator>,
-) -> Id {
+) -> (Id, Option<Id>) {
     if let Ok(var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
-        let symbol_id = glenside_expr.add(Language::Symbol(var.name_hint().to_string()));
-        glenside_expr.add(Language::AccessTensor(symbol_id))
+        let symbol = Language::Symbol(var.name_hint().to_string());
+        let symbol_id = glenside_expr.add(symbol.clone());
+        (glenside_expr.add(Language::AccessTensor(symbol_id)), None)
     } else if let Ok(constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
         let tuple_type = constant
             .clone()
@@ -642,14 +895,16 @@ fn compile_expression(
             0,
             "Only scalar constants supported for now"
         );
-        assert_eq!(
-            tuple_type.dtype,
-            "float32".parse().unwrap(),
-            "Only float32x1 constants supported for now",
+        assert!(
+            tuple_type.dtype == "float32".parse().unwrap()
+                || tuple_type.dtype == "int32".parse().unwrap()
+                || tuple_type.dtype == "int64".parse().unwrap()
+                || tuple_type.dtype == "int8".parse().unwrap()
+                || tuple_type.dtype == "uint8".parse().unwrap(),
+            "Only float32x1 or int32x1 constants supported for now",
         );
-        assert_eq!(
-            constant.data.size(),
-            4,
+        assert!(
+            constant.data.size() == 4 || constant.data.size() == 8 || constant.data.size() == 2,
             "Only scalar constants supported for now"
         );
         // TODO(@gussmith23) This is broken at the moment
@@ -658,20 +913,33 @@ fn compile_expression(
         //     0,
         //     "Only scalar constants supported for now"
         // );
-        assert_eq!(
-            constant.data.dtype(),
-            "float32".parse().unwrap(),
-            "Only float32x1 constants supported for now",
-        );
         // TODO(@gussmith23) This is a hack
         // Jared and Max are working on ndarray at the moment.
-        let value: f32 = unsafe { *(constant.data.as_dltensor().data as *const f32) };
-        let literal_id = glenside_expr.add(Language::NotNanFloat64(
-            NotNan::<f64>::new(value as f64).unwrap(),
-        ));
-        let literal_id = glenside_expr.add(Language::Literal(literal_id));
-        let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
-        access_literal_id
+        if constant.data.dtype() == "float32".parse().unwrap() {
+            let value: f32 = unsafe { *(constant.data.as_dltensor().data as *const f32) };
+            let literal_id = glenside_expr.add(Language::NotNanFloat64(
+                NotNan::<f64>::new(value as f64).unwrap(),
+            ));
+            let literal_id = glenside_expr.add(Language::Literal(literal_id));
+            let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
+            (access_literal_id, None)
+        } else if constant.data.dtype() == "int32".parse().unwrap() {
+            let value: i32 = unsafe { *(constant.data.as_dltensor().data as *const i32) };
+            let literal_id = glenside_expr.add(Language::Int32(value));
+            (literal_id, None)
+        } else if constant.data.dtype() == "int64".parse().unwrap() {
+            let value: i64 = unsafe { *(constant.data.as_dltensor().data as *const i64) };
+            let literal_id = glenside_expr.add(Language::Int64(value));
+            (literal_id, None)
+        } else if constant.data.dtype() == "int8".parse().unwrap() {
+            let value: i8 = unsafe { *(constant.data.as_dltensor().data as *const i8) };
+            let literal_id = glenside_expr.add(Language::Int8(value));
+            (literal_id, None)
+        } else {
+            let value: u8 = unsafe { *(constant.data.as_dltensor().data as *const u8) };
+            let literal_id = glenside_expr.add(Language::Uint8(value));
+            (literal_id, None)
+        }
     } else if let Ok(tuple_get_item) = relay_expr
         .clone()
         .downcast::<tvm::ir::relay::TupleGetItem>()
@@ -701,7 +969,7 @@ fn compile_expression(
                 && tuple_get_item.index == 0
             {
                 // special case: compile Relay batch norm to a single output
-                return get_compiled_expression(tuple_get_item.tuple.clone());
+                return (get_compiled_expression(tuple_get_item.tuple.clone()), None);
             }
         }
 
@@ -709,7 +977,10 @@ fn compile_expression(
         // handles if tuple is not a CallNode
         let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
         let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
-        glenside_expr.add(Language::TupleGetItem([data_id, index_id]))
+        (
+            glenside_expr.add(Language::TupleGetItem([data_id, index_id])),
+            None,
+        )
     } else if let Ok(tuple) = relay_expr.clone().downcast::<tvm::ir::relay::Tuple>() {
         let mut fields = Vec::new();
 
@@ -719,7 +990,10 @@ fn compile_expression(
             ))
         }
 
-        glenside_expr.add(Language::ConstructTuple(Box::from(fields.as_slice())))
+        (
+            glenside_expr.add(Language::ConstructTuple(Box::from(fields.as_slice()))),
+            None,
+        )
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         if let Ok(primitive_op) = call
             .op
@@ -728,6 +1002,200 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.layer_norm" => {
+                    let data = get_compiled_expression(
+                        call.args.get(0).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let gamma = get_compiled_expression(
+                        call.args.get(1).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let beta = get_compiled_expression(
+                        call.args.get(2).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::LayerNormAttrs>()
+                        .unwrap();
+
+                    // Assumptions for now.
+                    assert_eq!(attrs.axis, -1);
+                    assert_eq!(attrs.epsilon, 1e-5);
+                    assert_eq!(attrs.center, true);
+                    assert_eq!(attrs.scale, true);
+
+                    let relay_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLayerNorm,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_op_id, data, gamma, beta].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "stack" => {
+                    let tuple = call.args.get(0).unwrap().downcast::<Tuple>().unwrap();
+                    let ids: Vec<_> = tuple
+                        .fields
+                        .clone()
+                        .into_iter()
+                        .map(|e| get_compiled_expression(e))
+                        .collect();
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::StackAttrs>()
+                        .unwrap();
+
+                    let axis_id =
+                        glenside_expr.add(Language::Int32(attrs.axis.value.try_into().unwrap()));
+
+                    let stack_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayStack,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            std::iter::once(&stack_op_id)
+                                .chain(ids.iter())
+                                .chain(std::iter::once(&axis_id))
+                                .cloned()
+                                .collect(),
+                        )),
+                        None,
+                    )
+                }
+                "nn.dropout" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::DropoutAttrs>()
+                        .unwrap();
+
+                    let rate = attrs.rate;
+
+                    let rate_id =
+                        glenside_expr.add(Language::NotNanFloat64(NotNan::try_from(rate).unwrap()));
+
+                    let dropout_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayDropout,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![dropout_op_id, data_id, rate_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "take" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let indices_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::TakeAttrs>()
+                        .unwrap();
+
+                    let axis: usize = usize::try_from(attrs.axis.value).unwrap();
+                    let axis_id = glenside_expr.add(Language::Usize(axis));
+
+                    let take_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayTake,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![take_op_id, data_id, indices_id, axis_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "nn.batch_matmul" => {
+                    let a_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let b_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let _attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::BatchMatmulAttrs>()
+                        .unwrap();
+                    let f = |expr: Expr| {
+                        (
+                            expr.checked_type
+                                .clone()
+                                .downcast::<TensorType>()
+                                .unwrap()
+                                .dtype,
+                            expr.checked_type
+                                .clone()
+                                .downcast::<TensorType>()
+                                .unwrap()
+                                .shape
+                                .clone(),
+                        )
+                    };
+                    let (a_type, a_shape) = f(call.args.get(0).unwrap());
+                    let (b_type, b_shape) = f(call.args.get(1).unwrap());
+                    assert_eq!(a_type, b_type);
+                    // Check is failing, not sure if it's because I'm getting bad attrs.
+                    //assert_eq!(a_type, attrs.out_dtype);
+                    assert_eq!(a_shape.len(), 3);
+                    assert_eq!(b_shape.len(), 3);
+
+                    let relay_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayBatchMatmul,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_op_id, a_id, b_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "strided_slice" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    assert!(use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayStridedSlice),);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::StridedSliceAttrs>()
+                        .unwrap();
+                    assert_eq!(attrs.slice_mode, "end");
+                    let f = |l: Array<IntImm>| l.into_iter().map(|i| i.value).collect::<Vec<_>>();
+                    let begin = f(attrs.begin.clone());
+                    let end = f(attrs.end.clone());
+                    let strides = f(attrs.strides.clone());
+                    assert_eq!(begin.len(), end.len());
+                    assert_eq!(begin.len(), strides.len());
+
+                    let mut f = |l: Vec<i64>| {
+                        let ids = l
+                            .iter()
+                            .map(|i| glenside_expr.add(Language::Usize(*i as usize)))
+                            .collect::<Vec<_>>();
+                        glenside_expr.add(Language::Shape(ids.into_boxed_slice()))
+                    };
+                    let begin_id = f(begin);
+                    let end_id = f(end);
+                    let strides_id = f(strides);
+
+                    let relay_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayStridedSlice,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_operator_id, data_id, begin_id, end_id, strides_id]
+                                .into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
                 "nn.batch_norm" => {
                     assert!(simplify_batch_norm_for_inference_hack);
                     assert!(
@@ -760,19 +1228,45 @@ fn compile_expression(
                         crate::language::RelayOperator::RelayBatchNormInference,
                     ));
 
-                    glenside_expr.add(Language::RelayOperatorCall(
-                        vec![
-                            batch_norm_op_id,
-                            data_id,
-                            gamma_id,
-                            beta_id,
-                            moving_mean_id,
-                            moving_var_id,
-                            axis_id,
-                            epsilon_id,
-                        ]
-                        .into_boxed_slice(),
-                    ))
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![
+                                batch_norm_op_id,
+                                data_id,
+                                gamma_id,
+                                beta_id,
+                                moving_mean_id,
+                                moving_var_id,
+                                axis_id,
+                                epsilon_id,
+                            ]
+                            .into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "nn.log_softmax" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
+                        .unwrap();
+
+                    assert!(use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayLogSoftmax));
+
+                    let log_softmax_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLogSoftmax,
+                    ));
+
+                    let axis_id =
+                        glenside_expr.add(Language::Int32(attrs.axis.try_into().unwrap()));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![log_softmax_id, data_id, axis_id].into_boxed_slice(),
+                    ));
+                    (opaque_call_id, None)
                 }
                 "nn.softmax" => {
                     assert_eq!(call.args.len(), 1);
@@ -783,33 +1277,34 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::nn::SoftmaxAttrs>()
                         .unwrap();
 
+                    let softmax_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelaySoftmax,
+                    ));
+                    let ndims = call
+                        .args
+                        .get(0)
+                        .unwrap()
+                        .checked_type
+                        .clone()
+                        .downcast::<TensorType>()
+                        .unwrap()
+                        .shape
+                        .len();
+
+                    let axis: i64 = if attrs.axis < 0 {
+                        ndims + i64::from(attrs.axis)
+                    } else {
+                        attrs.axis.into()
+                    };
+                    assert!(axis >= 0 && i64::from(axis) < ndims);
+                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![softmax_id, data_id, axis_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelaySoftmax)
                     {
-                        let softmax_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelaySoftmax,
-                        ));
-                        let ndims = call
-                            .args
-                            .get(0)
-                            .unwrap()
-                            .checked_type
-                            .clone()
-                            .downcast::<TensorType>()
-                            .unwrap()
-                            .shape
-                            .len();
-
-                        let axis: i64 = if attrs.axis < 0 {
-                            ndims + i64::from(attrs.axis)
-                        } else {
-                            attrs.axis.into()
-                        };
-                        assert!(axis >= 0 && i64::from(axis) < ndims);
-                        let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![softmax_id, data_id, axis_id].into_boxed_slice(),
-                        ));
+                        return (opaque_call_id, None);
                     }
 
                     match attrs.axis {
@@ -831,7 +1326,10 @@ fn compile_expression(
                                 .try_into()
                                 .unwrap(),
                             );
-                            compute(glenside_expr, ComputeType::Softmax, data_id)
+                            (
+                                compute(glenside_expr, ComputeType::Softmax, data_id),
+                                Some(opaque_call_id),
+                            )
                         }
                         other @ _ => todo!("Softmax with axis value {} not yet supported", other),
                     }
@@ -839,16 +1337,20 @@ fn compile_expression(
                 "nn.relu" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let relu_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayReLU,
+                    ));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![relu_id, data_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelayReLU)
                     {
-                        let relu_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayReLU,
-                        ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![relu_id, data_id].into_boxed_slice(),
-                        ))
+                        return (opaque_call_id, None);
                     } else {
-                        compute(glenside_expr, ComputeType::ReLU, data_id)
+                        (
+                            compute(glenside_expr, ComputeType::ReLU, data_id),
+                            Some(opaque_call_id),
+                        )
                     }
                 }
                 "nn.leaky_relu" => {
@@ -861,15 +1363,16 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let alpha_id = glenside_expr
                         .add(Language::NotNanFloat64(NotNan::new(attrs.alpha).unwrap()));
+                    let leaky_relu_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLeakyReLU,
+                    ));
+                    let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![leaky_relu_id, data_id, alpha_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayLeakyReLU)
                     {
-                        let leaky_relu_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayLeakyReLU,
-                        ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![leaky_relu_id, data_id, alpha_id].into_boxed_slice(),
-                        ))
+                        return (opaque_call_id, None);
                     } else {
                         todo!();
                     }
@@ -877,36 +1380,30 @@ fn compile_expression(
                 "sqrt" | "negative" => {
                     assert_eq!(call.args.len(), 1);
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
-                    compute(
-                        glenside_expr,
-                        match primitive_op.name.as_str().unwrap() {
-                            "nn.relu" => ComputeType::ReLU,
-                            "sqrt" => ComputeType::Sqrt,
-                            "negative" => ComputeType::Negative,
-                            _ => unreachable!(),
-                        },
-                        data_id,
+                    (
+                        compute(
+                            glenside_expr,
+                            match primitive_op.name.as_str().unwrap() {
+                                "nn.relu" => ComputeType::ReLU,
+                                "sqrt" => ComputeType::Sqrt,
+                                "negative" => ComputeType::Negative,
+                                _ => unreachable!(),
+                            },
+                            data_id,
+                        ),
+                        None,
                     )
                 }
                 "nn.max_pool2d" => {
                     assert_eq!(call.args.len(), 1);
+                    let data_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     let attrs = call
                         .attrs
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::MaxPool2DAttrs>()
                         .unwrap();
-                    assert_eq!(
-                        call.args
-                            .get(0)
-                            .unwrap()
-                            .checked_type
-                            .clone()
-                            .downcast::<TensorType>()
-                            .unwrap()
-                            .shape
-                            .len(),
-                        4
-                    );
+                    assert_eq!(data_shape.len(), 4);
                     assert_eq!(attrs.pool_size.len(), 2);
                     assert_eq!(attrs.padding.len(), 4);
                     assert_eq!(attrs.strides.len(), 2);
@@ -914,105 +1411,106 @@ fn compile_expression(
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
+                    let layout_id = match attrs.layout.as_str().unwrap() {
+                        "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NCHW,
+                        )),
+                        "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NHWC,
+                        )),
+                        l @ _ => panic!("Unsupported layout: {}", l),
+                    };
+                    let pool_size_id = shape(
+                        glenside_expr,
+                        vec![
+                            attrs
+                                .pool_size
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .pool_size
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                    );
+                    let strides_id = shape(
+                        glenside_expr,
+                        vec![
+                            attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .strides
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                    );
+                    let padding_id = shape(
+                        glenside_expr,
+                        vec![
+                            attrs
+                                .padding
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(2)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                            attrs
+                                .padding
+                                .get(3)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ],
+                    );
+
+                    let max_pool_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayMaxPool2D,
+                    ));
+
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![
+                            max_pool_id,
+                            data_id,
+                            pool_size_id,
+                            strides_id,
+                            padding_id,
+                            layout_id,
+                        ]
+                        .into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayMaxPool2D)
                     {
-                        let layout_id = match attrs.layout.as_str().unwrap() {
-                            "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NCHW,
-                            )),
-                            "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NHWC,
-                            )),
-                            l @ _ => panic!("Unsupported layout: {}", l),
-                        };
-                        let pool_size_id = shape(
-                            glenside_expr,
-                            vec![
-                                attrs
-                                    .pool_size
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .pool_size
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                        );
-                        let strides_id = shape(
-                            glenside_expr,
-                            vec![
-                                attrs
-                                    .strides
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .strides
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                        );
-                        let padding_id = shape(
-                            glenside_expr,
-                            vec![
-                                attrs
-                                    .padding
-                                    .get(0)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(1)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(2)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                                attrs
-                                    .padding
-                                    .get(3)
-                                    .unwrap()
-                                    .downcast::<IntImm>()
-                                    .unwrap()
-                                    .value as usize,
-                            ],
-                        );
-
-                        let max_pool_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayMaxPool2D,
-                        ));
-
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![
-                                max_pool_id,
-                                data_id,
-                                pool_size_id,
-                                strides_id,
-                                padding_id,
-                                layout_id,
-                            ]
-                            .into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None);
                     }
 
                     match attrs.layout.as_str().unwrap() {
@@ -1098,6 +1596,18 @@ fn compile_expression(
                                 ],
                             );
 
+                            // let data_shape_n_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            // let data_shape_c_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            // let data_shape_h_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            // let data_shape_w_id = glenside_expr.add(Language::Usize(data_shape[0]));
+
+                            // let data_shape_id = glenside_expr.add(Language::Shape(Box::new([
+                            //     data_shape_n_id,
+                            //     data_shape_c_id,
+                            //     data_shape_h_id,
+                            //     data_shape_w_id,
+                            // ])));
+
                             let data_id = glenside_expr.add(Language::AccessWindows([
                                 data_id,
                                 pool_window_shape_id,
@@ -1106,7 +1616,7 @@ fn compile_expression(
 
                             let data_id = compute(glenside_expr, ComputeType::ReduceMax, data_id);
 
-                            data_id
+                            (data_id, Some(opaque_operator_call))
                         }
                         other @ _ => todo!("layout {} not supported", other),
                     }
@@ -1121,26 +1631,25 @@ fn compile_expression(
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
+                    let global_avg_pool2d_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayGlobalAvgPool2D,
+                    ));
+                    let layout_id = match attrs.layout.as_str().unwrap() {
+                        "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NCHW,
+                        )),
+                        "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
+                            crate::language::RelayActivationLayout::NHWC,
+                        )),
+                        l @ _ => panic!("Unsupported layout: {}", l),
+                    };
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![global_avg_pool2d_operator_id, data_id, layout_id].into_boxed_slice(),
+                    ));
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayGlobalAvgPool2D)
                     {
-                        let global_avg_pool2d_operator_id =
-                            glenside_expr.add(Language::RelayOperator(
-                                crate::language::RelayOperator::RelayGlobalAvgPool2D,
-                            ));
-                        let layout_id = match attrs.layout.as_str().unwrap() {
-                            "NCHW" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NCHW,
-                            )),
-                            "NHWC" => glenside_expr.add(Language::RelayActivationLayout(
-                                crate::language::RelayActivationLayout::NHWC,
-                            )),
-                            l @ _ => panic!("Unsupported layout: {}", l),
-                        };
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![global_avg_pool2d_operator_id, data_id, layout_id]
-                                .into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None);
                     }
 
                     match attrs.layout.as_str().unwrap() {
@@ -1150,7 +1659,7 @@ fn compile_expression(
                             let data_id = access_insert_axis(glenside_expr, data_id, 2);
                             let data_id = access_insert_axis(glenside_expr, data_id, 3);
                             let data_id = access(glenside_expr, data_id, 2);
-                            data_id
+                            (data_id, Some(opaque_operator_call))
                         }
                         _ => todo!("layout not currently supported"),
                     }
@@ -1173,21 +1682,67 @@ fn compile_expression(
                         )
                     }
 
-                    data_id
+                    (data_id, None)
                 }
-                "nn.dense" => {
+                "nn.pad" => {
                     let attrs = call
                         .attrs
                         .clone()
-                        .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
+                        .downcast::<tvm::ir::relay::attrs::nn::PadAttrs>()
                         .unwrap();
                     assert_eq!(call.args.len(), 2);
-                    assert_eq!(
-                        attrs.out_dtype,
-                        // This datatype seems to indicate "null"?
-                        DataType::new(3, 0, 0),
-                        "Changing out_dtype not yet supported"
-                    );
+                    assert_eq!(attrs.pad_mode, "constant");
+                    let pad_value = unsafe {
+                        *(call
+                            .args
+                            .get(1)
+                            .unwrap()
+                            .downcast::<tvm::ir::relay::Constant>()
+                            .unwrap()
+                            .data
+                            .as_dltensor()
+                            .data as *const i32)
+                    };
+                    assert_eq!(pad_value, 0);
+                    let mut data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let pad_type_id = glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                    for axis in 0..attrs.pad_width.len() {
+                        let padding = attrs.pad_width.get(axis as isize).unwrap();
+                        assert_eq!(padding.len(), 2);
+                        let pad_before =
+                            padding.get(0).unwrap().downcast::<IntImm>().unwrap().value as i32;
+                        let pad_after =
+                            padding.get(1).unwrap().downcast::<IntImm>().unwrap().value as i32;
+                        if pad_before > 0 || pad_after > 0 {
+                            let axis_id = glenside_expr.add(Language::Usize(axis as usize));
+                            let pad_before_id =
+                                glenside_expr.add(Language::Usize(pad_before as usize));
+                            let pad_after_id =
+                                glenside_expr.add(Language::Usize(pad_after as usize));
+                            data_id = glenside_expr.add(Language::AccessPad([
+                                data_id,
+                                pad_type_id,
+                                axis_id,
+                                pad_before_id,
+                                pad_after_id,
+                            ]));
+                        }
+                    }
+                    (data_id, None)
+                }
+                "nn.dense" => {
+                    // let attrs = call
+                    //     .attrs
+                    //     .clone()
+                    //     .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
+                    //     .unwrap();
+                    assert_eq!(call.args.len(), 2);
+                    // assert_eq!(
+                    //     attrs.out_dtype,
+                    //     // This datatype seems to indicate "null"?
+                    //     DataType::new(3, 0, 0),
+                    //     "Changing out_dtype not yet supported"
+                    // );
                     assert_eq!(
                         call.args
                             .get(0)
@@ -1218,12 +1773,22 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
 
+                    let dense_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayDense,
+                    ));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![dense_op_id, data_id, weights_id].into_boxed_slice(),
+                    ));
+
                     let data_id = access(glenside_expr, data_id, 1);
                     let weights_id = access(glenside_expr, weights_id, 1);
 
                     let data_id =
                         glenside_expr.add(Language::AccessCartesianProduct([data_id, weights_id]));
-                    compute(glenside_expr, ComputeType::DotProduct, data_id)
+                    (
+                        compute(glenside_expr, ComputeType::DotProduct, data_id),
+                        Some(opaque_operator_call),
+                    )
                 }
                 "add" | "multiply" | "divide" | "maximum" | "minimum" => {
                     assert_eq!(call.args.len(), 2);
@@ -1234,6 +1799,9 @@ fn compile_expression(
                     let mut b_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
 
+                    let operator_call_a_id = a_id;
+                    let operator_call_b_id = b_id;
+
                     if primitive_op.name.as_str().unwrap() == "add"
                         && use_opaque_operators_for
                             .contains(&crate::language::RelayOperator::RelayAdd)
@@ -1241,9 +1809,12 @@ fn compile_expression(
                         let add_operator_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayAdd,
                         ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![add_operator_id, a_id, b_id].into_boxed_slice(),
-                        ));
+                        return (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
                     }
                     if primitive_op.name.as_str().unwrap() == "maximum"
                         && use_opaque_operators_for
@@ -1252,9 +1823,12 @@ fn compile_expression(
                         let add_operator_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayMaximum,
                         ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![add_operator_id, a_id, b_id].into_boxed_slice(),
-                        ));
+                        return (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
                     }
                     if primitive_op.name.as_str().unwrap() == "minimum"
                         && use_opaque_operators_for
@@ -1263,9 +1837,12 @@ fn compile_expression(
                         let add_operator_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayMinimum,
                         ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![add_operator_id, a_id, b_id].into_boxed_slice(),
-                        ));
+                        return (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, a_id, b_id].into_boxed_slice(),
+                            )),
+                            None,
+                        );
                     }
 
                     while a_shape.len() < b_shape.len() {
@@ -1306,9 +1883,37 @@ fn compile_expression(
                     let pair_id = access_pair(glenside_expr, a_id, b_id, 0);
 
                     match primitive_op.name.as_str().unwrap() {
-                        "add" => compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id),
-                        "multiply" => compute(glenside_expr, ComputeType::ElementwiseMul, pair_id),
-                        "divide" => compute(glenside_expr, ComputeType::ElementwiseDiv, pair_id),
+                        "add" => {
+                            let add_operator_id = glenside_expr.add(Language::RelayOperator(
+                                crate::language::RelayOperator::RelayAdd,
+                            ));
+                            let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                                vec![add_operator_id, operator_call_a_id, operator_call_b_id]
+                                    .into_boxed_slice(),
+                            ));
+                            (
+                                compute(glenside_expr, ComputeType::ElementwiseAdd, pair_id),
+                                Some(operator_call),
+                            )
+                        }
+                        // TODO(mike): add operator support for these following
+                        "multiply" => {
+                            let mult_operator_id = glenside_expr.add(Language::RelayOperator(
+                                crate::language::RelayOperator::RelayMultiply,
+                            ));
+                            let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                                vec![mult_operator_id, operator_call_a_id, operator_call_b_id]
+                                    .into_boxed_slice(),
+                            ));
+                            (
+                                compute(glenside_expr, ComputeType::ElementwiseMul, pair_id),
+                                Some(operator_call),
+                            )
+                        }
+                        "divide" => (
+                            compute(glenside_expr, ComputeType::ElementwiseDiv, pair_id),
+                            None,
+                        ),
                         _ => unreachable!(),
                     }
                 }
@@ -1328,20 +1933,24 @@ fn compile_expression(
                     );
 
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let batch_flatten_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayBatchFlatten,
+                    ));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![batch_flatten_operator_id, data_id].into_boxed_slice(),
+                    ));
 
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayBatchFlatten)
                     {
-                        let batch_flatten_operator_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayBatchFlatten,
-                        ));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![batch_flatten_operator_id, data_id].into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None);
                     }
 
                     let data_id = access(glenside_expr, data_id, 1);
-                    glenside_expr.add(Language::AccessFlatten(data_id))
+                    (
+                        glenside_expr.add(Language::AccessFlatten(data_id)),
+                        Some(opaque_operator_call),
+                    )
                 }
                 "nn.bias_add" => {
                     assert_eq!(call.args.len(), 2);
@@ -1387,17 +1996,18 @@ fn compile_expression(
                     };
                     assert!(axis >= 0);
 
+                    let bias_add_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayBiasAdd,
+                    ));
+                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![bias_add_operator_id, data_id, bias_id, axis_id].into_boxed_slice(),
+                    ));
+
                     if use_opaque_operators_for
                         .contains(&crate::language::RelayOperator::RelayBiasAdd)
                     {
-                        let bias_add_operator_id = glenside_expr.add(Language::RelayOperator(
-                            crate::language::RelayOperator::RelayBiasAdd,
-                        ));
-                        let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
-                        return glenside_expr.add(Language::RelayOperatorCall(
-                            vec![bias_add_operator_id, data_id, bias_id, axis_id]
-                                .into_boxed_slice(),
-                        ));
+                        return (opaque_operator_call, None);
                     }
 
                     // Insert axes before
@@ -1432,7 +2042,94 @@ fn compile_expression(
                     let data_id = access_pair(glenside_expr, data_id, bias_id, 0);
                     let data_id = compute(glenside_expr, ComputeType::ElementwiseAdd, data_id);
 
-                    data_id
+                    (data_id, Some(opaque_operator_call))
+                }
+                "nn.conv1d" => {
+                    assert_eq!(call.args.len(), 2);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::Conv1DAttrs>()
+                        .unwrap();
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let data_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    let weights_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let weights_shape =
+                        shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+                    assert_eq!(attrs.padding.len(), 2);
+                    assert_eq!(attrs.dilation.len(), 1);
+
+                    assert_eq!(
+                        attrs
+                            .dilation
+                            .get(0)
+                            .unwrap()
+                            .downcast::<tvm::ir::tir::IntImm>()
+                            .unwrap()
+                            .value,
+                        1
+                    );
+                    let op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayConv1D,
+                    ));
+                    let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id, weights_id].into_boxed_slice(),
+                    ));
+                    //Might need some more asserts for dilation, output layout (see Conv2d)
+                    // assert_eq!(attrs.out_layout, "");
+                    // println!("Checked layout");
+                    // println!("{:?}", attrs.out_dtype);
+                    // assert_eq!(
+                    //     attrs.out_dtype,
+                    //     // TODO(@gussmith23) How to actually constrain this?
+                    //     tvm::DataType::new(3, 0, 0)
+                    // );
+                    // println!("Attr checked");
+                    (
+                        conv1d(
+                            glenside_expr,
+                            data_id,
+                            &data_shape,
+                            weights_id,
+                            &weights_shape,
+                            &[attrs
+                                .strides
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize],
+                            &[
+                                attrs
+                                    .padding
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                                attrs
+                                    .padding
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value as usize,
+                            ],
+                            &[attrs
+                                .dilation
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize],
+                            attrs.groups.try_into().unwrap(),
+                            "NCW",
+                            "OIW",
+                            "",
+                        ),
+                        Some(conv1d_opcall),
+                    )
                 }
                 "nn.conv2d" => {
                     assert_eq!(call.args.len(), 2);
@@ -1478,7 +2175,6 @@ fn compile_expression(
                         // TODO(@gussmith23) How to actually constrain this?
                         tvm::DataType::new(3, 0, 0)
                     );
-
                     conv2d(
                         glenside_expr,
                         data_id,
@@ -1581,13 +2277,63 @@ fn compile_expression(
                         let upsampling_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayUpSampling,
                         ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![upsampling_id, data_id, scale_h_id, scale_w_id, layout_id]
-                                .into_boxed_slice(),
-                        ))
+                        (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![upsampling_id, data_id, scale_h_id, scale_w_id, layout_id]
+                                    .into_boxed_slice(),
+                            )),
+                            None,
+                        )
                     } else {
                         todo!()
                     }
+                }
+                // "nn.conv1d" => {
+                //     let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
+                //     let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                //     let weight_id = get_compiled_expression(call.args.get(1).unwrap());
+                //     let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
+                //         vec![op_id, data_id, weight_id].into_boxed_slice()
+                //     ));
+                //     (conv1d_opcall, None)
+                // }
+                "erf" => {
+                    let op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayErf,
+                    ));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id].into_boxed_slice(),
+                    ));
+                    (opaque_operator_call, None)
+                }
+                "mean" => {
+                    let op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayMean,
+                    ));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::reduce::ReduceAttrs>()
+                        .unwrap();
+                    // TODO(mike): support reducing on multiple axis?
+                    assert_eq!(attrs.axis.len(), 1);
+                    let axis_id;
+                    if let Ok(axis) = attrs.axis.get(0) {
+                        axis_id = glenside_expr.add(Language::Usize(
+                            axis.clone()
+                                .downcast::<tvm::ir::tir::IntImm>()
+                                .unwrap()
+                                .value as usize,
+                        ));
+                    } else {
+                        axis_id = glenside_expr.add(Language::Usize(0 as usize));
+                    }
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id, axis_id].into_boxed_slice(),
+                    ));
+                    (opaque_operator_call, None)
                 }
                 "concatenate" => {
                     assert_eq!(call.args.len(), 1);
@@ -1621,7 +2367,89 @@ fn compile_expression(
                         );
                     }
 
-                    concatted_id
+                    (concatted_id, None)
+                }
+                "round" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let round_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayRound,
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![round_op_id, data_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "left_shift" => {
+                    assert_eq!(call.args.len(), 2);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let nbits_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let shift_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayLeftShift,
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![shift_op_id, data_id, nbits_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "right_shift" => {
+                    assert_eq!(call.args.len(), 2);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let nbits_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let shift_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayRightShift,
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![shift_op_id, data_id, nbits_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "cast" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::CastAttrs>()
+                        .unwrap();
+                    let dtype = attrs.dtype.to_string();
+                    let cast_op_id =
+                        glenside_expr.add(Language::RelayOperator(RelayOperator::RelayCast));
+                    let dtype_id = glenside_expr.add(Language::DataType(
+                        dtype.parse::<crate::language::DataType>().unwrap(),
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![cast_op_id, data_id, dtype_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "clip" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::ClipAttrs>()
+                        .unwrap();
+                    let a_min_id = glenside_expr
+                        .add(Language::NotNanFloat64(NotNan::new(attrs.a_min).unwrap()));
+                    let a_max_id = glenside_expr
+                        .add(Language::NotNanFloat64(NotNan::new(attrs.a_max).unwrap()));
+                    let clip_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayClip,
+                    ));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![clip_op_id, data_id, a_min_id, a_max_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
                 }
                 "reshape" => {
                     assert_eq!(call.args.len(), 1);
@@ -1630,9 +2458,20 @@ fn compile_expression(
                     // use relay type information to calculate new shape instead of using attrs
                     let new_shape =
                         shape_from_type(call.clone().upcast::<Expr>().checked_type.clone());
-                    let new_shape_id = access_shape(glenside_expr, &new_shape, &[]);
+                    let (new_shape_id, shape_id) =
+                        access_shape_with_shape(glenside_expr, &new_shape, &[]);
 
-                    glenside_expr.add(Language::AccessReshape([data_id, new_shape_id]))
+                    let reshape_op = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayReshape,
+                    ));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![reshape_op, data_id, shape_id].into_boxed_slice(),
+                    ));
+
+                    (
+                        glenside_expr.add(Language::AccessReshape([data_id, new_shape_id])),
+                        Some(opaque_operator_call),
+                    )
                 }
                 "split" => {
                     assert_eq!(call.args.len(), 1);
@@ -1644,16 +2483,55 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
 
                     let axis = attrs.axis;
-                    assert!(axis >= 0);
-                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    //assert!(axis >= 0);
+                    let axis_id = glenside_expr.add(Language::Int32(axis));
+                    let relay_operator_id =
+                        glenside_expr.add(Language::RelayOperator(RelayOperator::RelaySplit));
 
+                    // if let Ok(indices_or_sections) = &attrs
+                    //     .indices_or_sections
+                    //     .clone()
+                    //     .downcast::<tvm::runtime::array::Array<
+                    //     tvm::runtime::object::ObjectRef,
+                    // >>() {
+                    //     println!("Array case");
+                    //     let mut indices_or_sections_ids = Vec::default();
+                    //     for i in 0..indices_or_sections.len() {
+                    //         indices_or_sections_ids.push(
+                    //             glenside_expr.add(Language::Usize(
+                    //                 indices_or_sections
+                    //                     .get(i as isize)
+                    //                     .unwrap()
+                    //                     .downcast::<tvm::ir::tir::IntImm>()
+                    //                     .unwrap()
+                    //                     .value as usize,
+                    //             )),
+                    //         );
+                    //     }
+                    //     let indices_or_sections_id = glenside_expr
+                    //         .add(Language::List(indices_or_sections_ids.into_boxed_slice()));
+                    //     let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                    //         vec![relay_operator_id, indices_or_sections_id, axis_id]
+                    //             .into_boxed_slice(),
+                    //     ));
+                    //     (operator_call, None)
+                    // } else {
                     let indices_or_sections = &attrs
                         .indices_or_sections
                         .clone()
-                        .downcast::<tvm::runtime::array::Array<tvm::runtime::object::ObjectRef>>()
+                        .downcast::<tvm::ir::tir::IntImm>()
                         .unwrap();
+                    let indices_or_sections_id =
+                        glenside_expr.add(Language::Usize(indices_or_sections.value as usize));
+                    let operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![relay_operator_id, data_id, indices_or_sections_id, axis_id]
+                            .into_boxed_slice(),
+                    ));
+                    (operator_call, None)
+                    // }
+
                     // assume for yolov3
-                    assert_eq!(indices_or_sections.len(), 2);
+                    /*assert_eq!(indices_or_sections.len(), 2);
 
                     let shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
 
@@ -1713,7 +2591,10 @@ fn compile_expression(
                         last_id,
                     ])));
 
-                    glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice())))
+                    (
+                        glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice()))),
+                        None,
+                    )*/
                 }
                 "sigmoid" => {
                     assert_eq!(call.args.len(), 1);
@@ -1725,9 +2606,31 @@ fn compile_expression(
                         let sigmoid_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelaySigmoid,
                         ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![sigmoid_id, data_id].into_boxed_slice(),
-                        ))
+                        (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![sigmoid_id, data_id].into_boxed_slice(),
+                            )),
+                            None,
+                        )
+                    } else {
+                        todo!()
+                    }
+                }
+                "tanh" => {
+                    assert_eq!(call.args.len(), 1);
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+
+                    if use_opaque_operators_for.contains(&crate::language::RelayOperator::RelayTanh)
+                    {
+                        let tanh_id = glenside_expr.add(Language::RelayOperator(
+                            crate::language::RelayOperator::RelayTanh,
+                        ));
+                        (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![tanh_id, data_id].into_boxed_slice(),
+                            )),
+                            None,
+                        )
                     } else {
                         todo!()
                     }
@@ -1747,7 +2650,10 @@ fn compile_expression(
                         .into_iter()
                         .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
                         .collect::<Vec<usize>>();
-                    access_transpose(glenside_expr, data_id, &transpose_list)
+                    (
+                        access_transpose(glenside_expr, data_id, &transpose_list),
+                        None,
+                    )
                 }
                 "nn.avg_pool2d" => {
                     assert_eq!(call.args.len(), 1);
@@ -1853,17 +2759,20 @@ fn compile_expression(
                         let avg_pool2d_id = glenside_expr.add(Language::RelayOperator(
                             crate::language::RelayOperator::RelayAvgPool2D,
                         ));
-                        glenside_expr.add(Language::RelayOperatorCall(
-                            vec![
-                                avg_pool2d_id,
-                                data_id,
-                                pool_size_id,
-                                strides_id,
-                                padding_id,
-                                layout_id,
-                            ]
-                            .into_boxed_slice(),
-                        ))
+                        (
+                            glenside_expr.add(Language::RelayOperatorCall(
+                                vec![
+                                    avg_pool2d_id,
+                                    data_id,
+                                    pool_size_id,
+                                    strides_id,
+                                    padding_id,
+                                    layout_id,
+                                ]
+                                .into_boxed_slice(),
+                            )),
+                            None,
+                        )
                     } else {
                         todo!()
                     }
@@ -1879,7 +2788,9 @@ fn compile_expression(
                         .unwrap();
 
                     // assume for efficientnet
-                    assert_eq!(attrs.axis.len(), 2);
+                    // I don't think this assumption is needed! I think the code
+                    // below is general-purpose.
+                    //assert_eq!(attrs.axis.len(), 2);
                     for i in (0..attrs.axis.len()).rev() {
                         let usize_id = glenside_expr.add(Language::Usize(
                             attrs
@@ -1893,9 +2804,11 @@ fn compile_expression(
                         data_id = glenside_expr.add(Language::AccessSqueeze([data_id, usize_id]));
                     }
 
-                    data_id
+                    (data_id, None)
                 }
-                _ => todo!(),
+                op => {
+                    todo!("{} operator not implemented", op);
+                }
             }
         } else {
             todo!()
@@ -1965,7 +2878,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
-                let (expr, shapes_vec) = super::from_relay(&module, false, &vec![]);
+                let (expr, shapes_vec, dtypes_vec, _) = super::from_relay(&module, false, &vec![]);
 
                 let mut env = HashMap::default();
                 for (k, v) in &shapes_vec {
@@ -1978,6 +2891,7 @@ mod tests {
                 // from_relay.py. It can be simpler (e.g. collapsing accesses).
                 let mut egraph = EGraph::new(MyAnalysis {
                     name_to_shape: env.clone(),
+                    name_to_dtype: dtypes_vec.into_iter().collect(),
                 });
                 let id = egraph.add_expr(&expr);
 
@@ -2180,21 +3094,61 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 "#
     );
 
-    // The first part of a separable convolution, as seen in Mobilenet.
     test!(
-        conv2d_depthwise_separable_stage1,
+        conv1d,
         1e-6,
         r#"
-#[version = "0.0.5"]
-def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 3, 38, 20), float32] {
-  nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3)
-}
+    #[version = "0.0.5"]
+    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 19), float32] {
+        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 19), float32] */
+    }
 "#,
-        // TODO(@gussmith23) I'm being lazy here
         r#"
-(access-concatenate ?a ?b ?c)
+(access-transpose
+ (compute dot-product
+   (access-cartesian-product
+    (access (access-tensor weights) 1)
+    (access-squeeze
+     (access-windows
+      (access
+       (access-pad
+        (access-tensor data)
+        zero-padding
+        2 3 4
+       )
+       1
+      )
+      (shape 3 3)
+      (shape 1 2)
+     )
+     1
+    )
+   )
+ )
+ (list 1 0 2)
+)
 "#
     );
+
+    // DO NOT MERGE THIS CHANGE
+    // TODO(@gussmith23) We disabled grouped convs for PLDI, and so this test
+    // doesn't work. We can't ignore tests in this macro yet, so I'm commenting it
+    // out. DO NOT MERGE THIS INTO MAIN!
+    //    // The first part of a separable convolution, as seen in Mobilenet.
+    //    test!(
+    //        conv2d_depthwise_separable_stage1,
+    //        1e-6,
+    //        r#"
+    //#[version = "0.0.5"]
+    //def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 3, 38, 20), float32] {
+    //  nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3)
+    //}
+    //"#,
+    //        // TODO(@gussmith23) I'm being lazy here
+    //        r#"
+    //(access-concatenate ?a ?b ?c)
+    //"#
+    //    );
 
     // TODO(@gussmith23) Relay/TVM doesn't seem to like nhwc w/o hwoi
     // So we can't run a test like this til we support hwoi!
@@ -2215,6 +3169,19 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), 
     // )
     // "#
     //     );
+
+    //     test!(
+    //         relaysplit,
+    //         1e-5,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%input: Tensor[(1, 5, 4), float32]) {
+    //     split(%input, indices_or_sections=5, axis=1)
+    // }
+    // "#,
+    //     r#"
+    // (relay-operator-call relay-split ?input 5 1)
+    // "#);
 
     test!(
         conv2d,
@@ -2305,6 +3272,21 @@ def @main(%data: Tensor[(1, 32, 32, 3), float32], %weights: Tensor[(3, 3, 3, 8),
  )
  (list 0 2 3 1)
 )
+"#
+    );
+
+    test!(
+        pad,
+        1e-60,
+        r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 2, 3), float32]) {
+    nn.pad(%data, 0, pad_width=[[0, 0], [1, 0], [1, 1]])
+}"#,
+        r#"
+(access-pad 
+    (access-pad (access-tensor data) zero-padding 1 1 0)
+    zero-padding 2 1 1)
 "#
     );
 

@@ -156,7 +156,7 @@ pub fn c_assignment_string<A: std::fmt::Display>(
 /// map.insert("t2".to_string(), vec![32, 32]);
 /// map.insert("t3".to_string(), vec![32, 32]);
 ///
-/// let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+/// let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map, name_to_dtype: HashMap::default() });
 /// egraph.add_expr(&expr);
 ///
 /// let (hw_map, hw_design) = create_hardware_design_monolithic(&egraph, (32, 32));
@@ -296,8 +296,11 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             &expr[id].nodes[0]
         } {
             Language::RelayOperator(_) => {}
+            Language::ConstantTensor(_) => {}
+            Language::DataType(_) => {}
             Language::RelayKernelLayout(_) => {}
             Language::RelayActivationLayout(_) => {}
+            Language::AcceleratorFunc(_) => {}
             Language::Symbol(s) => {
                 set.insert(s.to_string());
             }
@@ -309,6 +312,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             Language::RelayOperatorCall(ids)
             | Language::List(ids)
             | Language::Shape(ids)
+            | Language::AcceleratorCall(ids)
             | Language::ConstructTuple(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
@@ -354,7 +358,12 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             &Language::NotNanFloat64(_) => {}
-            &Language::Usize(_) | &Language::PadType(_) => (),
+            &Language::Usize(_)
+            | &Language::Int32(_)
+            | &Language::Uint8(_)
+            | &Language::Int64(_)
+            | &Language::Int8(_)
+            | &Language::PadType(_) => (),
             &Language::Literal(_)
             | &Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
             | &Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
@@ -411,6 +420,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             Language::RelayOperatorCall(ids)
             | Language::Shape(ids)
             | Language::List(ids)
+            | Language::AcceleratorCall(ids)
             | Language::ConstructTuple(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
@@ -420,6 +430,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             &Language::Access(ids)
             | &Language::AccessTranspose(ids)
             | &Language::AccessShape(ids)
+            | &Language::ConstantTensor(ids)
             | &Language::AccessReshape(ids)
             | &Language::ShapeInsertAxis(ids)
             | &Language::ShapeRemoveAxis(ids)
@@ -454,8 +465,14 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | Language::RelayKernelLayout(_)
             | Language::RelayActivationLayout(_)
             | Language::Symbol(_)
+            | Language::AcceleratorFunc(_)
             | &Language::NotNanFloat64(_)
             | &Language::Usize(_)
+            | &Language::Int32(_)
+            | &Language::Int64(_)
+            | &Language::Int8(_)
+            | &Language::Uint8(_)
+            | &Language::DataType(_)
             | &Language::PadType(_) => (),
 
             &Language::Literal(_)
@@ -655,6 +672,11 @@ fn codegen_helper(
         }
         &expr[id].nodes[0]
     } {
+        // TODO(mike): we probably could make codegen happen here
+        Language::AcceleratorCall(_ids) => None,
+        Language::ConstantTensor(_ids) => None,
+        Language::AcceleratorFunc(_) => None,
+        Language::DataType(_) => None,
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
@@ -662,6 +684,24 @@ fn codegen_helper(
             };
 
             match relay_op {
+                RelayOperator::RelayZeros => todo!(),
+                RelayOperator::RelayBatchMatmul => todo!(),
+                RelayOperator::RelayLayerNorm => todo!(),
+                RelayOperator::RelayRound => todo!(),
+                RelayOperator::RelayLeftShift => todo!(),
+                RelayOperator::RelayRightShift => todo!(),
+                RelayOperator::RelayClip => todo!(),
+                RelayOperator::RelayLogSoftmax => todo!(),
+                RelayOperator::RelayTanh => todo!(),
+                RelayOperator::RelayTake => todo!(),
+                RelayOperator::RelayStridedSlice => todo!(),
+                RelayOperator::RelayConv1D => todo!(),
+                RelayOperator::RelayConv2D => todo!(),
+                RelayOperator::RelayErf => todo!(),
+                RelayOperator::RelayCast => todo!(),
+                RelayOperator::RelayMean => todo!(),
+                RelayOperator::RelaySplit => todo!(),
+                RelayOperator::RelayMultiply => todo!(),
                 RelayOperator::RelayBatchNormInference => {
                     let data = get_c_variable_for_id(expr, ids[1]);
                     let gamma = get_c_variable_for_id(expr, ids[2]);
@@ -781,6 +821,8 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
 
                     Some(softmax_out)
                 }
+                RelayOperator::RelayDense => Some(format!("")),
+                RelayOperator::RelayReshape => None,
                 RelayOperator::RelayReLU => {
                     let data = get_c_variable_for_id(expr, ids[1]);
 
@@ -1044,6 +1086,8 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                 RelayOperator::RelayUpSampling => todo!(),
                 RelayOperator::RelayMaximum => todo!(),
                 RelayOperator::RelayMinimum => todo!(),
+                RelayOperator::RelayDropout => todo!(),
+                RelayOperator::RelayStack => todo!(),
             }
         }
         &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
@@ -1390,6 +1434,10 @@ for (int i{i} = 0; i{i} < {limit}; i{i}++) {{",
             Some(out_var_name)
         }
         &Language::Usize(u) => Some(format!("{}", u)),
+        &Language::Int32(x) => Some(format!("{}", x)),
+        &Language::Uint8(u) => Some(format!("{}", u)),
+        &Language::Int64(x) => Some(format!("{}", x)),
+        &Language::Int8(x) => Some(format!("{}", x)),
         &Language::AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1956,7 +2004,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("t".to_string(), shape.clone());
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let code = codegen(
@@ -2080,7 +2131,10 @@ int main() {{
         map.insert("t0".to_string(), shape0.clone());
         map.insert("t1".to_string(), shape1.clone());
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let code = codegen(
@@ -2208,7 +2262,10 @@ int main() {{
         map.insert("t0".to_string(), shape0.clone());
         map.insert("t1".to_string(), shape1.clone());
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let mut hw_map = HashMap::default();
@@ -2362,7 +2419,10 @@ int main() {{
         let mut map = HashMap::default();
         map.insert("t".to_string(), shape.clone());
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let code = codegen(
@@ -2498,7 +2558,10 @@ int main() {{
         let mut map = HashMap::default();
         map.insert("t".to_string(), shape.clone());
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let code = codegen(
@@ -2636,7 +2699,10 @@ int main() {{
                 _ => panic!(),
             };
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let code = codegen(
@@ -2762,7 +2828,10 @@ int main() {{
             .unwrap()
             .into_dyn();
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let code = codegen(
@@ -2883,7 +2952,10 @@ int main() {{
         map.insert("t2".to_string(), vec![32, 32]);
         map.insert("t3".to_string(), vec![32, 32]);
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         egraph.add_expr(&expr);
 
         let (_hw_map, _hw_design) = create_hardware_design_monolithic(&egraph, (32, 32));
@@ -2923,7 +2995,10 @@ int main() {{
         map.insert("t0".to_string(), shape0.clone());
         map.insert("t1".to_string(), shape1.clone());
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let mut hw_map = HashMap::default();
@@ -3044,7 +3119,7 @@ def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayAdd],
@@ -3057,6 +3132,7 @@ def @main(%x: Tensor[(1, 16, 16, 3), float32], %y: Tensor[(1, 1, 3), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -3188,7 +3264,7 @@ def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayBiasAdd],
@@ -3201,6 +3277,7 @@ def @main(%x: Tensor[(1, 1000), float32], %y: Tensor[(1000), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -3349,7 +3426,7 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayBatchNormInference],
@@ -3371,6 +3448,7 @@ def @main(%data: Tensor[(1, 2, 2, 16), float32], %bn_gamma: Tensor[(16), float32
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -3523,7 +3601,7 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelaySoftmax],
@@ -3545,6 +3623,7 @@ def @main(%data: Tensor[(1,100), float32]) -> Tensor[(1,100), float32] {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -3673,7 +3752,7 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayReLU],
@@ -3695,6 +3774,7 @@ def @main(%x: Tensor[(1, 3, 3, 4), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -3816,7 +3896,7 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
 
         let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayMaxPool2D],
@@ -3838,6 +3918,7 @@ def @main(%x: Tensor[(1, 112, 112, 64), float32]) -> Tensor[(1, 56, 56, 64), flo
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -3960,7 +4041,7 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayBatchFlatten],
@@ -3982,6 +4063,7 @@ def @main(%x: Tensor[(1, 512, 1, 1), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4104,7 +4186,7 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
 
         let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayGlobalAvgPool2D],
@@ -4126,6 +4208,7 @@ def @main(%x: Tensor[(1, 7, 7, 512), float32]) -> Tensor[(1, 1, 1, 512), float32
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4247,7 +4330,7 @@ def @main(%data: Tensor[(10, 10), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelayLeakyReLU],
@@ -4269,6 +4352,7 @@ def @main(%data: Tensor[(10, 10), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4394,7 +4478,7 @@ def @main(%data: Tensor[(10, 10), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelaySigmoid],
@@ -4416,6 +4500,7 @@ def @main(%data: Tensor[(10, 10), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4541,7 +4626,7 @@ def @main(%data: Tensor[(1, 1280, 7, 7), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelaySigmoid],
@@ -4563,6 +4648,7 @@ def @main(%data: Tensor[(1, 1280, 7, 7), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4688,7 +4774,7 @@ def @main(%data: Tensor[(1, 256, 13, 13), float32]) {
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelaySigmoid],
@@ -4710,6 +4796,7 @@ def @main(%data: Tensor[(1, 256, 13, 13), float32]) {
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4835,7 +4922,7 @@ def @main(%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) 
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelaySigmoid],
@@ -4857,6 +4944,7 @@ def @main(%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) 
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -4979,7 +5067,7 @@ def @main(%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) 
 
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![crate::language::RelayOperator::RelaySigmoid],
@@ -5001,6 +5089,7 @@ def @main(%x: Tensor[(1, 256, 13, 13), float32], %y: Tensor[(1, 256), float32]) 
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let id = egraph.add_expr(&expr);
@@ -5125,7 +5214,7 @@ int main() {{
         let mut tensor_rng = SmallRng::seed_from_u64(SEED);
 
         let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![
@@ -5154,6 +5243,7 @@ int main() {{
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let _id = egraph.add_expr(&expr);
@@ -5176,7 +5266,7 @@ int main() {{
         let mut tensor_rng = SmallRng::seed_from_u64(SEED);
 
         let module = tvm::ir::module::IRModule::parse("", relay.clone()).unwrap();
-        let (expr, shapes_vec) = crate::language::from_relay::from_relay(
+        let (expr, shapes_vec, dtypes_vec, _) = crate::language::from_relay::from_relay(
             &module,
             true,
             &vec![
@@ -5206,6 +5296,7 @@ int main() {{
 
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: env.clone(),
+            name_to_dtype: dtypes_vec.into_iter().collect(),
         });
 
         let _id = egraph.add_expr(&expr);

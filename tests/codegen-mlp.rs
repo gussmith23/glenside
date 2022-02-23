@@ -50,7 +50,10 @@ fn codegen_mlp() {
 
     let expr = RecExpr::from_str(program).unwrap();
     // Check that it "type checks"
-    let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+    let mut egraph = EGraph::new(MyAnalysis {
+        name_to_shape: map,
+        name_to_dtype: HashMap::default(),
+    });
     let id = egraph.add_expr(&expr);
 
     // Get hardware design

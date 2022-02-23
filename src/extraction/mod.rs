@@ -1,6 +1,6 @@
 pub mod ilp;
 
-use crate::language::{Language, MyAnalysis};
+use crate::language::{ComputeType, Language, MyAnalysis};
 use egg::{CostFunction, EGraph, Id, Language as LanguageTrait, Pattern, Searcher};
 use std::collections::HashSet;
 
@@ -63,12 +63,17 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             }
 
             Language::Symbol(_)
+            | Language::ConstantTensor(_)
             | Language::AccessLiteral(_)
             | Language::Literal(_)
             | Language::NotNanFloat64(_)
             | Language::SystolicArray(_)
             | Language::SystolicArrayWithBlocking(_)
             | Language::Usize(_)
+            | Language::Int32(_)
+            | Language::Int64(_)
+            | Language::Int8(_)
+            | Language::Uint8(_)
             | Language::ConstructTuple(_)
             | Language::TupleGetItem(_)
             | Language::AccessSlice(_)
@@ -100,6 +105,8 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             // TODO(@gussmith23) We shouldn't have to extract ANY computes!
             | Language::Compute(_)
             | Language::AccessTranspose(_) => 1,
+            | Language::AcceleratorCall(_) => 0,
+            | Language::AcceleratorFunc(_) => 0,
 
             // Penalize specific compute types. In the future, these constructs
             // shouldn't be extractable at all.
@@ -124,6 +131,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayOperator(_) => todo!(),
+            Language::DataType(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
             Language::RelayKernelLayout(_) => todo!(),
         };
@@ -162,6 +170,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
             Language::RelayKernelLayout(_) => todo!(),
+            Language::DataType(_) => todo!(),
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_) => todo!(),
@@ -171,6 +180,9 @@ impl CostFunction<Language> for SimpleCostFunction {
 
             // Cannot extract compute: compute must be lowered to an atom.
             Compute(_) => std::usize::MAX,
+            AcceleratorFunc(_) => 1,
+            AcceleratorCall(_) => 1,
+            ConstantTensor(_) => 1,
             // Extracting hardware atoms is encouraged
             SystolicArray(_) => {
                 if !self.prefer_systolic_arrays_with_blocking {
@@ -205,11 +217,88 @@ impl CostFunction<Language> for SimpleCostFunction {
             | AccessBroadcast(_) => 1,
             // Other glenside constructs that are necessary.
             Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
-            | List(_) | AccessShape(_) | Usize(_) | PadType(_) | ComputeType(_) | Symbol(_)
-            | Literal(_) | NotNanFloat64(_) => 1,
+            | List(_) | AccessShape(_) | Usize(_) | Int32(_) | Uint8(_) | PadType(_) | Int64(_)
+            | Int8(_) | ComputeType(_) | Symbol(_) | Literal(_) | NotNanFloat64(_) => 1,
         };
 
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
+    }
+}
+
+pub struct AcceleratorCostFunction(pub f64);
+
+impl CostFunction<Language> for AcceleratorCostFunction {
+    type Cost = f64;
+    fn cost<C>(&mut self, enode: &Language, mut costs: C) -> Self::Cost
+    where
+        C: FnMut(Id) -> Self::Cost,
+    {
+        if let Language::AcceleratorCall(_) = &enode {
+            return 0.0;
+        }
+        let base_cost: f64 = match enode {
+            // We only consider accelerator calls and relay operators for now when
+            // extracting a model
+            Language::Access(_)
+            | Language::List(_)
+            | Language::Shape(_)
+            | Language::Usize(_)
+            | Language::AccessLiteral(_)
+            | Language::Literal(_)
+            | Language::AcceleratorCall(_)
+            | Language::AccessShape(_)
+            | Language::AcceleratorFunc(_)
+            | Language::Symbol(_)
+            | Language::RelayOperator(_)
+            | Language::PadType(_)
+            | Language::Int32(_)
+            | Language::Uint8(_)
+            | Language::Int64(_)
+            | Language::Int8(_)
+            | Language::ConstructTuple(_)
+            | Language::ConstantTensor(_)
+            | Language::TupleGetItem(_)
+            | Language::DataType(_)
+            | Language::AccessTensor(_) => 0.0,
+            Language::RelayOperatorCall(_) => self.0 / 2.0,
+            Language::AccessTranspose(_)
+            | Language::RelayKernelLayout(_)
+            | Language::RelayActivationLayout(_)
+            | Language::NotNanFloat64(_)
+            | Language::AccessPad(_)
+            | Language::AccessFlatten(_)
+            | Language::AccessWindows(_)
+            | Language::AccessInsertAxis(_)
+            | Language::AccessSqueeze(_) => 1.0,
+
+            Language::Compute(_) => 1.0,
+            Language::AccessReshape(_) => self.0,
+            Language::ComputeType(compute_type) => match compute_type {
+                ComputeType::DotProduct
+                | ComputeType::Softmax
+                | ComputeType::ReLU
+                | ComputeType::ReduceSum
+                | ComputeType::ReduceMean => self.0,
+                _ => 1.0,
+            },
+            Language::AccessCartesianProduct(_)
+            | Language::SystolicArray(_)
+            | Language::AccessBroadcast(_)
+            | Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
+            | Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
+            | Language::SystolicArrayConv2dNchwOihwWithBlocking(_)
+            | Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
+            | Language::SystolicArrayWithBlocking(_)
+            | Language::ShapeOf(_)
+            | Language::SliceShape(_)
+            | Language::ShapeInsertAxis(_)
+            | Language::ShapeRemoveAxis(_)
+            | Language::AccessSlice(_)
+            | Language::AccessConcatenate(_)
+            | Language::AccessShiftRight(_)
+            | Language::AccessPair(_) => self.0 * 100.0,
+        };
+        enode.fold(base_cost, |sum, id| sum + costs(id))
     }
 }
 
@@ -315,7 +404,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(
+        let ex = Extractor::new(
             &egraph,
             MonolithicCostFunction {
                 systolic_array_configuration: (16, 128),
@@ -355,7 +444,7 @@ mod tests {
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(
+        let ex = Extractor::new(
             &egraph,
             MonolithicCostFunction {
                 egraph: &egraph,
@@ -420,11 +509,14 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph = EGraph::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = EGraph::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         egraph.rebuild();
 
-        let mut ex = Extractor::new(&egraph, SimpleCostFunction::default());
+        let ex = Extractor::new(&egraph, SimpleCostFunction::default());
 
         let (cost, best) = ex.find_best(id);
         assert!(cost < std::usize::MAX);

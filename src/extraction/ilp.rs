@@ -47,13 +47,20 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
             | Language::SystolicArrayConv2dNhwcHwioWithBlocking(_)
             | Language::SystolicArrayConv2dIm2colNchwOihwWithBlocking(_)
             | Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_)
+            | Language::AcceleratorCall(_)
+            | Language::AcceleratorFunc(_)
                     | Language::Literal(_)
                     | Language::RelayOperatorCall(_)
             | Language::RelayActivationLayout(_)
             | Language::RelayKernelLayout(_)
                     | Language::Usize(_)
+                    | Language::Int32(_)
+                    | Language::Int64(_)
+                    | Language::Int8(_)
+                    | Language::Uint8(_)
                     | Language::NotNanFloat64(_)
                     | Language::RelayOperator(_)
+                    | Language::DataType(_)
                     | Language::Symbol(_) => true,
 
                 // Things I'm not sure about.
@@ -77,6 +84,7 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
                     | Language::AccessSqueeze(_)
                     | Language::AccessInsertAxis(_)
                     | Language::AccessBroadcast(_)
+                    | Language::ConstantTensor(_)
                     | Language::AccessLiteral(_) => true,
 
                 // Things that should never pass through.
@@ -120,6 +128,9 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::RelayOperatorCall(_)
             | Language::RelayActivationLayout(_)
             | Language::RelayKernelLayout(_)
+            | Language::AcceleratorCall(_)
+            | Language::AcceleratorFunc(_)
+            | Language::DataType(_)
             | Language::SystolicArrayWithBlocking(_) => true,
 
             Language::Shape(_)
@@ -128,6 +139,10 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::AccessWindows(_)
             | Language::Literal(_)
             | Language::Usize(_)
+            | Language::Int32(_)
+            | Language::Int64(_)
+            | Language::Int8(_)
+            | Language::Uint8(_)
             | Language::NotNanFloat64(_)
             | Language::RelayOperator(_)
             | Language::Symbol(_)
@@ -148,6 +163,7 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::ComputeType(_)
             | Language::AccessCartesianProduct(_)
             | Language::AccessPair(_)
+            | Language::ConstantTensor(_)
             | Language::AccessShiftRight(_) => false,
         }
     }
@@ -288,16 +304,20 @@ pub fn create_generic_egraph_lp_model<'a>(
     let number_of_classes_f64 = egraph.number_of_classes() as f64;
     // Create all of the variables
     for eclass in egraph.classes() {
+        let canonical_id = egraph.find(eclass.id);
+        if bq_vars.contains_key(&canonical_id) {
+            continue;
+        }
         {
-            let bq_name = format!("bq_{}", eclass.id);
+            let bq_name = format!("bq_{}", canonical_id);
             let bq_var = var!(bq_name -> 1.0 as Binary);
             let column_index = problem.add_variable(bq_var).unwrap();
-            assert!(!bq_vars.contains_key(&eclass.id));
-            bq_vars.insert(eclass.id, column_index);
+            assert!(!bq_vars.contains_key(&canonical_id));
+            bq_vars.insert(canonical_id, column_index);
         }
 
         {
-            let topo_sort_var_name = format!("topo_sort_{}", eclass.id);
+            let topo_sort_var_name = format!("topo_sort_{}", canonical_id);
             // TODO(@gussmith23) the `as f64` thing here is potentially a bug
             let topo_sort_var = Variable::new(
                 VariableType::Integer,
@@ -307,12 +327,13 @@ pub fn create_generic_egraph_lp_model<'a>(
                 topo_sort_var_name,
             );
             let column_index = problem.add_variable(topo_sort_var).unwrap();
-            assert!(!topo_sort_vars.contains_key(&eclass.id));
-            topo_sort_vars.insert(eclass.id, column_index);
+            assert!(!topo_sort_vars.contains_key(&canonical_id));
+            topo_sort_vars.insert(canonical_id, column_index);
         }
 
         // Filter out enodes that the user doesn't want variables for.
-        for enode in eclass
+        let mut var_count = 0;
+        for enode in egraph[canonical_id]
             .nodes
             .iter()
             .filter(|node| filter_enode(node, eclass.id, egraph))
@@ -324,18 +345,62 @@ pub fn create_generic_egraph_lp_model<'a>(
             let column_index = problem.add_variable(bn_var).unwrap();
             assert!(!bn_vars.contains_key(&enode));
             bn_vars.insert(enode, column_index);
+            var_count += 1;
         }
+        assert!(
+            var_count > 0,
+            "No variable selected for eclass {}: {:?}",
+            eclass.id,
+            eclass
+        );
     }
 
     // All roots must be chosen.
-    for id in roots {
-        let column_index = bq_vars.get(id).unwrap();
+    for id in roots.iter().map(|id| egraph.find(*id)) {
+        let column_index = bq_vars.get(&id).unwrap();
         let mut con = Constraint::new(ConstraintType::Eq, 1.0, format!("root constraint {}", id));
         con.add_wvar(WeightedVariable::new_idx(*column_index, 1.0));
         problem.add_constraint(con).unwrap();
     }
 
     for (id, bq_idx) in bq_vars.iter() {
+        // If an eclass is selected, then at least one of its parents must be selected
+        // if all its parents are filtered out, then this eclass must not be selected
+        if !roots.contains(&id) {
+            let mut available_parents = vec![];
+            for p in egraph[*id].parents.iter() {
+                if let Some(parent_idx) = bn_vars.get(&p.0) {
+                    available_parents.push(parent_idx);
+                }
+            }
+
+            if available_parents.len() == 0 {
+                let mut con = Constraint::new(
+                    ConstraintType::Eq,
+                    0.0,
+                    format!(
+                        "Disable eclass {} because it doesn't have an available parent",
+                        id
+                    ),
+                );
+                con.add_wvar(WeightedVariable::new_idx(*bq_idx, 1.0));
+                problem.add_constraint(con).unwrap();
+                continue;
+            } else {
+                // bq => OR p_idx for p_idx in bq of eclass parents
+                let mut con = Constraint::new(
+                    ConstraintType::GreaterThanEq,
+                    0.0,
+                    format!("Need to choose parents for {}", id),
+                );
+                con.add_wvar(WeightedVariable::new_idx(*bq_idx, -1.0));
+                for p_idx in available_parents.into_iter() {
+                    con.add_wvar(WeightedVariable::new_idx(*p_idx, 1.0));
+                }
+                problem.add_constraint(con).unwrap();
+            }
+        }
+
         // We only allow the extraction of certain nodes. This gets a list of
         // all of ILP variable indices for enode variables and their
         // corresponding enodes, for enodes that passed through the
@@ -360,9 +425,9 @@ pub fn create_generic_egraph_lp_model<'a>(
             // That is, if an eclass is selected, at least one of its variants
             // is selected.
             // implemented as:
-            // -bq + bn ... >= 0
+            // -bq + bn ... == 0
             let mut con = Constraint::new(
-                ConstraintType::GreaterThanEq,
+                ConstraintType::Eq,
                 0.0,
                 format!("must select enode for eclass {}", id),
             );
@@ -377,8 +442,8 @@ pub fn create_generic_egraph_lp_model<'a>(
         // Implemented as
         // -bn + bq >= 0 for each bq
         for (bn_idx, node) in &bn_idxs_and_nodes {
-            for eclass_id in node.children().iter() {
-                let bq_idx = bq_vars.get(eclass_id).unwrap();
+            for eclass_id in node.children().iter().map(|id| egraph.find(*id)) {
+                let bq_idx = bq_vars.get(&eclass_id).unwrap();
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
                     0.0,
@@ -404,8 +469,8 @@ pub fn create_generic_egraph_lp_model<'a>(
         // some_large_number, in this case, can just be num_classes
         let this_eclass_topo_sort_var = topo_sort_vars.get(id).unwrap();
         for (bn_idx, node) in &bn_idxs_and_nodes {
-            for child_eclass_id in node.children().iter() {
-                let child_eclass_topo_sort_var = topo_sort_vars.get(child_eclass_id).unwrap();
+            for child_eclass_id in node.children().iter().map(|id| egraph.find(*id)) {
+                let child_eclass_topo_sort_var = topo_sort_vars.get(&child_eclass_id).unwrap();
                 let large_number = number_of_classes_f64;
                 let mut con = Constraint::new(
                     ConstraintType::GreaterThanEq,
@@ -512,7 +577,7 @@ pub fn extract_single_expression(
         // will guarantee that its dependent eclasses are extracted. So this
         // check truly just exists because of my own curiosity...if it fails, it
         // shouldn't actually break anything, other than my hypothesis.
-        debug_assert_eq!(variants.len(), 1);
+        debug_assert!(variants.len() == 1, "{:?}", variants);
 
         let selected_variant = variants[0];
 
@@ -520,7 +585,7 @@ pub fn extract_single_expression(
         // new expression.
         let converted_node = selected_variant.clone().map_children(|id| {
             *old_id_to_new_id_map
-                .get(&id)
+                .get(&egraph_lp_problem.egraph.find(id.clone()))
                 .unwrap_or_else(|| panic!("id {} in enode {:?} not found!", id, selected_variant))
         });
 
@@ -550,6 +615,7 @@ mod tests {
         map.insert("t".to_string(), shape.clone());
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: map.clone(),
+            name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
 
@@ -561,7 +627,10 @@ mod tests {
         let (out_expr, _old_id_to_new_id_map) = extract_single_expression(
             &model,
             &result.variables,
-            EGraph::new(MyAnalysis { name_to_shape: map }),
+            EGraph::new(MyAnalysis {
+                name_to_shape: map,
+                name_to_dtype: HashMap::default(),
+            }),
         );
 
         for eclass in out_expr.classes() {

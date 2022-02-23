@@ -1,0 +1,1252 @@
+#[version = "0.0.5"]
+type tensor_uint8_t {
+  tensor_nil_uint8,
+  tensor0_uint8(uint8),
+  tensor1_uint8(Tensor[(?), uint8]),
+  tensor2_uint8(Tensor[(?, ?), uint8]),
+  tensor3_uint8(Tensor[(?, ?, ?), uint8]),
+  tensor4_uint8(Tensor[(?, ?, ?, ?), uint8]),
+  tensor5_uint8(Tensor[(?, ?, ?, ?, ?), uint8]),
+  tensor6_uint8(Tensor[(?, ?, ?, ?, ?, ?), uint8]),
+}
+
+type tensor_int64_t {
+  tensor_nil_int64,
+  tensor0_int64(int64),
+  tensor1_int64(Tensor[(?), int64]),
+  tensor2_int64(Tensor[(?, ?), int64]),
+  tensor3_int64(Tensor[(?, ?, ?), int64]),
+  tensor4_int64(Tensor[(?, ?, ?, ?), int64]),
+  tensor5_int64(Tensor[(?, ?, ?, ?, ?), int64]),
+  tensor6_int64(Tensor[(?, ?, ?, ?, ?, ?), int64]),
+}
+
+type tensor_int32_t {
+  tensor_nil_int32,
+  tensor0_int32(int32),
+  tensor1_int32(Tensor[(?), int32]),
+  tensor2_int32(Tensor[(?, ?), int32]),
+  tensor3_int32(Tensor[(?, ?, ?), int32]),
+  tensor4_int32(Tensor[(?, ?, ?, ?), int32]),
+  tensor5_int32(Tensor[(?, ?, ?, ?, ?), int32]),
+  tensor6_int32(Tensor[(?, ?, ?, ?, ?, ?), int32]),
+}
+
+type tensor_int8_t {
+  tensor_nil_int8,
+  tensor0_int8(int8),
+  tensor1_int8(Tensor[(?), int8]),
+  tensor2_int8(Tensor[(?, ?), int8]),
+  tensor3_int8(Tensor[(?, ?, ?), int8]),
+  tensor4_int8(Tensor[(?, ?, ?, ?), int8]),
+  tensor5_int8(Tensor[(?, ?, ?, ?, ?), int8]),
+  tensor6_int8(Tensor[(?, ?, ?, ?, ?, ?), int8]),
+}
+
+type Option[A] {
+  Some(A),
+  None,
+}
+
+type tensor_float64_t {
+  tensor_nil_float64,
+  tensor0_float64(float64),
+  tensor1_float64(Tensor[(?), float64]),
+  tensor2_float64(Tensor[(?, ?), float64]),
+  tensor3_float64(Tensor[(?, ?, ?), float64]),
+  tensor4_float64(Tensor[(?, ?, ?, ?), float64]),
+  tensor5_float64(Tensor[(?, ?, ?, ?, ?), float64]),
+  tensor6_float64(Tensor[(?, ?, ?, ?, ?, ?), float64]),
+}
+
+type tensor_float16_t {
+  tensor_nil_float16,
+  tensor0_float16(float16),
+  tensor1_float16(Tensor[(?), float16]),
+  tensor2_float16(Tensor[(?, ?), float16]),
+  tensor3_float16(Tensor[(?, ?, ?), float16]),
+  tensor4_float16(Tensor[(?, ?, ?, ?), float16]),
+  tensor5_float16(Tensor[(?, ?, ?, ?, ?), float16]),
+  tensor6_float16(Tensor[(?, ?, ?, ?, ?, ?), float16]),
+}
+
+type tensor_float32_t {
+  tensor_nil_float32,
+  tensor0_float32(float32),
+  tensor1_float32(Tensor[(?), float32]),
+  tensor2_float32(Tensor[(?, ?), float32]),
+  tensor3_float32(Tensor[(?, ?, ?), float32]),
+  tensor4_float32(Tensor[(?, ?, ?, ?), float32]),
+  tensor5_float32(Tensor[(?, ?, ?, ?, ?), float32]),
+  tensor6_float32(Tensor[(?, ?, ?, ?, ?, ?), float32]),
+}
+
+type List[A] {
+  Cons(A, List[A]),
+  Nil,
+}
+
+type tensor_int16_t {
+  tensor_nil_int16,
+  tensor0_int16(int16),
+  tensor1_int16(Tensor[(?), int16]),
+  tensor2_int16(Tensor[(?, ?), int16]),
+  tensor3_int16(Tensor[(?, ?, ?), int16]),
+  tensor4_int16(Tensor[(?, ?, ?, ?), int16]),
+  tensor5_int16(Tensor[(?, ?, ?, ?, ?), int16]),
+  tensor6_int16(Tensor[(?, ?, ?, ?, ?, ?), int16]),
+}
+
+type Tree[A] {
+  Rose(A, List[Tree[A]]),
+}
+
+type tensor_uint16_t {
+  tensor_nil_uint16,
+  tensor0_uint16(uint16),
+  tensor1_uint16(Tensor[(?), uint16]),
+  tensor2_uint16(Tensor[(?, ?), uint16]),
+  tensor3_uint16(Tensor[(?, ?, ?), uint16]),
+  tensor4_uint16(Tensor[(?, ?, ?, ?), uint16]),
+  tensor5_uint16(Tensor[(?, ?, ?, ?, ?), uint16]),
+  tensor6_uint16(Tensor[(?, ?, ?, ?, ?, ?), uint16]),
+}
+
+def @main(%input_1: Tensor[(20, 32, 256), float32], %input_0: Tensor[(10, 32, 256), float32], %decoder_layers_0_self_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_0_self_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_0_self_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_0_self_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_0_norm1_weight: Tensor[(256), float32], %decoder_layers_0_norm1_bias: Tensor[(256), float32], %decoder_layers_0_multihead_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_0_multihead_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_0_self_attn_in_proj_weight: Tensor[(768, 256), float32], %encoder_layers_0_self_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_0_self_attn_out_proj_weight: Tensor[(256, 256), float32], %encoder_layers_0_self_attn_out_proj_bias: Tensor[(256), float32], %encoder_layers_0_norm1_weight: Tensor[(256), float32], %encoder_layers_0_norm1_bias: Tensor[(256), float32], %encoder_layers_0_linear1_weight: Tensor[(2048, 256), float32], %encoder_layers_0_linear1_bias: Tensor[(2048), float32], %encoder_layers_0_linear2_weight: Tensor[(256, 2048), float32], %encoder_layers_0_linear2_bias: Tensor[(256), float32], %encoder_layers_0_norm2_weight: Tensor[(256), float32], %encoder_layers_0_norm2_bias: Tensor[(256), float32], %encoder_layers_1_self_attn_in_proj_weight: Tensor[(768, 256), float32], %encoder_layers_1_self_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_1_self_attn_out_proj_weight: Tensor[(256, 256), float32], %encoder_layers_1_self_attn_out_proj_bias: Tensor[(256), float32], %encoder_layers_1_norm1_weight: Tensor[(256), float32], %encoder_layers_1_norm1_bias: Tensor[(256), float32], %encoder_layers_1_linear1_weight: Tensor[(2048, 256), float32], %encoder_layers_1_linear1_bias: Tensor[(2048), float32], %encoder_layers_1_linear2_weight: Tensor[(256, 2048), float32], %encoder_layers_1_linear2_bias: Tensor[(256), float32], %encoder_layers_1_norm2_weight: Tensor[(256), float32], %encoder_layers_1_norm2_bias: Tensor[(256), float32], %encoder_layers_2_self_attn_in_proj_weight: Tensor[(768, 256), float32], %encoder_layers_2_self_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_2_self_attn_out_proj_weight: Tensor[(256, 256), float32], %encoder_layers_2_self_attn_out_proj_bias: Tensor[(256), float32], %encoder_layers_2_norm1_weight: Tensor[(256), float32], %encoder_layers_2_norm1_bias: Tensor[(256), float32], %encoder_layers_2_linear1_weight: Tensor[(2048, 256), float32], %encoder_layers_2_linear1_bias: Tensor[(2048), float32], %encoder_layers_2_linear2_weight: Tensor[(256, 2048), float32], %encoder_layers_2_linear2_bias: Tensor[(256), float32], %encoder_layers_2_norm2_weight: Tensor[(256), float32], %encoder_layers_2_norm2_bias: Tensor[(256), float32], %encoder_layers_3_self_attn_in_proj_weight: Tensor[(768, 256), float32], %encoder_layers_3_self_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_3_self_attn_out_proj_weight: Tensor[(256, 256), float32], %encoder_layers_3_self_attn_out_proj_bias: Tensor[(256), float32], %encoder_layers_3_norm1_weight: Tensor[(256), float32], %encoder_layers_3_norm1_bias: Tensor[(256), float32], %encoder_layers_3_linear1_weight: Tensor[(2048, 256), float32], %encoder_layers_3_linear1_bias: Tensor[(2048), float32], %encoder_layers_3_linear2_weight: Tensor[(256, 2048), float32], %encoder_layers_3_linear2_bias: Tensor[(256), float32], %encoder_layers_3_norm2_weight: Tensor[(256), float32], %encoder_layers_3_norm2_bias: Tensor[(256), float32], %encoder_layers_4_self_attn_in_proj_weight: Tensor[(768, 256), float32], %encoder_layers_4_self_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_4_self_attn_out_proj_weight: Tensor[(256, 256), float32], %encoder_layers_4_self_attn_out_proj_bias: Tensor[(256), float32], %encoder_layers_4_norm1_weight: Tensor[(256), float32], %encoder_layers_4_norm1_bias: Tensor[(256), float32], %encoder_layers_4_linear1_weight: Tensor[(2048, 256), float32], %encoder_layers_4_linear1_bias: Tensor[(2048), float32], %encoder_layers_4_linear2_weight: Tensor[(256, 2048), float32], %encoder_layers_4_linear2_bias: Tensor[(256), float32], %encoder_layers_4_norm2_weight: Tensor[(256), float32], %encoder_layers_4_norm2_bias: Tensor[(256), float32], %encoder_layers_5_self_attn_in_proj_weight: Tensor[(768, 256), float32], %encoder_layers_5_self_attn_in_proj_bias: Tensor[(768), float32], %encoder_layers_5_self_attn_out_proj_weight: Tensor[(256, 256), float32], %encoder_layers_5_self_attn_out_proj_bias: Tensor[(256), float32], %encoder_layers_5_norm1_weight: Tensor[(256), float32], %encoder_layers_5_norm1_bias: Tensor[(256), float32], %encoder_layers_5_linear1_weight: Tensor[(2048, 256), float32], %encoder_layers_5_linear1_bias: Tensor[(2048), float32], %encoder_layers_5_linear2_weight: Tensor[(256, 2048), float32], %encoder_layers_5_linear2_bias: Tensor[(256), float32], %encoder_layers_5_norm2_weight: Tensor[(256), float32], %encoder_layers_5_norm2_bias: Tensor[(256), float32], %encoder_norm_weight: Tensor[(256), float32], %encoder_norm_bias: Tensor[(256), float32], %decoder_layers_0_multihead_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_0_multihead_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_0_norm2_weight: Tensor[(256), float32], %decoder_layers_0_norm2_bias: Tensor[(256), float32], %decoder_layers_0_linear1_weight: Tensor[(2048, 256), float32], %decoder_layers_0_linear1_bias: Tensor[(2048), float32], %decoder_layers_0_linear2_weight: Tensor[(256, 2048), float32], %decoder_layers_0_linear2_bias: Tensor[(256), float32], %decoder_layers_0_norm3_weight: Tensor[(256), float32], %decoder_layers_0_norm3_bias: Tensor[(256), float32], %decoder_layers_1_self_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_1_self_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_1_self_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_1_self_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_1_norm1_weight: Tensor[(256), float32], %decoder_layers_1_norm1_bias: Tensor[(256), float32], %decoder_layers_1_multihead_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_1_multihead_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_1_multihead_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_1_multihead_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_1_norm2_weight: Tensor[(256), float32], %decoder_layers_1_norm2_bias: Tensor[(256), float32], %decoder_layers_1_linear1_weight: Tensor[(2048, 256), float32], %decoder_layers_1_linear1_bias: Tensor[(2048), float32], %decoder_layers_1_linear2_weight: Tensor[(256, 2048), float32], %decoder_layers_1_linear2_bias: Tensor[(256), float32], %decoder_layers_1_norm3_weight: Tensor[(256), float32], %decoder_layers_1_norm3_bias: Tensor[(256), float32], %decoder_layers_2_self_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_2_self_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_2_self_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_2_self_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_2_norm1_weight: Tensor[(256), float32], %decoder_layers_2_norm1_bias: Tensor[(256), float32], %decoder_layers_2_multihead_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_2_multihead_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_2_multihead_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_2_multihead_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_2_norm2_weight: Tensor[(256), float32], %decoder_layers_2_norm2_bias: Tensor[(256), float32], %decoder_layers_2_linear1_weight: Tensor[(2048, 256), float32], %decoder_layers_2_linear1_bias: Tensor[(2048), float32], %decoder_layers_2_linear2_weight: Tensor[(256, 2048), float32], %decoder_layers_2_linear2_bias: Tensor[(256), float32], %decoder_layers_2_norm3_weight: Tensor[(256), float32], %decoder_layers_2_norm3_bias: Tensor[(256), float32], %decoder_layers_3_self_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_3_self_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_3_self_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_3_self_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_3_norm1_weight: Tensor[(256), float32], %decoder_layers_3_norm1_bias: Tensor[(256), float32], %decoder_layers_3_multihead_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_3_multihead_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_3_multihead_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_3_multihead_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_3_norm2_weight: Tensor[(256), float32], %decoder_layers_3_norm2_bias: Tensor[(256), float32], %decoder_layers_3_linear1_weight: Tensor[(2048, 256), float32], %decoder_layers_3_linear1_bias: Tensor[(2048), float32], %decoder_layers_3_linear2_weight: Tensor[(256, 2048), float32], %decoder_layers_3_linear2_bias: Tensor[(256), float32], %decoder_layers_3_norm3_weight: Tensor[(256), float32], %decoder_layers_3_norm3_bias: Tensor[(256), float32], %decoder_layers_4_self_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_4_self_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_4_self_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_4_self_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_4_norm1_weight: Tensor[(256), float32], %decoder_layers_4_norm1_bias: Tensor[(256), float32], %decoder_layers_4_multihead_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_4_multihead_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_4_multihead_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_4_multihead_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_4_norm2_weight: Tensor[(256), float32], %decoder_layers_4_norm2_bias: Tensor[(256), float32], %decoder_layers_4_linear1_weight: Tensor[(2048, 256), float32], %decoder_layers_4_linear1_bias: Tensor[(2048), float32], %decoder_layers_4_linear2_weight: Tensor[(256, 2048), float32], %decoder_layers_4_linear2_bias: Tensor[(256), float32], %decoder_layers_4_norm3_weight: Tensor[(256), float32], %decoder_layers_4_norm3_bias: Tensor[(256), float32], %decoder_layers_5_self_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_5_self_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_5_self_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_5_self_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_5_norm1_weight: Tensor[(256), float32], %decoder_layers_5_norm1_bias: Tensor[(256), float32], %decoder_layers_5_multihead_attn_in_proj_weight: Tensor[(768, 256), float32], %decoder_layers_5_multihead_attn_in_proj_bias: Tensor[(768), float32], %decoder_layers_5_multihead_attn_out_proj_weight: Tensor[(256, 256), float32], %decoder_layers_5_multihead_attn_out_proj_bias: Tensor[(256), float32], %decoder_layers_5_norm2_weight: Tensor[(256), float32], %decoder_layers_5_norm2_bias: Tensor[(256), float32], %decoder_layers_5_linear1_weight: Tensor[(2048, 256), float32], %decoder_layers_5_linear1_bias: Tensor[(2048), float32], %decoder_layers_5_linear2_weight: Tensor[(256, 2048), float32], %decoder_layers_5_linear2_bias: Tensor[(256), float32], %decoder_layers_5_norm3_weight: Tensor[(256), float32], %decoder_layers_5_norm3_bias: Tensor[(256), float32], %decoder_norm_weight: Tensor[(256), float32], %decoder_norm_bias: Tensor[(256), float32]) {
+  %0 = transpose(%decoder_layers_0_self_attn_in_proj_weight, axes=[1, 0]);
+  %1 = reshape(%input_1, newshape=[-1, 256]);
+  %2 = transpose(%0, axes=[1, 0]);
+  %3 = nn.dense(%1, %2, units=None);
+  %4 = reshape(%3, newshape=[20, 32, 768]);
+  %5 = add(%4, %decoder_layers_0_self_attn_in_proj_bias);
+  %6 = strided_slice(%5, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %7 = multiply(%6, 0.176777f);
+  %8 = reshape(%7, newshape=[20, 256, 32]);
+  %9 = strided_slice(%5, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %10 = reshape(%9, newshape=[-1, 256, 32]);
+  %11 = transpose(%10, axes=[1, 0, 2]);
+  %12 = transpose(%11, axes=[0, 2, 1]);
+  %13 = transpose(%8, axes=[1, 0, 2]);
+  %14 = transpose(%12, axes=[0, 2, 1]);
+  %15 = nn.batch_matmul(%13, %14, meta[relay.attrs.BatchMatmulAttrs][0]);
+  %16 = nn.softmax(%15);
+  %17 = nn.dropout(%16, rate=0.1f);
+  %18 = strided_slice(%5, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %19 = reshape(%18, newshape=[-1, 256, 32]);
+  %20 = transpose(%19, axes=[1, 0, 2]);
+  %21 = %17.0;
+  %22 = transpose(%20, axes=[0, 2, 1]);
+  %23 = nn.batch_matmul(%21, %22, meta[relay.attrs.BatchMatmulAttrs][1]);
+  %24 = transpose(%23, axes=[1, 0, 2]);
+  %25 = reshape(%24, newshape=[20, 32, 256]);
+  %26 = transpose(%decoder_layers_0_self_attn_out_proj_weight, axes=[1, 0]);
+  %27 = reshape(%25, newshape=[-1, 256]);
+  %28 = transpose(%26, axes=[1, 0]);
+  %29 = nn.dense(%27, %28, units=None);
+  %30 = reshape(%29, newshape=[20, 32, 256]);
+  %31 = add(%30, %decoder_layers_0_self_attn_out_proj_bias);
+  %32 = nn.dropout(%31, rate=0.1f);
+  %33 = %32.0;
+  %34 = add(%input_1, %33);
+  %35 = nn.layer_norm(%34, %decoder_layers_0_norm1_weight, %decoder_layers_0_norm1_bias);
+  %36 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %37 = transpose(%36, axes=[1, 0]);
+  %38 = reshape(%35, newshape=[-1, 256]);
+  %39 = transpose(%37, axes=[1, 0]);
+  %40 = nn.dense(%38, %39, units=None);
+  %41 = reshape(%40, newshape=[20, 32, 256]);
+  %42 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
+  %43 = add(%41, %42);
+  %44 = multiply(%43, 0.176777f);
+  %45 = reshape(%44, newshape=[20, 256, 32]);
+  %46 = transpose(%encoder_layers_0_self_attn_in_proj_weight, axes=[1, 0]);
+  %47 = reshape(%input_0, newshape=[-1, 256]);
+  %48 = transpose(%46, axes=[1, 0]);
+  %49 = nn.dense(%47, %48, units=None);
+  %50 = reshape(%49, newshape=[10, 32, 768]);
+  %51 = add(%50, %encoder_layers_0_self_attn_in_proj_bias);
+  %52 = strided_slice(%51, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %53 = multiply(%52, 0.176777f);
+  %54 = reshape(%53, newshape=[10, 256, 32]);
+  %55 = strided_slice(%51, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %56 = reshape(%55, newshape=[-1, 256, 32]);
+  %57 = transpose(%56, axes=[1, 0, 2]);
+  %58 = transpose(%57, axes=[0, 2, 1]);
+  %59 = transpose(%54, axes=[1, 0, 2]);
+  %60 = transpose(%58, axes=[0, 2, 1]);
+  %61 = nn.batch_matmul(%59, %60, meta[relay.attrs.BatchMatmulAttrs][2]);
+  %62 = nn.softmax(%61);
+  %63 = nn.dropout(%62, rate=0.1f);
+  %64 = strided_slice(%51, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %65 = reshape(%64, newshape=[-1, 256, 32]);
+  %66 = transpose(%65, axes=[1, 0, 2]);
+  %67 = %63.0;
+  %68 = transpose(%66, axes=[0, 2, 1]);
+  %69 = nn.batch_matmul(%67, %68, meta[relay.attrs.BatchMatmulAttrs][3]);
+  %70 = transpose(%69, axes=[1, 0, 2]);
+  %71 = reshape(%70, newshape=[10, 32, 256]);
+  %72 = transpose(%encoder_layers_0_self_attn_out_proj_weight, axes=[1, 0]);
+  %73 = reshape(%71, newshape=[-1, 256]);
+  %74 = transpose(%72, axes=[1, 0]);
+  %75 = nn.dense(%73, %74, units=None);
+  %76 = reshape(%75, newshape=[10, 32, 256]);
+  %77 = add(%76, %encoder_layers_0_self_attn_out_proj_bias);
+  %78 = nn.dropout(%77, rate=0.1f);
+  %79 = %78.0;
+  %80 = add(%input_0, %79);
+  %81 = nn.layer_norm(%80, %encoder_layers_0_norm1_weight, %encoder_layers_0_norm1_bias);
+  %82 = transpose(%encoder_layers_0_linear1_weight, axes=[1, 0]);
+  %83 = reshape(%81, newshape=[-1, 256]);
+  %84 = transpose(%82, axes=[1, 0]);
+  %85 = nn.dense(%83, %84, units=None);
+  %86 = reshape(%85, newshape=[10, 32, 2048]);
+  %87 = add(%86, %encoder_layers_0_linear1_bias);
+  %88 = nn.relu(%87);
+  %89 = nn.dropout(%88, rate=0.1f);
+  %90 = %89.0;
+  %91 = transpose(%encoder_layers_0_linear2_weight, axes=[1, 0]);
+  %92 = reshape(%90, newshape=[-1, 2048]);
+  %93 = transpose(%91, axes=[1, 0]);
+  %94 = nn.dense(%92, %93, units=None);
+  %95 = reshape(%94, newshape=[10, 32, 256]);
+  %96 = add(%95, %encoder_layers_0_linear2_bias);
+  %97 = nn.dropout(%96, rate=0.1f);
+  %98 = %97.0;
+  %99 = add(%81, %98);
+  %100 = nn.layer_norm(%99, %encoder_layers_0_norm2_weight, %encoder_layers_0_norm2_bias);
+  %101 = transpose(%encoder_layers_1_self_attn_in_proj_weight, axes=[1, 0]);
+  %102 = reshape(%100, newshape=[-1, 256]);
+  %103 = transpose(%101, axes=[1, 0]);
+  %104 = nn.dense(%102, %103, units=None);
+  %105 = reshape(%104, newshape=[10, 32, 768]);
+  %106 = add(%105, %encoder_layers_1_self_attn_in_proj_bias);
+  %107 = strided_slice(%106, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %108 = multiply(%107, 0.176777f);
+  %109 = reshape(%108, newshape=[10, 256, 32]);
+  %110 = strided_slice(%106, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %111 = reshape(%110, newshape=[-1, 256, 32]);
+  %112 = transpose(%111, axes=[1, 0, 2]);
+  %113 = transpose(%112, axes=[0, 2, 1]);
+  %114 = transpose(%109, axes=[1, 0, 2]);
+  %115 = transpose(%113, axes=[0, 2, 1]);
+  %116 = nn.batch_matmul(%114, %115, meta[relay.attrs.BatchMatmulAttrs][4]);
+  %117 = nn.softmax(%116);
+  %118 = nn.dropout(%117, rate=0.1f);
+  %119 = strided_slice(%106, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %120 = reshape(%119, newshape=[-1, 256, 32]);
+  %121 = transpose(%120, axes=[1, 0, 2]);
+  %122 = %118.0;
+  %123 = transpose(%121, axes=[0, 2, 1]);
+  %124 = nn.batch_matmul(%122, %123, meta[relay.attrs.BatchMatmulAttrs][5]);
+  %125 = transpose(%124, axes=[1, 0, 2]);
+  %126 = reshape(%125, newshape=[10, 32, 256]);
+  %127 = transpose(%encoder_layers_1_self_attn_out_proj_weight, axes=[1, 0]);
+  %128 = reshape(%126, newshape=[-1, 256]);
+  %129 = transpose(%127, axes=[1, 0]);
+  %130 = nn.dense(%128, %129, units=None);
+  %131 = reshape(%130, newshape=[10, 32, 256]);
+  %132 = add(%131, %encoder_layers_1_self_attn_out_proj_bias);
+  %133 = nn.dropout(%132, rate=0.1f);
+  %134 = %133.0;
+  %135 = add(%100, %134);
+  %136 = nn.layer_norm(%135, %encoder_layers_1_norm1_weight, %encoder_layers_1_norm1_bias);
+  %137 = transpose(%encoder_layers_1_linear1_weight, axes=[1, 0]);
+  %138 = reshape(%136, newshape=[-1, 256]);
+  %139 = transpose(%137, axes=[1, 0]);
+  %140 = nn.dense(%138, %139, units=None);
+  %141 = reshape(%140, newshape=[10, 32, 2048]);
+  %142 = add(%141, %encoder_layers_1_linear1_bias);
+  %143 = nn.relu(%142);
+  %144 = nn.dropout(%143, rate=0.1f);
+  %145 = %144.0;
+  %146 = transpose(%encoder_layers_1_linear2_weight, axes=[1, 0]);
+  %147 = reshape(%145, newshape=[-1, 2048]);
+  %148 = transpose(%146, axes=[1, 0]);
+  %149 = nn.dense(%147, %148, units=None);
+  %150 = reshape(%149, newshape=[10, 32, 256]);
+  %151 = add(%150, %encoder_layers_1_linear2_bias);
+  %152 = nn.dropout(%151, rate=0.1f);
+  %153 = %152.0;
+  %154 = add(%136, %153);
+  %155 = nn.layer_norm(%154, %encoder_layers_1_norm2_weight, %encoder_layers_1_norm2_bias);
+  %156 = transpose(%encoder_layers_2_self_attn_in_proj_weight, axes=[1, 0]);
+  %157 = reshape(%155, newshape=[-1, 256]);
+  %158 = transpose(%156, axes=[1, 0]);
+  %159 = nn.dense(%157, %158, units=None);
+  %160 = reshape(%159, newshape=[10, 32, 768]);
+  %161 = add(%160, %encoder_layers_2_self_attn_in_proj_bias);
+  %162 = strided_slice(%161, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %163 = multiply(%162, 0.176777f);
+  %164 = reshape(%163, newshape=[10, 256, 32]);
+  %165 = strided_slice(%161, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %166 = reshape(%165, newshape=[-1, 256, 32]);
+  %167 = transpose(%166, axes=[1, 0, 2]);
+  %168 = transpose(%167, axes=[0, 2, 1]);
+  %169 = transpose(%164, axes=[1, 0, 2]);
+  %170 = transpose(%168, axes=[0, 2, 1]);
+  %171 = nn.batch_matmul(%169, %170, meta[relay.attrs.BatchMatmulAttrs][6]);
+  %172 = nn.softmax(%171);
+  %173 = nn.dropout(%172, rate=0.1f);
+  %174 = strided_slice(%161, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %175 = reshape(%174, newshape=[-1, 256, 32]);
+  %176 = transpose(%175, axes=[1, 0, 2]);
+  %177 = %173.0;
+  %178 = transpose(%176, axes=[0, 2, 1]);
+  %179 = nn.batch_matmul(%177, %178, meta[relay.attrs.BatchMatmulAttrs][7]);
+  %180 = transpose(%179, axes=[1, 0, 2]);
+  %181 = reshape(%180, newshape=[10, 32, 256]);
+  %182 = transpose(%encoder_layers_2_self_attn_out_proj_weight, axes=[1, 0]);
+  %183 = reshape(%181, newshape=[-1, 256]);
+  %184 = transpose(%182, axes=[1, 0]);
+  %185 = nn.dense(%183, %184, units=None);
+  %186 = reshape(%185, newshape=[10, 32, 256]);
+  %187 = add(%186, %encoder_layers_2_self_attn_out_proj_bias);
+  %188 = nn.dropout(%187, rate=0.1f);
+  %189 = %188.0;
+  %190 = add(%155, %189);
+  %191 = nn.layer_norm(%190, %encoder_layers_2_norm1_weight, %encoder_layers_2_norm1_bias);
+  %192 = transpose(%encoder_layers_2_linear1_weight, axes=[1, 0]);
+  %193 = reshape(%191, newshape=[-1, 256]);
+  %194 = transpose(%192, axes=[1, 0]);
+  %195 = nn.dense(%193, %194, units=None);
+  %196 = reshape(%195, newshape=[10, 32, 2048]);
+  %197 = add(%196, %encoder_layers_2_linear1_bias);
+  %198 = nn.relu(%197);
+  %199 = nn.dropout(%198, rate=0.1f);
+  %200 = %199.0;
+  %201 = transpose(%encoder_layers_2_linear2_weight, axes=[1, 0]);
+  %202 = reshape(%200, newshape=[-1, 2048]);
+  %203 = transpose(%201, axes=[1, 0]);
+  %204 = nn.dense(%202, %203, units=None);
+  %205 = reshape(%204, newshape=[10, 32, 256]);
+  %206 = add(%205, %encoder_layers_2_linear2_bias);
+  %207 = nn.dropout(%206, rate=0.1f);
+  %208 = %207.0;
+  %209 = add(%191, %208);
+  %210 = nn.layer_norm(%209, %encoder_layers_2_norm2_weight, %encoder_layers_2_norm2_bias);
+  %211 = transpose(%encoder_layers_3_self_attn_in_proj_weight, axes=[1, 0]);
+  %212 = reshape(%210, newshape=[-1, 256]);
+  %213 = transpose(%211, axes=[1, 0]);
+  %214 = nn.dense(%212, %213, units=None);
+  %215 = reshape(%214, newshape=[10, 32, 768]);
+  %216 = add(%215, %encoder_layers_3_self_attn_in_proj_bias);
+  %217 = strided_slice(%216, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %218 = multiply(%217, 0.176777f);
+  %219 = reshape(%218, newshape=[10, 256, 32]);
+  %220 = strided_slice(%216, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %221 = reshape(%220, newshape=[-1, 256, 32]);
+  %222 = transpose(%221, axes=[1, 0, 2]);
+  %223 = transpose(%222, axes=[0, 2, 1]);
+  %224 = transpose(%219, axes=[1, 0, 2]);
+  %225 = transpose(%223, axes=[0, 2, 1]);
+  %226 = nn.batch_matmul(%224, %225, meta[relay.attrs.BatchMatmulAttrs][8]);
+  %227 = nn.softmax(%226);
+  %228 = nn.dropout(%227, rate=0.1f);
+  %229 = strided_slice(%216, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %230 = reshape(%229, newshape=[-1, 256, 32]);
+  %231 = transpose(%230, axes=[1, 0, 2]);
+  %232 = %228.0;
+  %233 = transpose(%231, axes=[0, 2, 1]);
+  %234 = nn.batch_matmul(%232, %233, meta[relay.attrs.BatchMatmulAttrs][9]);
+  %235 = transpose(%234, axes=[1, 0, 2]);
+  %236 = reshape(%235, newshape=[10, 32, 256]);
+  %237 = transpose(%encoder_layers_3_self_attn_out_proj_weight, axes=[1, 0]);
+  %238 = reshape(%236, newshape=[-1, 256]);
+  %239 = transpose(%237, axes=[1, 0]);
+  %240 = nn.dense(%238, %239, units=None);
+  %241 = reshape(%240, newshape=[10, 32, 256]);
+  %242 = add(%241, %encoder_layers_3_self_attn_out_proj_bias);
+  %243 = nn.dropout(%242, rate=0.1f);
+  %244 = %243.0;
+  %245 = add(%210, %244);
+  %246 = nn.layer_norm(%245, %encoder_layers_3_norm1_weight, %encoder_layers_3_norm1_bias);
+  %247 = transpose(%encoder_layers_3_linear1_weight, axes=[1, 0]);
+  %248 = reshape(%246, newshape=[-1, 256]);
+  %249 = transpose(%247, axes=[1, 0]);
+  %250 = nn.dense(%248, %249, units=None);
+  %251 = reshape(%250, newshape=[10, 32, 2048]);
+  %252 = add(%251, %encoder_layers_3_linear1_bias);
+  %253 = nn.relu(%252);
+  %254 = nn.dropout(%253, rate=0.1f);
+  %255 = %254.0;
+  %256 = transpose(%encoder_layers_3_linear2_weight, axes=[1, 0]);
+  %257 = reshape(%255, newshape=[-1, 2048]);
+  %258 = transpose(%256, axes=[1, 0]);
+  %259 = nn.dense(%257, %258, units=None);
+  %260 = reshape(%259, newshape=[10, 32, 256]);
+  %261 = add(%260, %encoder_layers_3_linear2_bias);
+  %262 = nn.dropout(%261, rate=0.1f);
+  %263 = %262.0;
+  %264 = add(%246, %263);
+  %265 = nn.layer_norm(%264, %encoder_layers_3_norm2_weight, %encoder_layers_3_norm2_bias);
+  %266 = transpose(%encoder_layers_4_self_attn_in_proj_weight, axes=[1, 0]);
+  %267 = reshape(%265, newshape=[-1, 256]);
+  %268 = transpose(%266, axes=[1, 0]);
+  %269 = nn.dense(%267, %268, units=None);
+  %270 = reshape(%269, newshape=[10, 32, 768]);
+  %271 = add(%270, %encoder_layers_4_self_attn_in_proj_bias);
+  %272 = strided_slice(%271, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %273 = multiply(%272, 0.176777f);
+  %274 = reshape(%273, newshape=[10, 256, 32]);
+  %275 = strided_slice(%271, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %276 = reshape(%275, newshape=[-1, 256, 32]);
+  %277 = transpose(%276, axes=[1, 0, 2]);
+  %278 = transpose(%277, axes=[0, 2, 1]);
+  %279 = transpose(%274, axes=[1, 0, 2]);
+  %280 = transpose(%278, axes=[0, 2, 1]);
+  %281 = nn.batch_matmul(%279, %280, meta[relay.attrs.BatchMatmulAttrs][10]);
+  %282 = nn.softmax(%281);
+  %283 = nn.dropout(%282, rate=0.1f);
+  %284 = strided_slice(%271, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %285 = reshape(%284, newshape=[-1, 256, 32]);
+  %286 = transpose(%285, axes=[1, 0, 2]);
+  %287 = %283.0;
+  %288 = transpose(%286, axes=[0, 2, 1]);
+  %289 = nn.batch_matmul(%287, %288, meta[relay.attrs.BatchMatmulAttrs][11]);
+  %290 = transpose(%289, axes=[1, 0, 2]);
+  %291 = reshape(%290, newshape=[10, 32, 256]);
+  %292 = transpose(%encoder_layers_4_self_attn_out_proj_weight, axes=[1, 0]);
+  %293 = reshape(%291, newshape=[-1, 256]);
+  %294 = transpose(%292, axes=[1, 0]);
+  %295 = nn.dense(%293, %294, units=None);
+  %296 = reshape(%295, newshape=[10, 32, 256]);
+  %297 = add(%296, %encoder_layers_4_self_attn_out_proj_bias);
+  %298 = nn.dropout(%297, rate=0.1f);
+  %299 = %298.0;
+  %300 = add(%265, %299);
+  %301 = nn.layer_norm(%300, %encoder_layers_4_norm1_weight, %encoder_layers_4_norm1_bias);
+  %302 = transpose(%encoder_layers_4_linear1_weight, axes=[1, 0]);
+  %303 = reshape(%301, newshape=[-1, 256]);
+  %304 = transpose(%302, axes=[1, 0]);
+  %305 = nn.dense(%303, %304, units=None);
+  %306 = reshape(%305, newshape=[10, 32, 2048]);
+  %307 = add(%306, %encoder_layers_4_linear1_bias);
+  %308 = nn.relu(%307);
+  %309 = nn.dropout(%308, rate=0.1f);
+  %310 = %309.0;
+  %311 = transpose(%encoder_layers_4_linear2_weight, axes=[1, 0]);
+  %312 = reshape(%310, newshape=[-1, 2048]);
+  %313 = transpose(%311, axes=[1, 0]);
+  %314 = nn.dense(%312, %313, units=None);
+  %315 = reshape(%314, newshape=[10, 32, 256]);
+  %316 = add(%315, %encoder_layers_4_linear2_bias);
+  %317 = nn.dropout(%316, rate=0.1f);
+  %318 = %317.0;
+  %319 = add(%301, %318);
+  %320 = nn.layer_norm(%319, %encoder_layers_4_norm2_weight, %encoder_layers_4_norm2_bias);
+  %321 = transpose(%encoder_layers_5_self_attn_in_proj_weight, axes=[1, 0]);
+  %322 = reshape(%320, newshape=[-1, 256]);
+  %323 = transpose(%321, axes=[1, 0]);
+  %324 = nn.dense(%322, %323, units=None);
+  %325 = reshape(%324, newshape=[10, 32, 768]);
+  %326 = add(%325, %encoder_layers_5_self_attn_in_proj_bias);
+  %327 = strided_slice(%326, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %328 = multiply(%327, 0.176777f);
+  %329 = reshape(%328, newshape=[10, 256, 32]);
+  %330 = strided_slice(%326, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %331 = reshape(%330, newshape=[-1, 256, 32]);
+  %332 = transpose(%331, axes=[1, 0, 2]);
+  %333 = transpose(%332, axes=[0, 2, 1]);
+  %334 = transpose(%329, axes=[1, 0, 2]);
+  %335 = transpose(%333, axes=[0, 2, 1]);
+  %336 = nn.batch_matmul(%334, %335, meta[relay.attrs.BatchMatmulAttrs][12]);
+  %337 = nn.softmax(%336);
+  %338 = nn.dropout(%337, rate=0.1f);
+  %339 = strided_slice(%326, begin=[0, 0, 512], end=[10, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %340 = reshape(%339, newshape=[-1, 256, 32]);
+  %341 = transpose(%340, axes=[1, 0, 2]);
+  %342 = %338.0;
+  %343 = transpose(%341, axes=[0, 2, 1]);
+  %344 = nn.batch_matmul(%342, %343, meta[relay.attrs.BatchMatmulAttrs][13]);
+  %345 = transpose(%344, axes=[1, 0, 2]);
+  %346 = reshape(%345, newshape=[10, 32, 256]);
+  %347 = transpose(%encoder_layers_5_self_attn_out_proj_weight, axes=[1, 0]);
+  %348 = reshape(%346, newshape=[-1, 256]);
+  %349 = transpose(%347, axes=[1, 0]);
+  %350 = nn.dense(%348, %349, units=None);
+  %351 = reshape(%350, newshape=[10, 32, 256]);
+  %352 = add(%351, %encoder_layers_5_self_attn_out_proj_bias);
+  %353 = nn.dropout(%352, rate=0.1f);
+  %354 = %353.0;
+  %355 = add(%320, %354);
+  %356 = nn.layer_norm(%355, %encoder_layers_5_norm1_weight, %encoder_layers_5_norm1_bias);
+  %357 = transpose(%encoder_layers_5_linear1_weight, axes=[1, 0]);
+  %358 = reshape(%356, newshape=[-1, 256]);
+  %359 = transpose(%357, axes=[1, 0]);
+  %360 = nn.dense(%358, %359, units=None);
+  %361 = reshape(%360, newshape=[10, 32, 2048]);
+  %362 = add(%361, %encoder_layers_5_linear1_bias);
+  %363 = nn.relu(%362);
+  %364 = nn.dropout(%363, rate=0.1f);
+  %365 = %364.0;
+  %366 = transpose(%encoder_layers_5_linear2_weight, axes=[1, 0]);
+  %367 = reshape(%365, newshape=[-1, 2048]);
+  %368 = transpose(%366, axes=[1, 0]);
+  %369 = nn.dense(%367, %368, units=None);
+  %370 = reshape(%369, newshape=[10, 32, 256]);
+  %371 = add(%370, %encoder_layers_5_linear2_bias);
+  %372 = nn.dropout(%371, rate=0.1f);
+  %373 = %372.0;
+  %374 = add(%356, %373);
+  %375 = nn.layer_norm(%374, %encoder_layers_5_norm2_weight, %encoder_layers_5_norm2_bias);
+  %376 = nn.layer_norm(%375, %encoder_norm_weight, %encoder_norm_bias);
+  %377 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %378 = transpose(%377, axes=[1, 0]);
+  %379 = reshape(%376, newshape=[-1, 256]);
+  %380 = transpose(%378, axes=[1, 0]);
+  %381 = nn.dense(%379, %380, units=None);
+  %382 = reshape(%381, newshape=[10, 32, 512]);
+  %383 = strided_slice(%decoder_layers_0_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
+  %384 = add(%382, %383);
+  %385 = strided_slice(%384, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %386 = reshape(%385, newshape=[-1, 256, 32]);
+  %387 = transpose(%386, axes=[1, 0, 2]);
+  %388 = transpose(%387, axes=[0, 2, 1]);
+  %389 = transpose(%45, axes=[1, 0, 2]);
+  %390 = transpose(%388, axes=[0, 2, 1]);
+  %391 = nn.batch_matmul(%389, %390, meta[relay.attrs.BatchMatmulAttrs][14]);
+  %392 = nn.softmax(%391);
+  %393 = nn.dropout(%392, rate=0.1f);
+  %394 = strided_slice(%384, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %395 = reshape(%394, newshape=[-1, 256, 32]);
+  %396 = transpose(%395, axes=[1, 0, 2]);
+  %397 = %393.0;
+  %398 = transpose(%396, axes=[0, 2, 1]);
+  %399 = nn.batch_matmul(%397, %398, meta[relay.attrs.BatchMatmulAttrs][15]);
+  %400 = transpose(%399, axes=[1, 0, 2]);
+  %401 = reshape(%400, newshape=[20, 32, 256]);
+  %402 = transpose(%decoder_layers_0_multihead_attn_out_proj_weight, axes=[1, 0]);
+  %403 = reshape(%401, newshape=[-1, 256]);
+  %404 = transpose(%402, axes=[1, 0]);
+  %405 = nn.dense(%403, %404, units=None);
+  %406 = reshape(%405, newshape=[20, 32, 256]);
+  %407 = add(%406, %decoder_layers_0_multihead_attn_out_proj_bias);
+  %408 = nn.dropout(%407, rate=0.1f);
+  %409 = %408.0;
+  %410 = add(%35, %409);
+  %411 = nn.layer_norm(%410, %decoder_layers_0_norm2_weight, %decoder_layers_0_norm2_bias);
+  %412 = transpose(%decoder_layers_0_linear1_weight, axes=[1, 0]);
+  %413 = reshape(%411, newshape=[-1, 256]);
+  %414 = transpose(%412, axes=[1, 0]);
+  %415 = nn.dense(%413, %414, units=None);
+  %416 = reshape(%415, newshape=[20, 32, 2048]);
+  %417 = add(%416, %decoder_layers_0_linear1_bias);
+  %418 = nn.relu(%417);
+  %419 = nn.dropout(%418, rate=0.1f);
+  %420 = %419.0;
+  %421 = transpose(%decoder_layers_0_linear2_weight, axes=[1, 0]);
+  %422 = reshape(%420, newshape=[-1, 2048]);
+  %423 = transpose(%421, axes=[1, 0]);
+  %424 = nn.dense(%422, %423, units=None);
+  %425 = reshape(%424, newshape=[20, 32, 256]);
+  %426 = add(%425, %decoder_layers_0_linear2_bias);
+  %427 = nn.dropout(%426, rate=0.1f);
+  %428 = %427.0;
+  %429 = add(%411, %428);
+  %430 = nn.layer_norm(%429, %decoder_layers_0_norm3_weight, %decoder_layers_0_norm3_bias);
+  %431 = transpose(%decoder_layers_1_self_attn_in_proj_weight, axes=[1, 0]);
+  %432 = reshape(%430, newshape=[-1, 256]);
+  %433 = transpose(%431, axes=[1, 0]);
+  %434 = nn.dense(%432, %433, units=None);
+  %435 = reshape(%434, newshape=[20, 32, 768]);
+  %436 = add(%435, %decoder_layers_1_self_attn_in_proj_bias);
+  %437 = strided_slice(%436, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %438 = multiply(%437, 0.176777f);
+  %439 = reshape(%438, newshape=[20, 256, 32]);
+  %440 = strided_slice(%436, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %441 = reshape(%440, newshape=[-1, 256, 32]);
+  %442 = transpose(%441, axes=[1, 0, 2]);
+  %443 = transpose(%442, axes=[0, 2, 1]);
+  %444 = transpose(%439, axes=[1, 0, 2]);
+  %445 = transpose(%443, axes=[0, 2, 1]);
+  %446 = nn.batch_matmul(%444, %445, meta[relay.attrs.BatchMatmulAttrs][16]);
+  %447 = nn.softmax(%446);
+  %448 = nn.dropout(%447, rate=0.1f);
+  %449 = strided_slice(%436, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %450 = reshape(%449, newshape=[-1, 256, 32]);
+  %451 = transpose(%450, axes=[1, 0, 2]);
+  %452 = %448.0;
+  %453 = transpose(%451, axes=[0, 2, 1]);
+  %454 = nn.batch_matmul(%452, %453, meta[relay.attrs.BatchMatmulAttrs][17]);
+  %455 = transpose(%454, axes=[1, 0, 2]);
+  %456 = reshape(%455, newshape=[20, 32, 256]);
+  %457 = transpose(%decoder_layers_1_self_attn_out_proj_weight, axes=[1, 0]);
+  %458 = reshape(%456, newshape=[-1, 256]);
+  %459 = transpose(%457, axes=[1, 0]);
+  %460 = nn.dense(%458, %459, units=None);
+  %461 = reshape(%460, newshape=[20, 32, 256]);
+  %462 = add(%461, %decoder_layers_1_self_attn_out_proj_bias);
+  %463 = nn.dropout(%462, rate=0.1f);
+  %464 = %463.0;
+  %465 = add(%430, %464);
+  %466 = nn.layer_norm(%465, %decoder_layers_1_norm1_weight, %decoder_layers_1_norm1_bias);
+  %467 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %468 = transpose(%467, axes=[1, 0]);
+  %469 = reshape(%466, newshape=[-1, 256]);
+  %470 = transpose(%468, axes=[1, 0]);
+  %471 = nn.dense(%469, %470, units=None);
+  %472 = reshape(%471, newshape=[20, 32, 256]);
+  %473 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
+  %474 = add(%472, %473);
+  %475 = multiply(%474, 0.176777f);
+  %476 = reshape(%475, newshape=[20, 256, 32]);
+  %477 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %478 = transpose(%477, axes=[1, 0]);
+  %479 = reshape(%376, newshape=[-1, 256]);
+  %480 = transpose(%478, axes=[1, 0]);
+  %481 = nn.dense(%479, %480, units=None);
+  %482 = reshape(%481, newshape=[10, 32, 512]);
+  %483 = strided_slice(%decoder_layers_1_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
+  %484 = add(%482, %483);
+  %485 = strided_slice(%484, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %486 = reshape(%485, newshape=[-1, 256, 32]);
+  %487 = transpose(%486, axes=[1, 0, 2]);
+  %488 = transpose(%487, axes=[0, 2, 1]);
+  %489 = transpose(%476, axes=[1, 0, 2]);
+  %490 = transpose(%488, axes=[0, 2, 1]);
+  %491 = nn.batch_matmul(%489, %490, meta[relay.attrs.BatchMatmulAttrs][18]);
+  %492 = nn.softmax(%491);
+  %493 = nn.dropout(%492, rate=0.1f);
+  %494 = strided_slice(%484, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %495 = reshape(%494, newshape=[-1, 256, 32]);
+  %496 = transpose(%495, axes=[1, 0, 2]);
+  %497 = %493.0;
+  %498 = transpose(%496, axes=[0, 2, 1]);
+  %499 = nn.batch_matmul(%497, %498, meta[relay.attrs.BatchMatmulAttrs][19]);
+  %500 = transpose(%499, axes=[1, 0, 2]);
+  %501 = reshape(%500, newshape=[20, 32, 256]);
+  %502 = transpose(%decoder_layers_1_multihead_attn_out_proj_weight, axes=[1, 0]);
+  %503 = reshape(%501, newshape=[-1, 256]);
+  %504 = transpose(%502, axes=[1, 0]);
+  %505 = nn.dense(%503, %504, units=None);
+  %506 = reshape(%505, newshape=[20, 32, 256]);
+  %507 = add(%506, %decoder_layers_1_multihead_attn_out_proj_bias);
+  %508 = nn.dropout(%507, rate=0.1f);
+  %509 = %508.0;
+  %510 = add(%466, %509);
+  %511 = nn.layer_norm(%510, %decoder_layers_1_norm2_weight, %decoder_layers_1_norm2_bias);
+  %512 = transpose(%decoder_layers_1_linear1_weight, axes=[1, 0]);
+  %513 = reshape(%511, newshape=[-1, 256]);
+  %514 = transpose(%512, axes=[1, 0]);
+  %515 = nn.dense(%513, %514, units=None);
+  %516 = reshape(%515, newshape=[20, 32, 2048]);
+  %517 = add(%516, %decoder_layers_1_linear1_bias);
+  %518 = nn.relu(%517);
+  %519 = nn.dropout(%518, rate=0.1f);
+  %520 = %519.0;
+  %521 = transpose(%decoder_layers_1_linear2_weight, axes=[1, 0]);
+  %522 = reshape(%520, newshape=[-1, 2048]);
+  %523 = transpose(%521, axes=[1, 0]);
+  %524 = nn.dense(%522, %523, units=None);
+  %525 = reshape(%524, newshape=[20, 32, 256]);
+  %526 = add(%525, %decoder_layers_1_linear2_bias);
+  %527 = nn.dropout(%526, rate=0.1f);
+  %528 = %527.0;
+  %529 = add(%511, %528);
+  %530 = nn.layer_norm(%529, %decoder_layers_1_norm3_weight, %decoder_layers_1_norm3_bias);
+  %531 = transpose(%decoder_layers_2_self_attn_in_proj_weight, axes=[1, 0]);
+  %532 = reshape(%530, newshape=[-1, 256]);
+  %533 = transpose(%531, axes=[1, 0]);
+  %534 = nn.dense(%532, %533, units=None);
+  %535 = reshape(%534, newshape=[20, 32, 768]);
+  %536 = add(%535, %decoder_layers_2_self_attn_in_proj_bias);
+  %537 = strided_slice(%536, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %538 = multiply(%537, 0.176777f);
+  %539 = reshape(%538, newshape=[20, 256, 32]);
+  %540 = strided_slice(%536, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %541 = reshape(%540, newshape=[-1, 256, 32]);
+  %542 = transpose(%541, axes=[1, 0, 2]);
+  %543 = transpose(%542, axes=[0, 2, 1]);
+  %544 = transpose(%539, axes=[1, 0, 2]);
+  %545 = transpose(%543, axes=[0, 2, 1]);
+  %546 = nn.batch_matmul(%544, %545, meta[relay.attrs.BatchMatmulAttrs][20]);
+  %547 = nn.softmax(%546);
+  %548 = nn.dropout(%547, rate=0.1f);
+  %549 = strided_slice(%536, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %550 = reshape(%549, newshape=[-1, 256, 32]);
+  %551 = transpose(%550, axes=[1, 0, 2]);
+  %552 = %548.0;
+  %553 = transpose(%551, axes=[0, 2, 1]);
+  %554 = nn.batch_matmul(%552, %553, meta[relay.attrs.BatchMatmulAttrs][21]);
+  %555 = transpose(%554, axes=[1, 0, 2]);
+  %556 = reshape(%555, newshape=[20, 32, 256]);
+  %557 = transpose(%decoder_layers_2_self_attn_out_proj_weight, axes=[1, 0]);
+  %558 = reshape(%556, newshape=[-1, 256]);
+  %559 = transpose(%557, axes=[1, 0]);
+  %560 = nn.dense(%558, %559, units=None);
+  %561 = reshape(%560, newshape=[20, 32, 256]);
+  %562 = add(%561, %decoder_layers_2_self_attn_out_proj_bias);
+  %563 = nn.dropout(%562, rate=0.1f);
+  %564 = %563.0;
+  %565 = add(%530, %564);
+  %566 = nn.layer_norm(%565, %decoder_layers_2_norm1_weight, %decoder_layers_2_norm1_bias);
+  %567 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %568 = transpose(%567, axes=[1, 0]);
+  %569 = reshape(%566, newshape=[-1, 256]);
+  %570 = transpose(%568, axes=[1, 0]);
+  %571 = nn.dense(%569, %570, units=None);
+  %572 = reshape(%571, newshape=[20, 32, 256]);
+  %573 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
+  %574 = add(%572, %573);
+  %575 = multiply(%574, 0.176777f);
+  %576 = reshape(%575, newshape=[20, 256, 32]);
+  %577 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %578 = transpose(%577, axes=[1, 0]);
+  %579 = reshape(%376, newshape=[-1, 256]);
+  %580 = transpose(%578, axes=[1, 0]);
+  %581 = nn.dense(%579, %580, units=None);
+  %582 = reshape(%581, newshape=[10, 32, 512]);
+  %583 = strided_slice(%decoder_layers_2_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
+  %584 = add(%582, %583);
+  %585 = strided_slice(%584, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %586 = reshape(%585, newshape=[-1, 256, 32]);
+  %587 = transpose(%586, axes=[1, 0, 2]);
+  %588 = transpose(%587, axes=[0, 2, 1]);
+  %589 = transpose(%576, axes=[1, 0, 2]);
+  %590 = transpose(%588, axes=[0, 2, 1]);
+  %591 = nn.batch_matmul(%589, %590, meta[relay.attrs.BatchMatmulAttrs][22]);
+  %592 = nn.softmax(%591);
+  %593 = nn.dropout(%592, rate=0.1f);
+  %594 = strided_slice(%584, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %595 = reshape(%594, newshape=[-1, 256, 32]);
+  %596 = transpose(%595, axes=[1, 0, 2]);
+  %597 = %593.0;
+  %598 = transpose(%596, axes=[0, 2, 1]);
+  %599 = nn.batch_matmul(%597, %598, meta[relay.attrs.BatchMatmulAttrs][23]);
+  %600 = transpose(%599, axes=[1, 0, 2]);
+  %601 = reshape(%600, newshape=[20, 32, 256]);
+  %602 = transpose(%decoder_layers_2_multihead_attn_out_proj_weight, axes=[1, 0]);
+  %603 = reshape(%601, newshape=[-1, 256]);
+  %604 = transpose(%602, axes=[1, 0]);
+  %605 = nn.dense(%603, %604, units=None);
+  %606 = reshape(%605, newshape=[20, 32, 256]);
+  %607 = add(%606, %decoder_layers_2_multihead_attn_out_proj_bias);
+  %608 = nn.dropout(%607, rate=0.1f);
+  %609 = %608.0;
+  %610 = add(%566, %609);
+  %611 = nn.layer_norm(%610, %decoder_layers_2_norm2_weight, %decoder_layers_2_norm2_bias);
+  %612 = transpose(%decoder_layers_2_linear1_weight, axes=[1, 0]);
+  %613 = reshape(%611, newshape=[-1, 256]);
+  %614 = transpose(%612, axes=[1, 0]);
+  %615 = nn.dense(%613, %614, units=None);
+  %616 = reshape(%615, newshape=[20, 32, 2048]);
+  %617 = add(%616, %decoder_layers_2_linear1_bias);
+  %618 = nn.relu(%617);
+  %619 = nn.dropout(%618, rate=0.1f);
+  %620 = %619.0;
+  %621 = transpose(%decoder_layers_2_linear2_weight, axes=[1, 0]);
+  %622 = reshape(%620, newshape=[-1, 2048]);
+  %623 = transpose(%621, axes=[1, 0]);
+  %624 = nn.dense(%622, %623, units=None);
+  %625 = reshape(%624, newshape=[20, 32, 256]);
+  %626 = add(%625, %decoder_layers_2_linear2_bias);
+  %627 = nn.dropout(%626, rate=0.1f);
+  %628 = %627.0;
+  %629 = add(%611, %628);
+  %630 = nn.layer_norm(%629, %decoder_layers_2_norm3_weight, %decoder_layers_2_norm3_bias);
+  %631 = transpose(%decoder_layers_3_self_attn_in_proj_weight, axes=[1, 0]);
+  %632 = reshape(%630, newshape=[-1, 256]);
+  %633 = transpose(%631, axes=[1, 0]);
+  %634 = nn.dense(%632, %633, units=None);
+  %635 = reshape(%634, newshape=[20, 32, 768]);
+  %636 = add(%635, %decoder_layers_3_self_attn_in_proj_bias);
+  %637 = strided_slice(%636, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %638 = multiply(%637, 0.176777f);
+  %639 = reshape(%638, newshape=[20, 256, 32]);
+  %640 = strided_slice(%636, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %641 = reshape(%640, newshape=[-1, 256, 32]);
+  %642 = transpose(%641, axes=[1, 0, 2]);
+  %643 = transpose(%642, axes=[0, 2, 1]);
+  %644 = transpose(%639, axes=[1, 0, 2]);
+  %645 = transpose(%643, axes=[0, 2, 1]);
+  %646 = nn.batch_matmul(%644, %645, meta[relay.attrs.BatchMatmulAttrs][24]);
+  %647 = nn.softmax(%646);
+  %648 = nn.dropout(%647, rate=0.1f);
+  %649 = strided_slice(%636, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %650 = reshape(%649, newshape=[-1, 256, 32]);
+  %651 = transpose(%650, axes=[1, 0, 2]);
+  %652 = %648.0;
+  %653 = transpose(%651, axes=[0, 2, 1]);
+  %654 = nn.batch_matmul(%652, %653, meta[relay.attrs.BatchMatmulAttrs][25]);
+  %655 = transpose(%654, axes=[1, 0, 2]);
+  %656 = reshape(%655, newshape=[20, 32, 256]);
+  %657 = transpose(%decoder_layers_3_self_attn_out_proj_weight, axes=[1, 0]);
+  %658 = reshape(%656, newshape=[-1, 256]);
+  %659 = transpose(%657, axes=[1, 0]);
+  %660 = nn.dense(%658, %659, units=None);
+  %661 = reshape(%660, newshape=[20, 32, 256]);
+  %662 = add(%661, %decoder_layers_3_self_attn_out_proj_bias);
+  %663 = nn.dropout(%662, rate=0.1f);
+  %664 = %663.0;
+  %665 = add(%630, %664);
+  %666 = nn.layer_norm(%665, %decoder_layers_3_norm1_weight, %decoder_layers_3_norm1_bias);
+  %667 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %668 = transpose(%667, axes=[1, 0]);
+  %669 = reshape(%666, newshape=[-1, 256]);
+  %670 = transpose(%668, axes=[1, 0]);
+  %671 = nn.dense(%669, %670, units=None);
+  %672 = reshape(%671, newshape=[20, 32, 256]);
+  %673 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
+  %674 = add(%672, %673);
+  %675 = multiply(%674, 0.176777f);
+  %676 = reshape(%675, newshape=[20, 256, 32]);
+  %677 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %678 = transpose(%677, axes=[1, 0]);
+  %679 = reshape(%376, newshape=[-1, 256]);
+  %680 = transpose(%678, axes=[1, 0]);
+  %681 = nn.dense(%679, %680, units=None);
+  %682 = reshape(%681, newshape=[10, 32, 512]);
+  %683 = strided_slice(%decoder_layers_3_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
+  %684 = add(%682, %683);
+  %685 = strided_slice(%684, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %686 = reshape(%685, newshape=[-1, 256, 32]);
+  %687 = transpose(%686, axes=[1, 0, 2]);
+  %688 = transpose(%687, axes=[0, 2, 1]);
+  %689 = transpose(%676, axes=[1, 0, 2]);
+  %690 = transpose(%688, axes=[0, 2, 1]);
+  %691 = nn.batch_matmul(%689, %690, meta[relay.attrs.BatchMatmulAttrs][26]);
+  %692 = nn.softmax(%691);
+  %693 = nn.dropout(%692, rate=0.1f);
+  %694 = strided_slice(%684, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %695 = reshape(%694, newshape=[-1, 256, 32]);
+  %696 = transpose(%695, axes=[1, 0, 2]);
+  %697 = %693.0;
+  %698 = transpose(%696, axes=[0, 2, 1]);
+  %699 = nn.batch_matmul(%697, %698, meta[relay.attrs.BatchMatmulAttrs][27]);
+  %700 = transpose(%699, axes=[1, 0, 2]);
+  %701 = reshape(%700, newshape=[20, 32, 256]);
+  %702 = transpose(%decoder_layers_3_multihead_attn_out_proj_weight, axes=[1, 0]);
+  %703 = reshape(%701, newshape=[-1, 256]);
+  %704 = transpose(%702, axes=[1, 0]);
+  %705 = nn.dense(%703, %704, units=None);
+  %706 = reshape(%705, newshape=[20, 32, 256]);
+  %707 = add(%706, %decoder_layers_3_multihead_attn_out_proj_bias);
+  %708 = nn.dropout(%707, rate=0.1f);
+  %709 = %708.0;
+  %710 = add(%666, %709);
+  %711 = nn.layer_norm(%710, %decoder_layers_3_norm2_weight, %decoder_layers_3_norm2_bias);
+  %712 = transpose(%decoder_layers_3_linear1_weight, axes=[1, 0]);
+  %713 = reshape(%711, newshape=[-1, 256]);
+  %714 = transpose(%712, axes=[1, 0]);
+  %715 = nn.dense(%713, %714, units=None);
+  %716 = reshape(%715, newshape=[20, 32, 2048]);
+  %717 = add(%716, %decoder_layers_3_linear1_bias);
+  %718 = nn.relu(%717);
+  %719 = nn.dropout(%718, rate=0.1f);
+  %720 = %719.0;
+  %721 = transpose(%decoder_layers_3_linear2_weight, axes=[1, 0]);
+  %722 = reshape(%720, newshape=[-1, 2048]);
+  %723 = transpose(%721, axes=[1, 0]);
+  %724 = nn.dense(%722, %723, units=None);
+  %725 = reshape(%724, newshape=[20, 32, 256]);
+  %726 = add(%725, %decoder_layers_3_linear2_bias);
+  %727 = nn.dropout(%726, rate=0.1f);
+  %728 = %727.0;
+  %729 = add(%711, %728);
+  %730 = nn.layer_norm(%729, %decoder_layers_3_norm3_weight, %decoder_layers_3_norm3_bias);
+  %731 = transpose(%decoder_layers_4_self_attn_in_proj_weight, axes=[1, 0]);
+  %732 = reshape(%730, newshape=[-1, 256]);
+  %733 = transpose(%731, axes=[1, 0]);
+  %734 = nn.dense(%732, %733, units=None);
+  %735 = reshape(%734, newshape=[20, 32, 768]);
+  %736 = add(%735, %decoder_layers_4_self_attn_in_proj_bias);
+  %737 = strided_slice(%736, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %738 = multiply(%737, 0.176777f);
+  %739 = reshape(%738, newshape=[20, 256, 32]);
+  %740 = strided_slice(%736, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %741 = reshape(%740, newshape=[-1, 256, 32]);
+  %742 = transpose(%741, axes=[1, 0, 2]);
+  %743 = transpose(%742, axes=[0, 2, 1]);
+  %744 = transpose(%739, axes=[1, 0, 2]);
+  %745 = transpose(%743, axes=[0, 2, 1]);
+  %746 = nn.batch_matmul(%744, %745, meta[relay.attrs.BatchMatmulAttrs][28]);
+  %747 = nn.softmax(%746);
+  %748 = nn.dropout(%747, rate=0.1f);
+  %749 = strided_slice(%736, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %750 = reshape(%749, newshape=[-1, 256, 32]);
+  %751 = transpose(%750, axes=[1, 0, 2]);
+  %752 = %748.0;
+  %753 = transpose(%751, axes=[0, 2, 1]);
+  %754 = nn.batch_matmul(%752, %753, meta[relay.attrs.BatchMatmulAttrs][29]);
+  %755 = transpose(%754, axes=[1, 0, 2]);
+  %756 = reshape(%755, newshape=[20, 32, 256]);
+  %757 = transpose(%decoder_layers_4_self_attn_out_proj_weight, axes=[1, 0]);
+  %758 = reshape(%756, newshape=[-1, 256]);
+  %759 = transpose(%757, axes=[1, 0]);
+  %760 = nn.dense(%758, %759, units=None);
+  %761 = reshape(%760, newshape=[20, 32, 256]);
+  %762 = add(%761, %decoder_layers_4_self_attn_out_proj_bias);
+  %763 = nn.dropout(%762, rate=0.1f);
+  %764 = %763.0;
+  %765 = add(%730, %764);
+  %766 = nn.layer_norm(%765, %decoder_layers_4_norm1_weight, %decoder_layers_4_norm1_bias);
+  %767 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %768 = transpose(%767, axes=[1, 0]);
+  %769 = reshape(%766, newshape=[-1, 256]);
+  %770 = transpose(%768, axes=[1, 0]);
+  %771 = nn.dense(%769, %770, units=None);
+  %772 = reshape(%771, newshape=[20, 32, 256]);
+  %773 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
+  %774 = add(%772, %773);
+  %775 = multiply(%774, 0.176777f);
+  %776 = reshape(%775, newshape=[20, 256, 32]);
+  %777 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %778 = transpose(%777, axes=[1, 0]);
+  %779 = reshape(%376, newshape=[-1, 256]);
+  %780 = transpose(%778, axes=[1, 0]);
+  %781 = nn.dense(%779, %780, units=None);
+  %782 = reshape(%781, newshape=[10, 32, 512]);
+  %783 = strided_slice(%decoder_layers_4_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
+  %784 = add(%782, %783);
+  %785 = strided_slice(%784, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %786 = reshape(%785, newshape=[-1, 256, 32]);
+  %787 = transpose(%786, axes=[1, 0, 2]);
+  %788 = transpose(%787, axes=[0, 2, 1]);
+  %789 = transpose(%776, axes=[1, 0, 2]);
+  %790 = transpose(%788, axes=[0, 2, 1]);
+  %791 = nn.batch_matmul(%789, %790, meta[relay.attrs.BatchMatmulAttrs][30]);
+  %792 = nn.softmax(%791);
+  %793 = nn.dropout(%792, rate=0.1f);
+  %794 = strided_slice(%784, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %795 = reshape(%794, newshape=[-1, 256, 32]);
+  %796 = transpose(%795, axes=[1, 0, 2]);
+  %797 = %793.0;
+  %798 = transpose(%796, axes=[0, 2, 1]);
+  %799 = nn.batch_matmul(%797, %798, meta[relay.attrs.BatchMatmulAttrs][31]);
+  %800 = transpose(%799, axes=[1, 0, 2]);
+  %801 = reshape(%800, newshape=[20, 32, 256]);
+  %802 = transpose(%decoder_layers_4_multihead_attn_out_proj_weight, axes=[1, 0]);
+  %803 = reshape(%801, newshape=[-1, 256]);
+  %804 = transpose(%802, axes=[1, 0]);
+  %805 = nn.dense(%803, %804, units=None);
+  %806 = reshape(%805, newshape=[20, 32, 256]);
+  %807 = add(%806, %decoder_layers_4_multihead_attn_out_proj_bias);
+  %808 = nn.dropout(%807, rate=0.1f);
+  %809 = %808.0;
+  %810 = add(%766, %809);
+  %811 = nn.layer_norm(%810, %decoder_layers_4_norm2_weight, %decoder_layers_4_norm2_bias);
+  %812 = transpose(%decoder_layers_4_linear1_weight, axes=[1, 0]);
+  %813 = reshape(%811, newshape=[-1, 256]);
+  %814 = transpose(%812, axes=[1, 0]);
+  %815 = nn.dense(%813, %814, units=None);
+  %816 = reshape(%815, newshape=[20, 32, 2048]);
+  %817 = add(%816, %decoder_layers_4_linear1_bias);
+  %818 = nn.relu(%817);
+  %819 = nn.dropout(%818, rate=0.1f);
+  %820 = %819.0;
+  %821 = transpose(%decoder_layers_4_linear2_weight, axes=[1, 0]);
+  %822 = reshape(%820, newshape=[-1, 2048]);
+  %823 = transpose(%821, axes=[1, 0]);
+  %824 = nn.dense(%822, %823, units=None);
+  %825 = reshape(%824, newshape=[20, 32, 256]);
+  %826 = add(%825, %decoder_layers_4_linear2_bias);
+  %827 = nn.dropout(%826, rate=0.1f);
+  %828 = %827.0;
+  %829 = add(%811, %828);
+  %830 = nn.layer_norm(%829, %decoder_layers_4_norm3_weight, %decoder_layers_4_norm3_bias);
+  %831 = transpose(%decoder_layers_5_self_attn_in_proj_weight, axes=[1, 0]);
+  %832 = reshape(%830, newshape=[-1, 256]);
+  %833 = transpose(%831, axes=[1, 0]);
+  %834 = nn.dense(%832, %833, units=None);
+  %835 = reshape(%834, newshape=[20, 32, 768]);
+  %836 = add(%835, %decoder_layers_5_self_attn_in_proj_bias);
+  %837 = strided_slice(%836, begin=[0, 0, 0], end=[20, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %838 = multiply(%837, 0.176777f);
+  %839 = reshape(%838, newshape=[20, 256, 32]);
+  %840 = strided_slice(%836, begin=[0, 0, 256], end=[20, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %841 = reshape(%840, newshape=[-1, 256, 32]);
+  %842 = transpose(%841, axes=[1, 0, 2]);
+  %843 = transpose(%842, axes=[0, 2, 1]);
+  %844 = transpose(%839, axes=[1, 0, 2]);
+  %845 = transpose(%843, axes=[0, 2, 1]);
+  %846 = nn.batch_matmul(%844, %845, meta[relay.attrs.BatchMatmulAttrs][32]);
+  %847 = nn.softmax(%846);
+  %848 = nn.dropout(%847, rate=0.1f);
+  %849 = strided_slice(%836, begin=[0, 0, 512], end=[20, 32, 768], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %850 = reshape(%849, newshape=[-1, 256, 32]);
+  %851 = transpose(%850, axes=[1, 0, 2]);
+  %852 = %848.0;
+  %853 = transpose(%851, axes=[0, 2, 1]);
+  %854 = nn.batch_matmul(%852, %853, meta[relay.attrs.BatchMatmulAttrs][33]);
+  %855 = transpose(%854, axes=[1, 0, 2]);
+  %856 = reshape(%855, newshape=[20, 32, 256]);
+  %857 = transpose(%decoder_layers_5_self_attn_out_proj_weight, axes=[1, 0]);
+  %858 = reshape(%856, newshape=[-1, 256]);
+  %859 = transpose(%857, axes=[1, 0]);
+  %860 = nn.dense(%858, %859, units=None);
+  %861 = reshape(%860, newshape=[20, 32, 256]);
+  %862 = add(%861, %decoder_layers_5_self_attn_out_proj_bias);
+  %863 = nn.dropout(%862, rate=0.1f);
+  %864 = %863.0;
+  %865 = add(%830, %864);
+  %866 = nn.layer_norm(%865, %decoder_layers_5_norm1_weight, %decoder_layers_5_norm1_bias);
+  %867 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_weight, begin=[0, 0], end=[256, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %868 = transpose(%867, axes=[1, 0]);
+  %869 = reshape(%866, newshape=[-1, 256]);
+  %870 = transpose(%868, axes=[1, 0]);
+  %871 = nn.dense(%869, %870, units=None);
+  %872 = reshape(%871, newshape=[20, 32, 256]);
+  %873 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_bias, begin=[0], end=[256], strides=[1], axes=[0], slice_mode="end");
+  %874 = add(%872, %873);
+  %875 = multiply(%874, 0.176777f);
+  %876 = reshape(%875, newshape=[20, 256, 32]);
+  %877 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_weight, begin=[256, 0], end=[768, 256], strides=[1, 1], axes=[0, 1], slice_mode="end");
+  %878 = transpose(%877, axes=[1, 0]);
+  %879 = reshape(%376, newshape=[-1, 256]);
+  %880 = transpose(%878, axes=[1, 0]);
+  %881 = nn.dense(%879, %880, units=None);
+  %882 = reshape(%881, newshape=[10, 32, 512]);
+  %883 = strided_slice(%decoder_layers_5_multihead_attn_in_proj_bias, begin=[256], end=[768], strides=[1], axes=[0], slice_mode="end");
+  %884 = add(%882, %883);
+  %885 = strided_slice(%884, begin=[0, 0, 0], end=[10, 32, 256], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %886 = reshape(%885, newshape=[-1, 256, 32]);
+  %887 = transpose(%886, axes=[1, 0, 2]);
+  %888 = transpose(%887, axes=[0, 2, 1]);
+  %889 = transpose(%876, axes=[1, 0, 2]);
+  %890 = transpose(%888, axes=[0, 2, 1]);
+  %891 = nn.batch_matmul(%889, %890, meta[relay.attrs.BatchMatmulAttrs][34]);
+  %892 = nn.softmax(%891);
+  %893 = nn.dropout(%892, rate=0.1f);
+  %894 = strided_slice(%884, begin=[0, 0, 256], end=[10, 32, 512], strides=[1, 1, 1], axes=[0, 1, 2], slice_mode="end");
+  %895 = reshape(%894, newshape=[-1, 256, 32]);
+  %896 = transpose(%895, axes=[1, 0, 2]);
+  %897 = %893.0;
+  %898 = transpose(%896, axes=[0, 2, 1]);
+  %899 = nn.batch_matmul(%897, %898, meta[relay.attrs.BatchMatmulAttrs][35]);
+  %900 = transpose(%899, axes=[1, 0, 2]);
+  %901 = reshape(%900, newshape=[20, 32, 256]);
+  %902 = transpose(%decoder_layers_5_multihead_attn_out_proj_weight, axes=[1, 0]);
+  %903 = reshape(%901, newshape=[-1, 256]);
+  %904 = transpose(%902, axes=[1, 0]);
+  %905 = nn.dense(%903, %904, units=None);
+  %906 = reshape(%905, newshape=[20, 32, 256]);
+  %907 = add(%906, %decoder_layers_5_multihead_attn_out_proj_bias);
+  %908 = nn.dropout(%907, rate=0.1f);
+  %909 = %908.0;
+  %910 = add(%866, %909);
+  %911 = nn.layer_norm(%910, %decoder_layers_5_norm2_weight, %decoder_layers_5_norm2_bias);
+  %912 = transpose(%decoder_layers_5_linear1_weight, axes=[1, 0]);
+  %913 = reshape(%911, newshape=[-1, 256]);
+  %914 = transpose(%912, axes=[1, 0]);
+  %915 = nn.dense(%913, %914, units=None);
+  %916 = reshape(%915, newshape=[20, 32, 2048]);
+  %917 = add(%916, %decoder_layers_5_linear1_bias);
+  %918 = nn.relu(%917);
+  %919 = nn.dropout(%918, rate=0.1f);
+  %920 = %919.0;
+  %921 = transpose(%decoder_layers_5_linear2_weight, axes=[1, 0]);
+  %922 = reshape(%920, newshape=[-1, 2048]);
+  %923 = transpose(%921, axes=[1, 0]);
+  %924 = nn.dense(%922, %923, units=None);
+  %925 = reshape(%924, newshape=[20, 32, 256]);
+  %926 = add(%925, %decoder_layers_5_linear2_bias);
+  %927 = nn.dropout(%926, rate=0.1f);
+  %928 = %927.0;
+  %929 = add(%911, %928);
+  %930 = nn.layer_norm(%929, %decoder_layers_5_norm3_weight, %decoder_layers_5_norm3_bias);
+  nn.layer_norm(%930, %decoder_norm_weight, %decoder_norm_bias)
+}
+
+#[metadata]
+{
+  "root": 1, 
+  "nodes": [
+    {
+      "type_key": ""
+    }, 
+    {
+      "type_key": "Map", 
+      "keys": [
+        "relay.attrs.BatchMatmulAttrs"
+      ], 
+      "data": [2]
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [
+        3, 
+        4, 
+        5, 
+        6, 
+        7, 
+        8, 
+        9, 
+        10, 
+        11, 
+        12, 
+        13, 
+        14, 
+        15, 
+        16, 
+        17, 
+        18, 
+        19, 
+        20, 
+        21, 
+        22, 
+        23, 
+        24, 
+        25, 
+        26, 
+        27, 
+        28, 
+        29, 
+        30, 
+        31, 
+        32, 
+        33, 
+        34, 
+        35, 
+        36, 
+        37, 
+        38
+      ]
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a": "0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }, 
+    {
+      "type_key": "relay.attrs.BatchMatmulAttrs", 
+      "attrs": {"out_dtype": "", "transpose_a":"0", "transpose_b":"1"}
+    }
+  ], 
+  "b64ndarrays": [], 
+  "attrs": {"tvm_version": "0.8.dev0"}
+}

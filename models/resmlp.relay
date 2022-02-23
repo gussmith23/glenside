@@ -1,0 +1,49 @@
+#[version = "0.0.5"]
+def @main(%input0: Tensor[(1, 3, 32, 32), float32], %v1_weight: Tensor[(64, 768), float32], %v1_bias: Tensor[(64), float32], %v2_0_affine_g: Tensor[(1, 1, 64), float32], %v2_0_affine_b: Tensor[(1, 1, 64), float32], %v2_0_fn_weight: Tensor[(4, 4, 1), float32], %v2_0_fn_bias: Tensor[(4), float32], %v2_0_scale: Tensor[(1, 1, 64), float32], %v2_1_affine_g: Tensor[(1, 1, 64), float32], %v2_1_affine_b: Tensor[(1, 1, 64), float32], %v2_1_fn_0_weight: Tensor[(256, 64), float32], %v2_1_fn_0_bias: Tensor[(256), float32], %v2_1_fn_2_weight: Tensor[(64, 256), float32], %v2_1_fn_2_bias: Tensor[(64), float32], %v2_1_scale: Tensor[(1, 1, 64), float32], %v3_g: Tensor[(1, 1, 64), float32], %v3_b: Tensor[(1, 1, 64), float32], %v5_weight: Tensor[(32, 64), float32], %v5_bias: Tensor[(32), float32]) -> Tensor[(1, 32), float32] {
+  %0 = reshape(%input0, newshape=[1, 3, 2, 16, 2, 16]) /* ty=Tensor[(1, 3, 2, 16, 2, 16), float32] */;
+  %1 = transpose(%0, axes=[0, 2, 4, 3, 5, 1]) /* ty=Tensor[(1, 2, 2, 16, 16, 3), float32] */;
+  %2 = reshape(%1, newshape=[1, 4, 768]) /* ty=Tensor[(1, 4, 768), float32] */;
+  %3 = transpose(%v1_weight, axes=[1, 0]) /* ty=Tensor[(768, 64), float32] */;
+  %4 = reshape(%2, newshape=[-1, 768]) /* ty=Tensor[(4, 768), float32] */;
+  %5 = transpose(%3, axes=[1, 0]) /* ty=Tensor[(64, 768), float32] */;
+  %6 = nn.dense(%4, %5, units=None) /* ty=Tensor[(4, 64), float32] */;
+  %7 = reshape(%6, newshape=[1, 4, 64]) /* ty=Tensor[(1, 4, 64), float32] */;
+  %8 = add(%7, %v1_bias) /* ty=Tensor[(1, 4, 64), float32] */;
+  %9 = multiply(%8, %v2_0_affine_g) /* ty=Tensor[(1, 4, 64), float32] */;
+  %10 = add(%9, %v2_0_affine_b) /* ty=Tensor[(1, 4, 64), float32] */;
+  %11 = nn.conv1d(%10, %v2_0_fn_weight, channels=4, kernel_size=[1]) /* ty=Tensor[(1, 4, 64), float32] */;
+  %12 = nn.bias_add(%11, %v2_0_fn_bias) /* ty=Tensor[(1, 4, 64), float32] */;
+  %13 = multiply(%12, %v2_0_scale) /* ty=Tensor[(1, 4, 64), float32] */;
+  %14 = add(%13, %8) /* ty=Tensor[(1, 4, 64), float32] */;
+  %15 = multiply(%14, %v2_1_affine_g) /* ty=Tensor[(1, 4, 64), float32] */;
+  %16 = add(%15, %v2_1_affine_b) /* ty=Tensor[(1, 4, 64), float32] */;
+  %17 = transpose(%v2_1_fn_0_weight, axes=[1, 0]) /* ty=Tensor[(64, 256), float32] */;
+  %18 = reshape(%16, newshape=[-1, 64]) /* ty=Tensor[(4, 64), float32] */;
+  %19 = transpose(%17, axes=[1, 0]) /* ty=Tensor[(256, 64), float32] */;
+  %20 = nn.dense(%18, %19, units=None) /* ty=Tensor[(4, 256), float32] */;
+  %21 = reshape(%20, newshape=[1, 4, 256]) /* ty=Tensor[(1, 4, 256), float32] */;
+  %22 = add(%21, %v2_1_fn_0_bias) /* ty=Tensor[(1, 4, 256), float32] */;
+  %23 = multiply(%22, 0.707107f /* ty=float32 */) /* ty=Tensor[(1, 4, 256), float32] */;
+  %24 = erf(%23) /* ty=Tensor[(1, 4, 256), float32] */;
+  %25 = multiply(%24, 0.5f /* ty=float32 */) /* ty=Tensor[(1, 4, 256), float32] */;
+  %26 = add(0.5f /* ty=float32 */, %25) /* ty=Tensor[(1, 4, 256), float32] */;
+  %27 = multiply(%22, %26) /* ty=Tensor[(1, 4, 256), float32] */;
+  %28 = transpose(%v2_1_fn_2_weight, axes=[1, 0]) /* ty=Tensor[(256, 64), float32] */;
+  %29 = reshape(%27, newshape=[-1, 256]) /* ty=Tensor[(4, 256), float32] */;
+  %30 = transpose(%28, axes=[1, 0]) /* ty=Tensor[(64, 256), float32] */;
+  %31 = nn.dense(%29, %30, units=None) /* ty=Tensor[(4, 64), float32] */;
+  %32 = reshape(%31, newshape=[1, 4, 64]) /* ty=Tensor[(1, 4, 64), float32] */;
+  %33 = add(%32, %v2_1_fn_2_bias) /* ty=Tensor[(1, 4, 64), float32] */;
+  %34 = multiply(%33, %v2_1_scale) /* ty=Tensor[(1, 4, 64), float32] */;
+  %35 = add(%34, %14) /* ty=Tensor[(1, 4, 64), float32] */;
+  %36 = multiply(%35, %v3_g) /* ty=Tensor[(1, 4, 64), float32] */;
+  %37 = add(%36, %v3_b) /* ty=Tensor[(1, 4, 64), float32] */;
+  %38 = reshape(%37, newshape=[1, 4, 64]) /* ty=Tensor[(1, 4, 64), float32] */;
+  %39 = mean(%38, axis=[1]) /* ty=Tensor[(1, 64), float32] */;
+  %40 = transpose(%39, axes=[0, 1]) /* ty=Tensor[(1, 64), float32] */;
+  %41 = transpose(%v5_weight, axes=[1, 0]) /* ty=Tensor[(64, 32), float32] */;
+  %42 = reshape(%40, newshape=[1, 64]) /* ty=Tensor[(1, 64), float32] */;
+  %43 = transpose(%41, axes=[1, 0]) /* ty=Tensor[(32, 64), float32] */;
+  %44 = nn.dense(%42, %43, units=32) /* ty=Tensor[(1, 32), float32] */;
+  add(%44, %v5_bias) /* ty=Tensor[(1, 32), float32] */
+}

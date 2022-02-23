@@ -43,13 +43,22 @@ git = "https://github.com/gussmith23/rplex"
 
 
 [dependencies.tvm]
-rev = "36b48a5707321adba8a70e14da443566a9391e5a"
-git = "https://github.com/apache/tvm"
+# TODO(@gussmith23) Change this to tvm mainline once we figure out include path
+# issue.
+# NOTE Keep glenside-evaluation in sync with this
+# If the versions get out of whack, we'll probably have some weird errors.
+# rev = "4ed759f6b6cafbab707f95b57762913a1f57c021"
+# git = "https://github.com/hypercubestart/incubator-tvm"
+git = "ssh://git@github.com/uwsampl/3la-tvm.git"
+# branch = "3la-pldi-push-main"
+rev = "82699dbfcbd942d49237addc4369f3f82c1f1147"
 optional = true
 
 [dependencies.egg]
-rev = "39415f19acdacd6dde62f40cb2bb08f8669acc85"
-git = "https://github.com/mwillsey/egg"
+# rev = "39415f19acdacd6dde62f40cb2bb08f8669acc85"
+git = "https://github.com/AD1024/egg"
+rev = "b8f902f554cc476c397e4fd9c7bea229f946d2a9"
+features = ["serde-json"]
 
 [dependencies.ndarray]
 version = "0.13.0"
