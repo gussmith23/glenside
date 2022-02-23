@@ -1648,6 +1648,15 @@ fn compile_expression(
                         todo!()
                     }
                 }
+                "nn.conv1d" => {
+                    let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let weight_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id, weight_id].into_boxed_slice()
+                    ));
+                    (conv1d_opcall, None)
+                }
                 "concatenate" => {
                     assert_eq!(call.args.len(), 1);
                     let attrs = call
@@ -1957,7 +1966,10 @@ fn compile_expression(
 
                     (data_id, None)
                 }
-                _ => todo!(),
+                op => {
+                    println!("{} operator not implemented", op);
+                    todo!()
+                },
             }
         } else {
             todo!()
