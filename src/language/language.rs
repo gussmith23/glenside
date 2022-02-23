@@ -260,6 +260,8 @@ define_language! {
 
         Int32(i32),
 
+        Uint8(u8),
+
         // Important that this go after usize, so that usizes are parsed as
         // usizes, not as floats.
         NotNanFloat64(NotNan<f64>),
@@ -629,6 +631,7 @@ pub enum MyAnalysisData {
     Literal(ndarray::ArrayD<f64>),
     Usize(usize),
     Int32(i32),
+    Uint8(u8),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
     Tuple(Vec<MyAnalysisData>),
@@ -3306,6 +3309,7 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             Usize(u) => MyAnalysisData::Usize(*u),
             Int32(x) => MyAnalysisData::Int32(*x),
+            Uint8(u) => MyAnalysisData::Uint8(*u),
             Symbol(name) => {
                 MyAnalysisData::Shape(ShapeData {
                     shape: ndarray::IxDyn(
