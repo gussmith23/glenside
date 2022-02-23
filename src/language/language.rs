@@ -1688,6 +1688,24 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                 };
                 match accelerator_func_data.pattern {
+                    crate::language::AcceleratorFunc::FlexLSTM => {
+                        // let mut access = match ids[1..]
+                        //     .iter()
+                        //     .map(|id| egraph[id].data)
+                        //     .collect::<Vec<_>>()
+                        // {
+                        //     [MyAnalysisData::AccessPattern(a)] => a.clone(),
+                        //     _ => panic!(),
+                        // };
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            zero_regions: HashMap::default(),
+                            shape: IxDyn(&[35, 1, 128]),
+                            item_shape: IxDyn(&[]),
+                            relay_shape: Some(IxDyn(&[35, 1, 128])),
+                            contains_accelerator_calls: true,
+                        })
+                    }
                     crate::language::AcceleratorFunc::FlexLinear
                     | crate::language::AcceleratorFunc::VTADense => {
                         let inp_data = &egraph[ids[1]].data;
@@ -1732,8 +1750,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             contains_accelerator_calls: true,
                         })
                     }
-                    crate::language::AcceleratorFunc::VTAConv1D
-                    | crate::language::AcceleratorFunc::FlexLSTM => {
+                    crate::language::AcceleratorFunc::VTAConv1D => {
                         // TODO: add shape here
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             shape: IxDyn(&[]),
