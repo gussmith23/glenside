@@ -1952,7 +1952,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                             _ => panic!("Parameters do not type check"),
                         };
 
-                        MyAnalysisData::AccessPattern(access)
+                        // See the documentation (well, the code comments...) for dropout.
+                        MyAnalysisData::Tuple(vec![
+                            MyAnalysisData::AccessPattern(access.clone()),
+                            MyAnalysisData::AccessPattern(access),
+                        ])
                     }
                     crate::language::RelayOperator::RelayTake => {
                         let (data, indices, axis) = match params[1..]
