@@ -231,7 +231,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             
             Language::AcceleratorCall(_)
             | Language::AcceleratorFunc(_) 
-            | Language::Literal(_) => 0,
+            | Language::Literal(_) => 1,
             Language::RelayOperatorCall(_)
             | Language::RelayOperator(_)
             | Language::Shape(_)
@@ -245,7 +245,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::Access(_)
             | Language::AccessInsertAxis(_)
             | Language::AccessBroadcast(_)
-            | Language::Symbol(_) => 1,
+            | Language::Symbol(_) => 2,
             _ => 100
         };
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
