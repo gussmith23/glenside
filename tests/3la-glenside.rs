@@ -84,6 +84,5 @@ fn test_3la_glenside_linear_rewrite() {
     runner.egraph.dot(&|_x, _y| true).to_png("/home/dh63/marlowe/smoke-test/glenside/render_egraph.png").unwrap();
     let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
     let (cost, best) = extractor.find_best(id);
-    assert!(cost < usize::MAX);
     println!("{}", best.pretty(80));
 }
