@@ -894,8 +894,11 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
 
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec, _) =
-        glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shapes_vec, dtypes_vec, _) = glenside::language::from_relay::from_relay(
+        &module,
+        false,
+        &vec![glenside::language::RelayOperator::RelaySigmoid],
+    );
 
     // TODO(@gussmith23) Include some simple simplifying rewrites
     // If we add some very basic rewrites here, then $glenside_str
