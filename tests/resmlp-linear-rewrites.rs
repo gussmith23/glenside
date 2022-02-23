@@ -1,7 +1,7 @@
 #![cfg(feature = "tvm")]
-use egg::{EGraph, Runner, Extractor};
+use egg::{EGraph, Extractor, Runner};
+use glenside::extraction::AcceleratorCostFunction;
 use glenside::language::MyAnalysis;
-use glenside::extraction::{AcceleratorCostFunction};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -13,7 +13,8 @@ fn test_resmlp() {
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-    let (expr, shape_info, equiv_worklist) = glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shape_info, equiv_worklist) =
+        glenside::language::from_relay::from_relay(&module, false, &vec![]);
     let mut env = HashMap::default();
     for (name, shape) in &shape_info {
         env.insert(name.clone(), shape.clone());
@@ -22,10 +23,10 @@ fn test_resmlp() {
         name_to_shape: env.clone(),
     });
     let rws = vec![
-    //    glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
-       glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
-       glenside::language::rewrites::linear_layer_accelerator_rewrites(),
-       glenside::language::rewrites::access_reshape_to_relay(),
+        //    glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
+        glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
+        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
+        glenside::language::rewrites::access_reshape_to_relay(),
     ];
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
@@ -46,6 +47,9 @@ fn test_resmlp() {
     // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
     // let _ = std::fs::write(output_file, model).unwrap();
     let json_dump = best.serialize();
-    let output_file = PathBuf::from(format!("{}/models/resmlp-dump.json", env!("CARGO_MANIFEST_DIR")));
+    let output_file = PathBuf::from(format!(
+        "{}/models/resmlp-dump.json",
+        env!("CARGO_MANIFEST_DIR")
+    ));
     let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
-} 
+}
