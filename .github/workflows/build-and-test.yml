@@ -2,25 +2,17 @@ name: Build and test
 
 on:
   push:
-    branches: [ main, 3la-pldi-push-main ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, 3la-pldi-push-main ]
+    branches: [ main ]
 
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
     steps:
-      - name: Start ssh-agent
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.SSH_KEY }}
       - uses: actions/checkout@v2
-      - run: DOCKER_BUILDKIT=1 docker build --ssh default --tag glenside .
+      - run: docker build --tag glenside .
       # TODO(@gussmith23) Keep the list of features up to date
       # TODO(@gussmith23) Can't test CPLEX in Github Actions
       # TODO(@gussmith23) Can we optionally build the Docker w/ access to CPLEX?
-      # For 3la pldi push, we don't need GH actions flag, as we disabled the
-      # tests which use it.
-      # TODO(@gussmith23) The GH actions flag can be removed entirely; just
-      # count egg iterations, not time
-      - run: docker run glenside cargo test --no-default-features --features "tvm"
+      - run: docker run glenside cargo test --no-default-features --features "run-on-github-actions tvm"
