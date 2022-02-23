@@ -704,7 +704,16 @@ pub fn dot_product_to_linear() -> RW {
 ///    This will give us two Glenside patterns
 /// 3. Rewrite from lhs to rhs
 
-pub fn bubble_reshape_through_linear_generalized() -> RW {
+pub fn bubble_reshape_through_linear_generalized() -> Vec<RW> {
+    fn can_broadcast(x: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
+        move |egraph, _, subst| match &egraph[subst[x]].data {
+            MyAnalysisData::AccessPattern(access) => {
+                access.shape.ndim() + access.item_shape.ndim() == 1
+            }
+            MyAnalysisData::Shape(shape) => shape.shape.ndim() == 1,
+            _ => false,
+        }
+    }
     struct ApplierImpl(Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
@@ -722,7 +731,7 @@ pub fn bubble_reshape_through_linear_generalized() -> RW {
                         .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
         }
     }
-    rewrite!("bubble-reshape-through-linear";
+    vec![rewrite!("bubble-reshape-through-linear";
             "(compute elementwise-add 
                 (access-pair 
                     (access 
@@ -737,7 +746,24 @@ pub fn bubble_reshape_through_linear_generalized() -> RW {
                             (access-insert-axis (access-insert-axis ?bias 0) 0)
                             (access-shape ?shape (shape))) 0)))"
             =>
-            { ApplierImpl("?shape".parse().unwrap()) })
+            { ApplierImpl("?shape".parse().unwrap()) }),
+        rewrite!("bubble-reshape-through-linear-relay";
+                    "(relay-operator-call relay-add
+                                        (relay-operator-call relay-reshape
+                                            (relay-operator-call relay-dense ?x ?w)
+                                            ?shape)
+                                        ?bias)"
+            =>      "(relay-operator-call relay-reshape
+                                          (relay-operator-call relay-bias-add
+                                            (relay-operator-call relay-dense ?x ?w)
+                                            ?bias
+                                            1)
+                                        ?shape)"
+                    if can_broadcast("?bias".parse().unwrap())),
+        rewrite!("add-to-bias-add";
+                "(relay-operator-call relay-add ?x ?b)"
+                => "(relay-operator-call relay-bias-add ?x ?b 1)"
+                    if can_broadcast("?b".parse().unwrap()))]
 }
 
 pub fn bubble_reshape_through_linear() -> RW {
@@ -774,34 +800,13 @@ pub fn bubble_reshape_through_linear() -> RW {
 /// 3. Add the following rewrite: from the Glenside version of the pattern to an accelerator call
 
 pub fn linear_layer_accelerator_rewrites() -> RW {
-    struct ApplierImpl;
-    impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            // let shape = match &egraph[eclass].data {
-            //     MyAnalysisData::Shape(shape_data) => shape_data.shape.clone(),
-            //     MyAnalysisData::AccessPattern(access) => {
-            //         if let Some(output_shape) = &access.relay_shape {
-            //             output_shape.clone()
-            //         } else {
-            //             IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat())
-            //         }
-            //     }
-            //     x => panic!("Not a valid pattern match {:?}", x),
-            // };
-            "(accelerator-call flex-linear ?x ?w ?bias)"
-                .parse::<Pattern<Language>>()
-                .unwrap()
-                .apply_one(egraph, eclass, subst)
-        }
-    }
-    rewrite!("linear_to_flexnlp";
-             "(compute elementwise-add 
-                (access-pair 
-                    (access (compute dot-product (access-cartesian-product (access ?x 1) (access ?w 1))) 0) 
-                    (access (access-broadcast (access-insert-axis ?bias 0) 
-                            (access-shape ?shape (shape))) 0)))"
-            =>
-             { ApplierImpl {} })
+    rewrite!("linear-to-flexnlp-relay";
+        "(relay-operator-call relay-bias-add
+            (relay-operator-call relay-dense ?x ?w)
+            ?bias
+            ?axis)"
+        =>
+        "(accelerator-call flex-linear ?x ?w ?bias)")
 }
 
 /// Tensorizes a computation to an externally-blocked systolic array.
