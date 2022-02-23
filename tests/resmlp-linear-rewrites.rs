@@ -1,7 +1,7 @@
 #![cfg(feature = "tvm")]
-use egg::{EGraph, Extractor, Runner};
-use glenside::extraction::AcceleratorCostFunction;
-use glenside::language::MyAnalysis;
+use egg::{EGraph, Runner, Extractor};
+use glenside::language::{MyAnalysis, serialize_analysis_data};
+use glenside::extraction::{AcceleratorCostFunction};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -53,4 +53,13 @@ fn test_resmlp() {
         env!("CARGO_MANIFEST_DIR")
     ));
     let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
-}
+    egraph = EGraph::new(MyAnalysis {
+        name_to_shape: env.clone()
+    });
+    let (_, id_map) = egraph.add_expr_with_record(&best);
+    let mut native_map = HashMap::new();
+    for (k, v) in id_map.into_iter() {
+        native_map.insert(k, v);
+    }
+    let _data_json_dump = serialize_analysis_data(&egraph, &native_map);
+} 

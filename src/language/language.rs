@@ -1543,14 +1543,24 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let inp_data = &egraph[ids[1]].data;
                         let wgt_data = &egraph[ids[2]].data;
                         let inp_shape = match inp_data {
-                            MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
-                            MyAnalysisData::Shape(s) => Some(s.shape.clone()),
-                            _ => panic!("Data for input should have shape info"),
+                            MyAnalysisData::AccessPattern(p) => Some(p.shape
+                                                                                    .slice()
+                                                                                    .iter()
+                                                                                    .chain(p.item_shape.slice().iter())
+                                                                                    .cloned()
+                                                                                    .collect::<Vec<_>>()),
+                            MyAnalysisData::Shape(s)        => Some(s.shape.slice().to_vec()),
+                            _ => panic!("Data for input should have shape info")
                         };
                         let wgt_shape = match wgt_data {
-                            MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
-                            MyAnalysisData::Shape(s) => Some(s.shape.clone()),
-                            _ => panic!("Data for weight should have shape info"),
+                            MyAnalysisData::AccessPattern(p) => Some(p.shape
+                                                                                    .slice()
+                                                                                    .iter()
+                                                                                    .chain(p.item_shape.slice().iter())
+                                                                                    .cloned()
+                                                                                    .collect::<Vec<_>>()),
+                            MyAnalysisData::Shape(s)        => Some(s.shape.slice().to_vec()),
+                            _ => panic!("Data for weight should have shape info")
                         };
                         let out_shape = match (inp_shape, wgt_shape) {
                             (Some(inp_shape), Some(wgt_shape)) => {
