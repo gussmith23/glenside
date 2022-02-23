@@ -120,12 +120,10 @@ fn lstm_relay_to_glenside() {
 
     assert_eq!(pattern.search(&egraph).len(), 1);
 
-
     let rewrite = rewrite!("flex-lstm"; 
         { pattern } => "(accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)");
 
     let runner = Runner::default().with_egraph(egraph).run(vec![&rewrite]);
-
 
     let matches = "
      (accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)"
