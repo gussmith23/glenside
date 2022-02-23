@@ -23,18 +23,27 @@ fn test_resmlp() {
         name_to_shape: env.clone(),
     });
     let rws = vec![
-       glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
-       glenside::language::rewrites::bubble_access_slice_through_access_pad_inequal_axes(),
+    //    glenside::language::rewrites::bubble_reshape_through_compute_dot_product(),
        glenside::language::rewrites::bubble_reshape_through_linear_generalized(),
        glenside::language::rewrites::linear_layer_accelerator_rewrites(),
+       glenside::language::rewrites::access_reshape_to_relay(),
     ];
     let (id, id_map) = egraph.add_expr_with_record(&expr);
     for (left, right) in equiv_worklist {
         if let (Some(&new_left), Some(&new_right)) = (id_map.get(&left), id_map.get(&right)) {
             egraph.union(new_left, new_right);
-        } else {
-            let nodes = expr.as_ref();
-            println!("{:?} v.s. {:?}", nodes[usize::from(left)], nodes[usize::from(right)]);
         }
     }
+    egraph.rebuild();
+    let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+        .with_egraph(egraph)
+        .with_time_limit(std::time::Duration::from_secs(5))
+        .with_node_limit(500000)
+        .with_iter_limit(40)
+        .run(&rws);
+    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
+    let (_cost, best) = extractor.find_best(id);
+    let model = best.pretty(80);
+    let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
+    let _ = std::fs::write(output_file, model).unwrap();
 } 
