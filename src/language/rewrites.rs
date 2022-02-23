@@ -5221,9 +5221,9 @@ mod tests {
          (access-reshape
           (access
            (access-transpose
-            (flexasr-maxpool
+            (accelerator-call flex-maxpool
              (access
-              (flexasr-maxpool
+              (accelerator-call flex-maxpool
                (access
                 (access-transpose
                  (access-flatten
