@@ -595,7 +595,7 @@ pub enum MyAnalysisData {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapeData {
-    shape: IxDyn,
+    pub shape: IxDyn,
 }
 
 /// New version of rangeset.
