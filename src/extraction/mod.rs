@@ -217,9 +217,8 @@ impl CostFunction<Language> for SimpleCostFunction {
             | AccessBroadcast(_) => 1,
             // Other glenside constructs that are necessary.
             Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
-            | List(_) | AccessShape(_) | Usize(_) | Int32(_) | Uint8(_) | PadType(_)
-            | Int64(_) | Int8(_)
-            | ComputeType(_) | Symbol(_) | Literal(_) | NotNanFloat64(_) => 1,
+            | List(_) | AccessShape(_) | Usize(_) | Int32(_) | Uint8(_) | PadType(_) | Int64(_)
+            | Int8(_) | ComputeType(_) | Symbol(_) | Literal(_) | NotNanFloat64(_) => 1,
         };
 
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
