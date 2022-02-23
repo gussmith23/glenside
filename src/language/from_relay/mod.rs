@@ -333,13 +333,31 @@ pub fn conv2d(
                 list.push(expr.add(Language::Usize(*v as usize)));
             }
             let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+            let o_id = expr.add(Language::Usize(weights_shape[0]));
+            let relay_operator_weight_shape_id = expr.add(Language::Shape(
+                vec![
+                    o_id,
+                    list[2],
+                    list[3],
+                ]
+                .into_boxed_slice(),
+            ));
 
-            let operator_call_id = expr.add(Language::RelayOperatorCall(vec![
-                operator_id,
-                data_id, weights_id, stride_shape_id, padding_id,
-                groups_id, channel_id, weights_shape_id,
-                activation_layout_id, kernel_layout_id
-            ].into_boxed_slice()));
+            let operator_call_id = expr.add(Language::RelayOperatorCall(
+                vec![
+                    operator_id,
+                    data_id,
+                    weights_id,
+                    stride_shape_id,
+                    padding_id,
+                    groups_id,
+                    channel_id,
+                    relay_operator_weight_shape_id,
+                    activation_layout_id,
+                    kernel_layout_id,
+                ]
+                .into_boxed_slice(),
+            ));
 
             let mut to_be_concatted = Vec::default();
 
@@ -2813,18 +2831,18 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), 
     // "#
     //     );
 
-//     test!(
-//         relaysplit,
-//         1e-5,
-//         r#"
-// #[version = "0.0.5"]
-// def @main(%input: Tensor[(1, 5, 4), float32]) {
-//     split(%input, indices_or_sections=5, axis=1)
-// }
-// "#,
-//     r#"
-// (relay-operator-call relay-split ?input 5 1)
-// "#);
+    //     test!(
+    //         relaysplit,
+    //         1e-5,
+    //         r#"
+    // #[version = "0.0.5"]
+    // def @main(%input: Tensor[(1, 5, 4), float32]) {
+    //     split(%input, indices_or_sections=5, axis=1)
+    // }
+    // "#,
+    //     r#"
+    // (relay-operator-call relay-split ?input 5 1)
+    // "#);
 
     test!(
         conv2d,
