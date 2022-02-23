@@ -341,7 +341,12 @@ pub fn create_generic_egraph_lp_model<'a>(
             bn_vars.insert(enode, column_index);
             var_count += 1;
         }
-        assert!(var_count > 0, "No variable selected for eclass {}: {:?}", eclass.id, eclass);
+        assert!(
+            var_count > 0,
+            "No variable selected for eclass {}: {:?}",
+            eclass.id,
+            eclass
+        );
     }
 
     // All roots must be chosen.
@@ -364,9 +369,14 @@ pub fn create_generic_egraph_lp_model<'a>(
             }
 
             if available_parents.len() == 0 {
-                let mut con = Constraint::new(ConstraintType::Eq,
+                let mut con = Constraint::new(
+                    ConstraintType::Eq,
                     0.0,
-                    format!("Disable eclass {} because it doesn't have an available parent", id));
+                    format!(
+                        "Disable eclass {} because it doesn't have an available parent",
+                        id
+                    ),
+                );
                 con.add_wvar(WeightedVariable::new_idx(*bq_idx, 1.0));
                 problem.add_constraint(con).unwrap();
                 continue;
