@@ -5,6 +5,7 @@ use ndarray::{s, Array, ArrayD, Dimension, IxDyn, Zip};
 use num_traits::cast::AsPrimitive;
 use num_traits::Pow;
 use std::collections::hash_map::HashMap;
+use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::ops::Div;
 use std::str::FromStr;
@@ -12,7 +13,7 @@ use std::str::FromStr;
 pub enum Value<DataType> {
     Tensor(ArrayD<DataType>),
     Access(Access<DataType>),
-    Usize(usize),
+    Num(usize),
     Int32(i32),
     Int64(i64),
     Int8(i8),
@@ -183,15 +184,15 @@ where
                 _ => panic!(),
             };
             let axis = match interpret(expr, axis_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
             let low = match interpret(expr, low_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
             let high = match interpret(expr, high_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
 
@@ -219,7 +220,7 @@ where
                 _ => panic!(),
             };
             let axis = match interpret(expr, axis_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
 
@@ -283,7 +284,7 @@ where
         Language::List(list) => Value::List(
             list.iter()
                 .map(|id: &Id| match interpret(expr, (*id).into(), env) {
-                    Value::Usize(u) => u,
+                    Value::Num(u) => u,
                     _ => panic!(),
                 })
                 .collect::<Vec<_>>(),
@@ -315,7 +316,7 @@ where
                 _ => panic!(),
             };
             let axis = match interpret(expr, axis_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
 
@@ -367,7 +368,7 @@ where
                 _ => panic!(),
             };
             let axis = match interpret(expr, axis_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
 
@@ -395,15 +396,15 @@ where
                 _ => panic!(),
             };
             let axis = match interpret(expr, axis_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
             let pad_before = match interpret(expr, pad_before_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
             let pad_after = match interpret(expr, pad_after_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
 
@@ -786,7 +787,7 @@ where
                 _ => panic!(),
             };
             let dim = match interpret(expr, dim_id.into(), env) {
-                Value::Usize(u) => u,
+                Value::Num(u) => u,
                 _ => panic!(),
             };
 
@@ -908,7 +909,7 @@ where
         Language::Shape(list) => Value::Shape(IxDyn(
             list.iter()
                 .map(|id: &Id| match interpret(expr, (*id).into(), env) {
-                    Value::Usize(u) => u,
+                    Value::Num(u) => u,
                     _ => panic!(),
                 })
                 .collect::<Vec<_>>()
@@ -918,7 +919,7 @@ where
             interpret(expr, shape_id.into(), env),
             interpret(expr, slice_axis_id.into(), env),
         ) {
-            (Value::Shape(s), Value::Usize(u)) => {
+            (Value::Shape(s), Value::Num(u)) => {
                 Value::Shape(IxDyn(s.as_array_view().slice(s![u..]).to_slice().unwrap()))
             }
             _ => panic!(),
@@ -927,7 +928,7 @@ where
             interpret(expr, shape_id.into(), env),
             interpret(expr, axis_id.into(), env),
         ) {
-            (Value::Shape(s), Value::Usize(u)) => {
+            (Value::Shape(s), Value::Num(u)) => {
                 assert!(u <= s.ndim());
                 Value::Shape(IxDyn(
                     s.slice()[..u]
@@ -945,7 +946,7 @@ where
             interpret(expr, shape_id.into(), env),
             interpret(expr, axis_id.into(), env),
         ) {
-            (Value::Shape(s), Value::Usize(u)) => {
+            (Value::Shape(s), Value::Num(u)) => {
                 assert!(u < s.ndim(), "Invalid axis in shape-remove-axis");
                 Value::Shape(IxDyn(
                     s.slice()[..u]
@@ -975,11 +976,7 @@ where
                 .unwrap_or_else(|| panic!("Symbol {} not in environment", s))
                 .clone(),
         ),
-        &Language::Usize(u) => Value::Usize(u),
-        &Language::Int32(x) => Value::Int32(x),
-        &Language::Int64(x) => Value::Int64(x),
-        &Language::Int8(x) => Value::Int8(x),
-        &Language::Uint8(u) => Value::Uint8(u),
+        &Language::Num(u) => Value::Num(u.try_into().unwrap()),
 
         &Language::SystolicArray(_)
         | &Language::SystolicArrayWithBlocking(_)
@@ -1809,7 +1806,7 @@ mod tests {
 
     benchmark_and_test!(usize, bench_usize, "23", |value| {
         match value {
-            Value::Usize(23) => (),
+            Value::Num(23) => (),
             _ => panic!(),
         }
     });

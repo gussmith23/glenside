@@ -23,7 +23,7 @@ use super::RelayOperator;
 pub fn list(expr: &mut RecExpr<Language>, list: &[usize]) -> Id {
     let mut id_list: Vec<Id> = Vec::default();
     for i in list {
-        id_list.push(expr.add(Language::Usize(*i)));
+        id_list.push(expr.add(Language::Num((*i).try_into().unwrap())));
     }
     expr.add(Language::List(id_list.into_boxed_slice()))
 }
@@ -90,10 +90,10 @@ pub fn conv1d(
     //     _ => unreachable!(),
     // };
 
-    let pad_axis_id = expr.add(Language::Usize(2));
-    // let access_dim_id = expr.add(Language::Usize(1));
-    let pad_before_id = expr.add(Language::Usize(padding[0]));
-    let pad_after_id = expr.add(Language::Usize(padding[1]));
+    let pad_axis_id = expr.add(Language::Num(2));
+    // let access_dim_id = expr.add(Language::Num(1));
+    let pad_before_id = expr.add(Language::Num(padding[0].try_into().unwrap()));
+    let pad_after_id = expr.add(Language::Num(padding[1].try_into().unwrap()));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessPad([
@@ -111,13 +111,13 @@ pub fn conv1d(
 
     //TODO: Figure out how stride_list changes
     let mut stride_list = Vec::default();
-    stride_list.push(expr.add(Language::Usize(1)));
-    stride_list.push(expr.add(Language::Usize(strides[0])));
+    stride_list.push(expr.add(Language::Num(1)));
+    stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
     let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
 
-    let _usize_o_id = expr.add(Language::Usize(1));
-    let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
-    let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
+    let _usize_o_id = expr.add(Language::Num(1));
+    let usize_c_id = expr.add(Language::Num(weights_shape[1].try_into().unwrap()));
+    let usize_kw_id = expr.add(Language::Num(weights_shape[2].try_into().unwrap()));
     let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
     let data_id = access(expr, data_id, 1);
     // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
@@ -126,7 +126,7 @@ pub fn conv1d(
         weights_shape_id,
         stride_shape_id,
     ]));
-    let dim_id_1 = expr.add(Language::Usize(1));
+    let dim_id_1 = expr.add(Language::Num(1));
     // data_id = cartProd (data_id, (access weights 1))
     let weights_id = access(expr, weights_id, 1);
     let data_id = expr.add(Language::AccessSqueeze([data_id, dim_id_1]));
@@ -211,9 +211,9 @@ pub fn conv2d(
     let activation_layout_id = expr.add(Language::RelayActivationLayout(activation_layout));
     let kernel_layout_id = expr.add(Language::RelayKernelLayout(kernel_layout));
 
-    let pad_axis_id = expr.add(Language::Usize(2));
-    let pad_top = expr.add(Language::Usize(padding[0]));
-    let pad_bottom = expr.add(Language::Usize(padding[2]));
+    let pad_axis_id = expr.add(Language::Num(2));
+    let pad_top = expr.add(Language::Num(padding[0].try_into().unwrap()));
+    let pad_bottom = expr.add(Language::Num(padding[2].try_into().unwrap()));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
@@ -223,11 +223,11 @@ pub fn conv2d(
         pad_bottom,
     ]));
 
-    let groups_id = expr.add(Language::Usize(groups.clone()));
+    let groups_id = expr.add(Language::Num(groups.clone().try_into().unwrap()));
 
-    let pad_axis_id = expr.add(Language::Usize(3));
-    let pad_left = expr.add(Language::Usize(padding[1]));
-    let pad_right = expr.add(Language::Usize(padding[3]));
+    let pad_axis_id = expr.add(Language::Num(3));
+    let pad_left = expr.add(Language::Num(padding[1].try_into().unwrap()));
+    let pad_right = expr.add(Language::Num(padding[3].try_into().unwrap()));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
@@ -243,7 +243,7 @@ pub fn conv2d(
 
     let in_channels = data_shape[1];
 
-    let channel_id = expr.add(Language::Usize(weights_shape[0]));
+    let channel_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
 
     let operator_id = expr.add(Language::RelayOperator(RelayOperator::RelayConv2D));
 
@@ -252,15 +252,15 @@ pub fn conv2d(
             let data_id = access(expr, data_id, 1);
 
             let mut stride_list = Vec::default();
-            stride_list.push(expr.add(Language::Usize(1)));
-            stride_list.push(expr.add(Language::Usize(strides[0])));
-            stride_list.push(expr.add(Language::Usize(strides[1])));
+            stride_list.push(expr.add(Language::Num(1)));
+            stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
+            stride_list.push(expr.add(Language::Num(strides[1].try_into().unwrap())));
             let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
 
             // Create the (shape ...) representing the kernel shapes
-            let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
-            let usize_kh_id = expr.add(Language::Usize(weights_shape[2]));
-            let usize_kw_id = expr.add(Language::Usize(weights_shape[3]));
+            let usize_c_id = expr.add(Language::Num(weights_shape[1].try_into().unwrap()));
+            let usize_kh_id = expr.add(Language::Num(weights_shape[2].try_into().unwrap()));
+            let usize_kw_id = expr.add(Language::Num(weights_shape[3].try_into().unwrap()));
             let weights_shape_id = expr.add(Language::Shape(Box::new([
                 usize_c_id,
                 usize_kh_id,
@@ -291,12 +291,12 @@ pub fn conv2d(
             // Result is [batch 1 new_h new_w] [in_channel kw kh]
 
             // Squeeze extraneous 1st dimension
-            let squeeze_axis_id = expr.add(Language::Usize(1));
+            let squeeze_axis_id = expr.add(Language::Num(1));
             let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
             let data_id = access(expr, data_id, 3);
             // Result is [batch new_h new_w] [in_channel kw kh]
 
-            let access_axis_id = expr.add(Language::Usize(1));
+            let access_axis_id = expr.add(Language::Num(1));
             let weights_id = expr.add(Language::Access([weights_id, access_axis_id]));
 
             let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
@@ -317,10 +317,10 @@ pub fn conv2d(
             let _data_id = access(expr, data_id, 0);
 
             let mut stride_list = Vec::default();
-            stride_list.push(expr.add(Language::Usize(1)));
-            stride_list.push(expr.add(Language::Usize(1)));
-            stride_list.push(expr.add(Language::Usize(strides[0])));
-            stride_list.push(expr.add(Language::Usize(strides[1])));
+            stride_list.push(expr.add(Language::Num(1)));
+            stride_list.push(expr.add(Language::Num(1)));
+            stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
+            stride_list.push(expr.add(Language::Num(strides[1].try_into().unwrap())));
             let _stride_shape_id =
                 expr.add(Language::Shape(Box::from(stride_list.clone().as_slice())));
             let operator_call_stride_id = expr.add(Language::Shape(
@@ -339,13 +339,13 @@ pub fn conv2d(
             // groups=in_channels.
             // TODO(@gussmith23) Layout assumption.
             let mut list = Vec::default();
-            list.push(expr.add(Language::Usize(1)));
-            list.push(expr.add(Language::Usize(1)));
+            list.push(expr.add(Language::Num(1)));
+            list.push(expr.add(Language::Num(1)));
             for v in weights_shape[2..].iter() {
-                list.push(expr.add(Language::Usize(*v as usize)));
+                list.push(expr.add(Language::Num((*v as usize).try_into().unwrap())));
             }
             let _weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
-            let o_id = expr.add(Language::Usize(weights_shape[0]));
+            let o_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
             let relay_operator_weight_shape_id = expr.add(Language::Shape(
                 vec![o_id, list[2], list[3]].into_boxed_slice(),
             ));
@@ -444,11 +444,11 @@ pub fn conv2d(
 pub fn access_shape(expr: &mut RecExpr<Language>, shape: &[usize], item_shape: &[usize]) -> Id {
     let mut shape_ids = Vec::default();
     for s in shape {
-        shape_ids.push(expr.add(Language::Usize(*s)));
+        shape_ids.push(expr.add(Language::Num((*s).try_into().unwrap())));
     }
     let mut item_shape_ids = Vec::default();
     for i in item_shape {
-        item_shape_ids.push(expr.add(Language::Usize(*i)));
+        item_shape_ids.push(expr.add(Language::Num((*i).try_into().unwrap())));
     }
     let shape_id = expr.add(Language::Shape(shape_ids.into_boxed_slice()));
     let item_shape_id = expr.add(Language::Shape(item_shape_ids.into_boxed_slice()));
@@ -462,11 +462,11 @@ pub fn access_shape_with_shape(
 ) -> (Id, Id) {
     let mut shape_ids = Vec::default();
     for s in shape {
-        shape_ids.push(expr.add(Language::Usize(*s)));
+        shape_ids.push(expr.add(Language::Num((*s).try_into().unwrap())));
     }
     let mut item_shape_ids = Vec::default();
     for i in item_shape {
-        item_shape_ids.push(expr.add(Language::Usize(*i)));
+        item_shape_ids.push(expr.add(Language::Num((*i).try_into().unwrap())));
     }
     let shape_id = expr.add(Language::Shape(shape_ids.into_boxed_slice()));
     let item_shape_id = expr.add(Language::Shape(item_shape_ids.into_boxed_slice()));
@@ -493,7 +493,7 @@ pub fn access_shape_with_shape(
 /// assert_eq!(expr.pretty(80), "(access-concatenate (access-tensor a) (access-tensor b) 2)");
 /// ```
 pub fn access_concatenate(expr: &mut RecExpr<Language>, a_id: Id, b_id: Id, axis: usize) -> Id {
-    let axis_id = expr.add(Language::Usize(axis));
+    let axis_id = expr.add(Language::Num(axis.try_into().unwrap()));
     expr.add(Language::AccessConcatenate([a_id, b_id, axis_id]))
 }
 
@@ -515,9 +515,9 @@ pub fn access_slice(
     low: usize,
     high: usize,
 ) -> Id {
-    let axis_id = expr.add(Language::Usize(axis));
-    let low_id = expr.add(Language::Usize(low));
-    let high_id = expr.add(Language::Usize(high));
+    let axis_id = expr.add(Language::Num(axis.try_into().unwrap()));
+    let low_id = expr.add(Language::Num(low.try_into().unwrap()));
+    let high_id = expr.add(Language::Num(high.try_into().unwrap()));
     expr.add(Language::AccessSlice([id, axis_id, low_id, high_id]))
 }
 
@@ -534,7 +534,7 @@ pub fn access_slice(
 pub fn shape(expr: &mut RecExpr<Language>, vals: Vec<usize>) -> Id {
     let mut ids = Vec::default();
     for val in vals {
-        ids.push(expr.add(Language::Usize(val)));
+        ids.push(expr.add(Language::Num(val.try_into().unwrap())));
     }
     expr.add(Language::Shape(Box::from(ids.as_slice())))
 }
@@ -559,9 +559,9 @@ pub fn access_pad(
     pad_before: usize,
     pad_after: usize,
 ) -> Id {
-    let axis_id = expr.add(Language::Usize(axis));
-    let pad_before_id = expr.add(Language::Usize(pad_before));
-    let pad_after_id = expr.add(Language::Usize(pad_after));
+    let axis_id = expr.add(Language::Num(axis.try_into().unwrap()));
+    let pad_before_id = expr.add(Language::Num(pad_before.try_into().unwrap()));
+    let pad_after_id = expr.add(Language::Num(pad_after.try_into().unwrap()));
     let pad_type_id = expr.add(Language::PadType(pad_type));
     expr.add(Language::AccessPad([
         id,
@@ -584,7 +584,7 @@ pub fn access_pad(
 /// assert_eq!(expr.pretty(80), "(access (access-tensor a) 2)");
 /// ```
 pub fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
-    let axis_id = expr.add(Language::Usize(axis));
+    let axis_id = expr.add(Language::Num(axis.try_into().unwrap()));
     expr.add(Language::Access([id, axis_id]))
 }
 
@@ -600,7 +600,7 @@ pub fn access(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
 /// assert_eq!(expr.pretty(80), "(access-insert-axis (access-tensor a) 2)");
 /// ```
 pub fn access_insert_axis(expr: &mut RecExpr<Language>, id: Id, axis: usize) -> Id {
-    let axis_id = expr.add(Language::Usize(axis));
+    let axis_id = expr.add(Language::Num(axis.try_into().unwrap()));
     expr.add(Language::AccessInsertAxis([id, axis_id]))
 }
 
@@ -927,19 +927,19 @@ fn compile_expression(
             (access_literal_id, None)
         } else if constant.data.dtype() == "int32".parse().unwrap() {
             let value: i32 = unsafe { *(constant.data.as_dltensor().data as *const i32) };
-            let literal_id = glenside_expr.add(Language::Int32(value));
+            let literal_id = glenside_expr.add(Language::Num(value.into()));
             (literal_id, None)
         } else if constant.data.dtype() == "int64".parse().unwrap() {
             let value: i64 = unsafe { *(constant.data.as_dltensor().data as *const i64) };
-            let literal_id = glenside_expr.add(Language::Int64(value));
+            let literal_id = glenside_expr.add(Language::Num(value));
             (literal_id, None)
         } else if constant.data.dtype() == "int8".parse().unwrap() {
             let value: i8 = unsafe { *(constant.data.as_dltensor().data as *const i8) };
-            let literal_id = glenside_expr.add(Language::Int8(value));
+            let literal_id = glenside_expr.add(Language::Num(value.into()));
             (literal_id, None)
         } else {
             let value: u8 = unsafe { *(constant.data.as_dltensor().data as *const u8) };
-            let literal_id = glenside_expr.add(Language::Uint8(value));
+            let literal_id = glenside_expr.add(Language::Num(value.into()));
             (literal_id, None)
         }
     } else if let Ok(tuple_get_item) = relay_expr
@@ -978,7 +978,9 @@ fn compile_expression(
         // common case: Relay TupleGetItem gets converted to Glenside TupleGetItem
         // handles if tuple is not a CallNode
         let data_id = get_compiled_expression(tuple_get_item.tuple.clone());
-        let index_id = glenside_expr.add(Language::Usize(tuple_get_item.index as usize));
+        let index_id = glenside_expr.add(Language::Num(
+            (tuple_get_item.index as usize).try_into().unwrap(),
+        ));
         (
             glenside_expr.add(Language::TupleGetItem([data_id, index_id])),
             None,
@@ -1052,7 +1054,7 @@ fn compile_expression(
                         .unwrap();
 
                     let axis_id =
-                        glenside_expr.add(Language::Int32(attrs.axis.value.try_into().unwrap()));
+                        glenside_expr.add(Language::Num(attrs.axis.value.try_into().unwrap()));
 
                     let stack_op_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayStack,
@@ -1103,7 +1105,7 @@ fn compile_expression(
                         .unwrap();
 
                     let axis: usize = usize::try_from(attrs.axis.value).unwrap();
-                    let axis_id = glenside_expr.add(Language::Usize(axis));
+                    let axis_id = glenside_expr.add(Language::Num(axis.try_into().unwrap()));
 
                     let take_op_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayTake,
@@ -1178,7 +1180,9 @@ fn compile_expression(
                     let mut f = |l: Vec<i64>| {
                         let ids = l
                             .iter()
-                            .map(|i| glenside_expr.add(Language::Usize(*i as usize)))
+                            .map(|i| {
+                                glenside_expr.add(Language::Num((*i as usize).try_into().unwrap()))
+                            })
                             .collect::<Vec<_>>();
                         glenside_expr.add(Language::Shape(ids.into_boxed_slice()))
                     };
@@ -1221,8 +1225,7 @@ fn compile_expression(
                     // Should be ___C or _C___ (e.g. NHWC, NCHW)
                     assert!(attrs.axis == 3 || attrs.axis == 1);
 
-                    let axis_id =
-                        glenside_expr.add(Language::Usize(attrs.axis.try_into().unwrap()));
+                    let axis_id = glenside_expr.add(Language::Num(attrs.axis.try_into().unwrap()));
                     let epsilon_id = glenside_expr
                         .add(Language::NotNanFloat64(NotNan::new(attrs.epsilon).unwrap()));
 
@@ -1263,8 +1266,7 @@ fn compile_expression(
                         crate::language::RelayOperator::RelayLogSoftmax,
                     ));
 
-                    let axis_id =
-                        glenside_expr.add(Language::Int32(attrs.axis.try_into().unwrap()));
+                    let axis_id = glenside_expr.add(Language::Num(attrs.axis.try_into().unwrap()));
                     let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
                         vec![log_softmax_id, data_id, axis_id].into_boxed_slice(),
                     ));
@@ -1299,7 +1301,7 @@ fn compile_expression(
                         attrs.axis.into()
                     };
                     assert!(axis >= 0 && i64::from(axis) < ndims);
-                    let axis_id = glenside_expr.add(Language::Int32(attrs.axis));
+                    let axis_id = glenside_expr.add(Language::Num(attrs.axis.try_into().unwrap()));
                     let opaque_call_id = glenside_expr.add(Language::RelayOperatorCall(
                         vec![softmax_id, data_id, axis_id].into_boxed_slice(),
                     ));
@@ -1637,10 +1639,10 @@ fn compile_expression(
                                 ],
                             );
 
-                            // let data_shape_n_id = glenside_expr.add(Language::Usize(data_shape[0]));
-                            // let data_shape_c_id = glenside_expr.add(Language::Usize(data_shape[0]));
-                            // let data_shape_h_id = glenside_expr.add(Language::Usize(data_shape[0]));
-                            // let data_shape_w_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            // let data_shape_n_id = glenside_expr.add(Language::Num(data_shape[0]));
+                            // let data_shape_c_id = glenside_expr.add(Language::Num(data_shape[0]));
+                            // let data_shape_h_id = glenside_expr.add(Language::Num(data_shape[0]));
+                            // let data_shape_w_id = glenside_expr.add(Language::Num(data_shape[0]));
 
                             // let data_shape_id = glenside_expr.add(Language::Shape(Box::new([
                             //     data_shape_n_id,
@@ -1717,8 +1719,8 @@ fn compile_expression(
 
                     if use_opaque_operators_for.contains(&RelayExpandDims) {
                         let relay_op_id = glenside_expr.add(RelayOperator(RelayExpandDims));
-                        let axis_id = glenside_expr.add(Int64(attrs.axis.into()));
-                        let num_axis_id = glenside_expr.add(Int64(attrs.num_newaxis.into()));
+                        let axis_id = glenside_expr.add(Num(attrs.axis.into()));
+                        let num_axis_id = glenside_expr.add(Num(attrs.num_newaxis.into()));
                         let data_id = glenside_expr.add(RelayOperatorCall(
                             vec![relay_op_id, data_id, axis_id, num_axis_id].into_boxed_slice(),
                         ));
@@ -1766,24 +1768,18 @@ fn compile_expression(
                             .into_iter()
                             .flat_map(|v| {
                                 assert_eq!(v.len(), 2);
-                                let id0 = glenside_expr.add(Usize(
-                                    v.get(0)
-                                        .unwrap()
-                                        .downcast::<tvm::ir::tir::IntImm>()
-                                        .unwrap()
-                                        .value
-                                        .try_into()
-                                        .unwrap(),
-                                ));
-                                let id1 = glenside_expr.add(Usize(
-                                    v.get(1)
-                                        .unwrap()
-                                        .downcast::<tvm::ir::tir::IntImm>()
-                                        .unwrap()
-                                        .value
-                                        .try_into()
-                                        .unwrap(),
-                                ));
+                                let id0 = glenside_expr.add(Num(v
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<tvm::ir::tir::IntImm>()
+                                    .unwrap()
+                                    .value));
+                                let id1 = glenside_expr.add(Num(v
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<tvm::ir::tir::IntImm>()
+                                    .unwrap()
+                                    .value));
                                 [id0, id1]
                             })
                             .collect::<Vec<_>>();
@@ -1806,11 +1802,9 @@ fn compile_expression(
                         let pad_after =
                             padding.get(1).unwrap().downcast::<IntImm>().unwrap().value as i32;
                         if pad_before > 0 || pad_after > 0 {
-                            let axis_id = glenside_expr.add(Language::Usize(axis as usize));
-                            let pad_before_id =
-                                glenside_expr.add(Language::Usize(pad_before as usize));
-                            let pad_after_id =
-                                glenside_expr.add(Language::Usize(pad_after as usize));
+                            let axis_id = glenside_expr.add(Language::Num(axis));
+                            let pad_before_id = glenside_expr.add(Language::Num(pad_before.into()));
+                            let pad_after_id = glenside_expr.add(Language::Num(pad_after.into()));
                             data_id = glenside_expr.add(Language::AccessPad([
                                 data_id,
                                 pad_type_id,
@@ -2125,7 +2119,7 @@ fn compile_expression(
                     let bias_add_operator_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayBiasAdd,
                     ));
-                    let axis_id = glenside_expr.add(Language::Usize(axis.try_into().unwrap()));
+                    let axis_id = glenside_expr.add(Language::Num(axis.try_into().unwrap()));
                     let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
                         vec![bias_add_operator_id, data_id, bias_id, axis_id].into_boxed_slice(),
                     ));
@@ -2138,7 +2132,7 @@ fn compile_expression(
 
                     // Insert axes before
                     for _ in 0..axis {
-                        let zero_id = glenside_expr.add(Language::Usize(0));
+                        let zero_id = glenside_expr.add(Language::Num(0));
                         bias_id = glenside_expr.add(Language::AccessInsertAxis([bias_id, zero_id]));
                     }
 
@@ -2155,7 +2149,8 @@ fn compile_expression(
                             .shape
                             .len()
                     {
-                        let axis_id = glenside_expr.add(Language::Usize(axis as usize));
+                        let axis_id =
+                            glenside_expr.add(Language::Num((axis as usize).try_into().unwrap()));
                         bias_id = glenside_expr.add(Language::AccessInsertAxis([bias_id, axis_id]));
                     }
 
@@ -2213,12 +2208,8 @@ fn compile_expression(
                         let ids = l
                             .into_iter()
                             .map(|v| {
-                                glenside_expr.add(Language::Usize(
-                                    v.downcast::<tvm::ir::tir::IntImm>()
-                                        .unwrap()
-                                        .value
-                                        .try_into()
-                                        .unwrap(),
+                                glenside_expr.add(Language::Num(
+                                    v.downcast::<tvm::ir::tir::IntImm>().unwrap().value,
                                 ))
                             })
                             .collect::<Vec<_>>();
@@ -2288,27 +2279,31 @@ fn compile_expression(
 
                     let stride_shape_id = {
                         let mut stride_list = Vec::default();
-                        stride_list.push(glenside_expr.add(Language::Usize(1)));
+                        stride_list.push(glenside_expr.add(Language::Num(1)));
                         stride_list.push(
-                            glenside_expr.add(Language::Usize(
+                            glenside_expr.add(Language::Num(
                                 attrs
                                     .strides
                                     .get(0)
                                     .unwrap()
                                     .downcast::<IntImm>()
                                     .unwrap()
-                                    .value as usize,
+                                    .value
+                                    .try_into()
+                                    .unwrap(),
                             )),
                         );
                         stride_list.push(
-                            glenside_expr.add(Language::Usize(
+                            glenside_expr.add(Language::Num(
                                 attrs
                                     .strides
                                     .get(1)
                                     .unwrap()
                                     .downcast::<IntImm>()
                                     .unwrap()
-                                    .value as usize,
+                                    .value
+                                    .try_into()
+                                    .unwrap(),
                             )),
                         );
                         glenside_expr.add(Language::Shape(Box::from(stride_list.as_slice())))
@@ -2316,9 +2311,12 @@ fn compile_expression(
 
                     // Create the (shape ...) representing the kernel shapes
                     let weights_shape_id = {
-                        let usize_c_id = glenside_expr.add(Language::Usize(weights_shape[1]));
-                        let usize_kh_id = glenside_expr.add(Language::Usize(weights_shape[2]));
-                        let usize_kw_id = glenside_expr.add(Language::Usize(weights_shape[3]));
+                        let usize_c_id =
+                            glenside_expr.add(Language::Num(weights_shape[1].try_into().unwrap()));
+                        let usize_kh_id =
+                            glenside_expr.add(Language::Num(weights_shape[2].try_into().unwrap()));
+                        let usize_kw_id =
+                            glenside_expr.add(Language::Num(weights_shape[3].try_into().unwrap()));
                         glenside_expr.add(Language::Shape(Box::new([
                             usize_c_id,
                             usize_kh_id,
@@ -2327,49 +2325,58 @@ fn compile_expression(
                     };
 
                     let padding_id = {
-                        let pad_top = glenside_expr.add(Language::Usize(
+                        let pad_top = glenside_expr.add(Language::Num(
                             attrs
                                 .padding
                                 .get(0)
                                 .unwrap()
                                 .downcast::<IntImm>()
                                 .unwrap()
-                                .value as usize,
+                                .value
+                                .try_into()
+                                .unwrap(),
                         ));
-                        let pad_left = glenside_expr.add(Language::Usize(
+                        let pad_left = glenside_expr.add(Language::Num(
                             attrs
                                 .padding
                                 .get(1)
                                 .unwrap()
                                 .downcast::<IntImm>()
                                 .unwrap()
-                                .value as usize,
+                                .value
+                                .try_into()
+                                .unwrap(),
                         ));
-                        let pad_bottom = glenside_expr.add(Language::Usize(
-                            attrs
+                        let pad_bottom = glenside_expr.add(Language::Num(
+                            (attrs
                                 .padding
                                 .get(2)
                                 .unwrap()
                                 .downcast::<IntImm>()
                                 .unwrap()
-                                .value as usize,
+                                .value as usize)
+                                .try_into()
+                                .unwrap(),
                         ));
-                        let pad_right = glenside_expr.add(Language::Usize(
-                            attrs
+                        let pad_right = glenside_expr.add(Language::Num(
+                            (attrs
                                 .padding
                                 .get(3)
                                 .unwrap()
                                 .downcast::<IntImm>()
                                 .unwrap()
-                                .value as usize,
+                                .value as usize)
+                                .try_into()
+                                .unwrap(),
                         ));
                         glenside_expr.add(Language::Shape(Box::new([
                             pad_top, pad_left, pad_bottom, pad_right,
                         ])))
                     };
                     let groups_id =
-                        glenside_expr.add(Language::Usize(attrs.groups.try_into().unwrap()));
-                    let channel_id = glenside_expr.add(Language::Usize(weights_shape[0]));
+                        glenside_expr.add(Language::Num(attrs.groups.try_into().unwrap()));
+                    let channel_id =
+                        glenside_expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
                     let activation_layout_id = glenside_expr.add(Language::RelayActivationLayout(
                         match attrs.data_layout.as_str().unwrap() {
                             "NCHW" => RelayActivationLayout::NCHW,
@@ -2475,14 +2482,18 @@ fn compile_expression(
                     assert_eq!(attrs.axis.len(), 1);
                     let axis_id;
                     if let Ok(axis) = attrs.axis.get(0) {
-                        axis_id = glenside_expr.add(Language::Usize(
-                            axis.clone()
+                        axis_id = glenside_expr.add(Language::Num(
+                            (axis
+                                .clone()
                                 .downcast::<tvm::ir::tir::IntImm>()
                                 .unwrap()
-                                .value as usize,
+                                .value as usize)
+                                .try_into()
+                                .unwrap(),
                         ));
                     } else {
-                        axis_id = glenside_expr.add(Language::Usize(0 as usize));
+                        axis_id =
+                            glenside_expr.add(Language::Num((0 as usize).try_into().unwrap()));
                     }
                     let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
                         vec![op_id, data_id, axis_id].into_boxed_slice(),
@@ -2502,7 +2513,8 @@ fn compile_expression(
                     if use_opaque_operators_for.contains(&RelayOperator::RelayConcatenate) {
                         let op_id = glenside_expr
                             .add(Language::RelayOperator(RelayOperator::RelayConcatenate));
-                        let axis_id = glenside_expr.add(Language::Usize(attrs.axis as usize));
+                        let axis_id = glenside_expr
+                            .add(Language::Num((attrs.axis as usize).try_into().unwrap()));
                         let tuple_id = glenside_expr.add(Language::ConstructTuple(
                             call.args
                                 .get(0)
@@ -2677,7 +2689,7 @@ fn compile_expression(
 
                     let axis = attrs.axis;
                     //assert!(axis >= 0);
-                    let axis_id = glenside_expr.add(Language::Int32(axis));
+                    let axis_id = glenside_expr.add(Language::Num(axis.into()));
                     let relay_operator_id =
                         glenside_expr.add(Language::RelayOperator(RelayOperator::RelaySplit));
 
@@ -2691,7 +2703,7 @@ fn compile_expression(
                     //     let mut indices_or_sections_ids = Vec::default();
                     //     for i in 0..indices_or_sections.len() {
                     //         indices_or_sections_ids.push(
-                    //             glenside_expr.add(Language::Usize(
+                    //             glenside_expr.add(Language::Num(
                     //                 indices_or_sections
                     //                     .get(i as isize)
                     //                     .unwrap()
@@ -2714,8 +2726,9 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::tir::IntImm>()
                         .unwrap();
-                    let indices_or_sections_id =
-                        glenside_expr.add(Language::Usize(indices_or_sections.value as usize));
+                    let indices_or_sections_id = glenside_expr.add(Language::Num(
+                        (indices_or_sections.value as usize).try_into().unwrap(),
+                    ));
                     let operator_call = glenside_expr.add(Language::RelayOperatorCall(
                         vec![relay_operator_id, data_id, indices_or_sections_id, axis_id]
                             .into_boxed_slice(),
@@ -2729,8 +2742,8 @@ fn compile_expression(
                     let shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
 
                     let mut ids = Vec::default();
-                    let zero_id = glenside_expr.add(Language::Usize(0));
-                    let zero_index_id = glenside_expr.add(Language::Usize(
+                    let zero_id = glenside_expr.add(Language::Num(0));
+                    let zero_index_id = glenside_expr.add(Language::Num(
                         indices_or_sections
                             .get(0)
                             .unwrap()
@@ -2746,7 +2759,7 @@ fn compile_expression(
                     ])));
 
                     for i in 0..indices_or_sections.len() - 1 {
-                        let left = glenside_expr.add(Language::Usize(
+                        let left = glenside_expr.add(Language::Num(
                             indices_or_sections
                                 .get(i.try_into().ok().unwrap())
                                 .unwrap()
@@ -2754,7 +2767,7 @@ fn compile_expression(
                                 .unwrap()
                                 .value as usize,
                         ));
-                        let right = glenside_expr.add(Language::Usize(
+                        let right = glenside_expr.add(Language::Num(
                             indices_or_sections
                                 .get((i + 1).try_into().ok().unwrap())
                                 .unwrap()
@@ -2768,7 +2781,7 @@ fn compile_expression(
                         );
                     }
 
-                    let last_index_id = glenside_expr.add(Language::Usize(
+                    let last_index_id = glenside_expr.add(Language::Num(
                         indices_or_sections
                             .get((indices_or_sections.len() - 1).try_into().ok().unwrap())
                             .unwrap()
@@ -2776,7 +2789,7 @@ fn compile_expression(
                             .unwrap()
                             .value as usize,
                     ));
-                    let last_id = glenside_expr.add(Language::Usize(shape[axis as usize]));
+                    let last_id = glenside_expr.add(Language::Num(shape[axis as usize]));
                     ids.push(glenside_expr.add(Language::AccessSlice([
                         data_id,
                         axis_id,
@@ -3016,14 +3029,16 @@ fn compile_expression(
                     // below is general-purpose.
                     //assert_eq!(attrs.axis.len(), 2);
                     for i in (0..attrs.axis.len()).rev() {
-                        let usize_id = glenside_expr.add(Language::Usize(
-                            attrs
+                        let usize_id = glenside_expr.add(Language::Num(
+                            (attrs
                                 .axis
                                 .get(i.try_into().ok().unwrap())
                                 .unwrap()
                                 .downcast::<IntImm>()
                                 .unwrap()
-                                .value as usize,
+                                .value as usize)
+                                .try_into()
+                                .unwrap(),
                         ));
                         data_id = glenside_expr.add(Language::AccessSqueeze([data_id, usize_id]));
                     }

@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::str::FromStr;
 
 use crate::language::from_relay::{
@@ -652,7 +654,7 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
 pub fn conv2d_on_hlscnn() -> RW {
     fn is_one(g: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, _, subst| match &egraph[subst[g]].data {
-            MyAnalysisData::Usize(group) => *group == 1 as usize,
+            MyAnalysisData::Num(group) => *group == 1,
             _ => false,
         }
     }
@@ -1127,14 +1129,14 @@ pub fn slice_concatenate_accesses(
             };
             assert_eq!(dim_value % self.divisor, 0);
 
-            let axis_id = egraph.add(Language::Usize(self.axis));
+            let axis_id = egraph.add(Language::Num(self.axis.try_into().unwrap()));
 
             let top_concat_id = (0..self.divisor)
                 .map(|segment_index| {
                     let low_bound = segment_index * (dim_value / self.divisor);
                     let high_bound = low_bound + (dim_value / self.divisor);
-                    let low_bound_id = egraph.add(Language::Usize(low_bound));
-                    let high_bound_id = egraph.add(Language::Usize(high_bound));
+                    let low_bound_id = egraph.add(Language::Num(low_bound.try_into().unwrap()));
+                    let high_bound_id = egraph.add(Language::Num(high_bound.try_into().unwrap()));
                     egraph.add(Language::AccessSlice([
                         id,
                         axis_id,
@@ -1183,14 +1185,14 @@ pub fn slice_concatenate_accesses(
             };
             assert_eq!(dim_value % self.segment_size, 0);
 
-            let axis_id = egraph.add(Language::Usize(self.axis));
+            let axis_id = egraph.add(Language::Num(self.axis.try_into().unwrap()));
 
             let top_concat_id = (0..(dim_value / self.segment_size))
                 .map(|segment_index| {
                     let low_bound = segment_index * self.segment_size;
                     let high_bound = low_bound + self.segment_size;
-                    let low_bound_id = egraph.add(Language::Usize(low_bound));
-                    let high_bound_id = egraph.add(Language::Usize(high_bound));
+                    let low_bound_id = egraph.add(Language::Num(low_bound.try_into().unwrap()));
+                    let high_bound_id = egraph.add(Language::Num(high_bound.try_into().unwrap()));
                     egraph.add(Language::AccessSlice([
                         id,
                         axis_id,
@@ -1861,11 +1863,11 @@ pub fn pad_slice_accesses(
                     PadLocation::End => dim_val,
                 };
 
-                let pad_before_id = egraph.add(Language::Usize(pad_before));
-                let pad_after_id = egraph.add(Language::Usize(pad_after));
-                let low_id = egraph.add(Language::Usize(low));
-                let high_id = egraph.add(Language::Usize(high));
-                let axis_id = egraph.add(Language::Usize(self.axis));
+                let pad_before_id = egraph.add(Language::Num(pad_before));
+                let pad_after_id = egraph.add(Language::Num(pad_after.try_into().unwrap()));
+                let low_id = egraph.add(Language::Num(low));
+                let high_id = egraph.add(Language::Num(high.try_into().unwrap()));
+                let axis_id = egraph.add(Language::Num(self.axis.try_into().unwrap()));
                 let pad_type_id = egraph.add(Language::PadType(self.pad_type));
 
                 let access_pad_id = egraph.add(Language::AccessPad([
@@ -1978,11 +1980,11 @@ pub fn bubble_access_slice_through_access_pad_inequal_axes() -> Rewrite<Language
     if constrain_vars(vec!["?slice-axis".parse().unwrap(), "?pad-axis".parse().unwrap()], |data| {
         assert_eq!(data.len(), 2);
         let slice_axis = match &data[0] {
-            MyAnalysisData::Usize(l) => *l,
+            MyAnalysisData::Num(l) => *l,
             _ =>panic!(),
         };
         let pad_axis = match &data[1] {
-            MyAnalysisData::Usize(l) => *l,
+            MyAnalysisData::Num(l) => *l,
             _ =>panic!(),
         };
         slice_axis != pad_axis
@@ -2085,16 +2087,16 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
             _ => panic!(),
         };
         let axis0 = match &data[2] {
-            MyAnalysisData::Usize(l) => *l,
+            MyAnalysisData::Num(l) => *l,
             _ => panic!(),
         };
         let axis1 = match &data[3] {
-            MyAnalysisData::Usize(l) => *l,
+            MyAnalysisData::Num(l) => *l,
             _ => panic!(),
         };
 
         // The unsliced dimensions must be cartesian-product-compatible (i.e. equal)
-        a0[axis0] == a1[axis1]
+        a0[axis0.try_into().unwrap()] == a1[axis1.try_into().unwrap()]
     })}
 }
 
@@ -2131,23 +2133,23 @@ pub fn bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis(
                                        _ => panic!(),
                                    };
                                    let axis = match &data[1] {
-                                       MyAnalysisData::Usize(l) => *l,
+                                       MyAnalysisData::Num(l) => *l,
                                        _ => panic!(),
                                    };
                                    let low = match &data[2] {
-                                       MyAnalysisData::Usize(l) => *l,
+                                       MyAnalysisData::Num(l) => *l,
                                        _ => panic!(),
                                    };
                                    let high = match &data[3] {
-                                       MyAnalysisData::Usize(l) => *l,
+                                       MyAnalysisData::Num(l) => *l,
                                        _ => panic!(),
                                    };
 
-                                   a.zero_regions.get(&axis).map_or(false,
+                                   a.zero_regions.get(&axis.try_into().unwrap()).map_or(false,
                                                                     |range_set|{
-                                                                        range_set.covered((0, low))
+                                                                        range_set.covered((0, low.try_into().unwrap()))
                                                                             &&
-                                                                            range_set.covered((high, a[axis]))
+                                                                            range_set.covered((high.try_into().unwrap(), a[axis.try_into().unwrap()]))
                                                                     })
                                })
 
@@ -2273,11 +2275,11 @@ pub fn systolic_array_conv2d_nhwc_hwio_with_blocking(
                   ApplierImpl {rows, cols}
               }
              if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?rows".parse().unwrap()]].data {
-                 MyAnalysisData::Usize(l) => *l == rows,
+                 MyAnalysisData::Num(l) => usize::try_from(*l).unwrap() == rows,
                  _ => panic!(),
              }
              if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst["?cols".parse().unwrap()]].data {
-                 MyAnalysisData::Usize(l) => *l == cols,
+                 MyAnalysisData::Num(l) => usize::try_from(*l).unwrap() == cols,
                  _ => panic!(),
              }
              if constrain_access("?weights".parse().unwrap(),
@@ -2629,7 +2631,7 @@ pub fn conv2d_relay_to_glenside() -> RW {
             .map(|v| &egraph[subst[*v]].data)
             .collect::<Vec<_>>()[..]
             {
-                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
+                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
                     (
                         data,
                         weight,
@@ -2660,7 +2662,7 @@ pub fn conv2d_relay_to_glenside() -> RW {
                 &strides.shape.slice()[1..3],
                 padding.shape.slice(),
                 &[1, 1],
-                group,
+                group.try_into().unwrap(),
                 match activation_layout {
                     crate::language::RelayActivationLayout::NCHW => "NCHW",
                     crate::language::RelayActivationLayout::NHWC => "NHWC",
@@ -2810,9 +2812,7 @@ pub fn softmax_relay_to_glenside() -> RW {
                 _ => panic!(),
             };
             let axis: i64 = match &egraph[subst[self.axis]].data {
-                MyAnalysisData::Usize(u) => *u as i64,
-                MyAnalysisData::Int32(i) => *i as i64,
-                MyAnalysisData::Int64(i) => *i as i64,
+                MyAnalysisData::Num(u) => *u,
                 _ => panic!(),
             };
 
@@ -2932,9 +2932,7 @@ pub fn expand_dims_relay_to_glenside() -> RW {
             subst: &Subst,
         ) -> Vec<Id> {
             let num_newaxis: i64 = match &egraph[subst[self.num_newaxis]].data {
-                MyAnalysisData::Usize(u) => *u as i64,
-                MyAnalysisData::Int32(i) => *i as i64,
-                MyAnalysisData::Int64(i) => *i as i64,
+                MyAnalysisData::Num(u) => *u as i64,
                 _ => panic!(),
             };
 
@@ -2955,8 +2953,7 @@ pub fn expand_dims_relay_to_glenside() -> RW {
                 i.num_newaxis)
         .parse::<Pattern<_>>().unwrap() } => { i.clone() }
     if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst[i.num_newaxis]].data {
-        MyAnalysisData::Int64(v) => v > &0,
-        MyAnalysisData::Usize(v) => v > &0,
+        MyAnalysisData::Num(v) => v > &0,
         _ => panic!(),
     })
 }
@@ -2993,9 +2990,11 @@ pub fn pad_relay_to_glenside() -> RW {
 
             let mut id = subst[self.data];
             for i in 0..ndim {
-                let axis_id = egraph.add(Language::Usize(i));
-                let pad_before_id = egraph.add(Language::Usize(pad_widths[2 * i]));
-                let pad_after_id = egraph.add(Language::Usize(pad_widths[2 * i + 1]));
+                let axis_id = egraph.add(Language::Num(i.try_into().unwrap()));
+                let pad_before_id =
+                    egraph.add(Language::Num(pad_widths[2 * i].try_into().unwrap()));
+                let pad_after_id =
+                    egraph.add(Language::Num(pad_widths[2 * i + 1].try_into().unwrap()));
                 id = egraph.add(Language::AccessPad([
                     id,
                     zero_pad_id,
@@ -3158,7 +3157,7 @@ pub fn bias_add_relay_to_glenside() -> RW {
             subst: &Subst,
         ) -> Vec<Id> {
             let axis = match &egraph[subst[self.axis_var]].data {
-                MyAnalysisData::Usize(v) => *v,
+                MyAnalysisData::Num(v) => *v,
                 _ => panic!(),
             };
             let data_shape = match &egraph[subst[self.data_var]].data {
@@ -3172,13 +3171,13 @@ pub fn bias_add_relay_to_glenside() -> RW {
 
             // Insert axes before
             for _ in 0..axis {
-                let zero_id = expr.add(Language::Usize(0));
+                let zero_id = expr.add(Language::Num(0));
                 bias_id = expr.add(Language::AccessInsertAxis([bias_id, zero_id]));
             }
 
             // Insert axes after
-            for axis in (axis + 1)..data_shape.as_vec().len() {
-                let axis_id = expr.add(Language::Usize(axis as usize));
+            for axis in usize::try_from(axis + 1).unwrap()..data_shape.as_vec().len() {
+                let axis_id = expr.add(Language::Num(axis.try_into().unwrap()));
                 bias_id = expr.add(Language::AccessInsertAxis([bias_id, axis_id]));
             }
 
@@ -3230,7 +3229,7 @@ pub fn concatenate_relay_to_glenside() -> RW {
                 _ => panic!(),
             };
             let axis = match &egraph[subst[self.axis_var]].data {
-                MyAnalysisData::Usize(v) => *v,
+                MyAnalysisData::Num(v) => *v,
                 _ => panic!(),
             };
 
@@ -3240,7 +3239,7 @@ pub fn concatenate_relay_to_glenside() -> RW {
 
             let tensor_ids: Vec<Id> = (0..tuple_len)
                 .map(|i| {
-                    let i_id = expr.add(Language::Usize(i));
+                    let i_id = expr.add(Language::Num(i.try_into().unwrap()));
                     expr.add(Language::TupleGetItem([tuple_id, i_id]))
                 })
                 .collect();
@@ -3250,7 +3249,8 @@ pub fn concatenate_relay_to_glenside() -> RW {
             let mut concatted_id = tensor_ids[0];
             for id in tensor_ids[1..].iter() {
                 // TODO(@gussmith23) Layout assumption
-                concatted_id = access_concatenate(&mut expr, concatted_id, *id, axis);
+                concatted_id =
+                    access_concatenate(&mut expr, concatted_id, *id, axis.try_into().unwrap());
             }
 
             let pattern_ast = PatternAst::from(
@@ -3292,13 +3292,13 @@ pub fn simplify_tuple_get_item() -> RW {
                 })
                 .flat_map(|(tuple_id, idx_id)| {
                     let idx = match egraph[idx_id].data {
-                        MyAnalysisData::Usize(v) => v,
+                        MyAnalysisData::Num(v) => v,
                         _ => panic!(),
                     };
                     egraph[tuple_id].nodes.iter().filter_map(move |v| match v {
                         Language::ConstructTuple(ids) => {
                             let mut subst = Subst::default();
-                            subst.insert(self.0, ids[idx]);
+                            subst.insert(self.0, ids[usize::try_from(idx).unwrap()]);
                             Some(subst)
                         }
                         _ => None,
@@ -3354,7 +3354,7 @@ pub fn squeeze_relay_to_glenside() -> RW {
             let mut data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
 
             for axis in axes.iter().rev() {
-                let usize_id = expr.add(Language::Usize(*axis));
+                let usize_id = expr.add(Language::Num((*axis).try_into().unwrap()));
                 data_id = expr.add(Language::AccessSqueeze([data_id, usize_id]));
             }
 
