@@ -2312,6 +2312,11 @@ pub fn bubble_access_reshape_through_compute_reduce_max() -> RW {
      { ApplierImpl {shape: "?shape".parse().unwrap()}})
 }
 
+pub fn simplify_multiple_accesses() -> RW {
+    rewrite!("simplify-multiple-accesses";
+     "(access (access ?a ?d0) ?d1)" => "(access ?a ?d1)")
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -4982,6 +4987,8 @@ mod tests {
             //
             super::flatten_unflatten_any_access(),
             super::bubble_access_reshape_through_compute_reduce_max(),
+            // Collapses adjacent access operators into a single access.
+            super::simplify_multiple_accesses(),
         ];
 
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
@@ -4994,13 +5001,11 @@ mod tests {
          (access-reshape
           (compute reduce-max
            (access
-            (access
              (access-transpose
               (flexasr-maxpool
                (access
                 (access-transpose
                  (access
-                  (access
                    (access-transpose
                     (flexasr-maxpool
                      (access
@@ -5013,12 +5018,10 @@ mod tests {
                        (list 1 0))
                       0))
                     (list 1 0))
-                   1)
                   1)
                  (list 1 0))
                 0))
               (list 1 0))
-             1)
             1))
           (access-shape (shape 16 2 2) (shape)))
         "
