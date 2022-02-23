@@ -915,7 +915,13 @@ pub fn add_bias_add_to_dense() -> RW {
         ) -> Vec<Id> {
             let shape_str = match &egraph[eclass].data {
                 MyAnalysisData::AccessPattern(a) => {
-                    a.as_vec().iter().map(usize::to_string).join(" ")
+                    // The bias that is added should be a vector. By default in
+                    // Relay, it should match the length of axis 1. In our case
+                    // it doesn't really matter, because it's 0, but we need to
+                    // make the shapes match, so we assume we're matching the
+                    // size of dim 1.
+                    assert_eq!(a.as_vec().len(), 2);
+                    usize::to_string(&a.as_vec()[1])
                 }
                 MyAnalysisData::Shape(s) => s.shape.slice().iter().map(usize::to_string).join(" "),
                 _ => panic!(),
