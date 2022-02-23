@@ -51,10 +51,10 @@ define_language! {
         "systolic-array-with-blocking" = SystolicArrayWithBlocking([Id; 4]),
 
         // (systolic-array-conv2d-nchw-oihw-with-blocking
-        //  <rows: Usize> <cols: Usize>
+        //  <rows: Num> <cols: Num>
         //  <weights: Access> <data: Access>
-        //  <kh: Usize> <kw: Usize>
-        //  <stride-h: Usize> <stride-w: Usize>)
+        //  <kh: Num> <kw: Num>
+        //  <stride-h: Num> <stride-w: Num>)
         // A systolic array operating in conv2d mode, with data in layout NCHW
         // and weights in layout OIHW. We don't actually have an atom for this,
         // but it's currently used as an intermediate to help discover
@@ -62,18 +62,18 @@ define_language! {
         "systolic-array-conv2d-nchw-oihw-with-blocking" = SystolicArrayConv2dNchwOihwWithBlocking([Id; 8]),
 
         // (systolic-array-conv2d-nhwc-hwio-with-blocking
-        //  <rows: Usize> <cols: Usize>
+        //  <rows: Num> <cols: Num>
         //  <weights: Access> <data: Access>
-        //  <kh: Usize> <kw: Usize>
-        //  <stride-h: Usize> <stride-w: Usize>)
+        //  <kh: Num> <kw: Num>
+        //  <stride-h: Num> <stride-w: Num>)
         // A systolic array operating in conv2d mode, with data in layout NHWC
         // and weights in layout HWIO. Scott should have an atom for this at
         // some point.
         "systolic-array-conv2d-nhwc-hwio-with-blocking" = SystolicArrayConv2dNhwcHwioWithBlocking([Id; 8]),
 
-        // (systolic-array-conv2d-im2col-nchw-oihw-with-blocking <rows: Usize>
-        // <cols: Usize> <weights: Access> <data: Access> <kh: Usize> <kw:
-        // Usize> <stride-h: Usize> <stride-w: Usize>)
+        // (systolic-array-conv2d-im2col-nchw-oihw-with-blocking <rows: Num>
+        // <cols: Num> <weights: Access> <data: Access> <kh: Num> <kw:
+        // Num> <stride-h: Num> <stride-w: Num>)
         // A systolic array operating in conv2d-im2col mode, with data in layout
         // NCHW and weights in layout OIHW. We don't actually have an atom for
         // this, but it's currently used as an intermediate to help discover
@@ -249,15 +249,7 @@ define_language! {
         // (constant-tensor <value> <shape>)
         "constant-tensor" = ConstantTensor([Id; 2]),
 
-        Usize(usize),
-
-        Int32(i32),
-
-        Int64(i64),
-
-        Uint8(u8),
-
-        Int8(i8),
+        Num(i64),
 
         DataType(DataType),
 
@@ -759,11 +751,7 @@ pub struct AcceleratorFuncData {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MyAnalysisData {
     Literal(ndarray::ArrayD<f64>),
-    Usize(usize),
-    Int32(i32),
-    Int64(i64),
-    Int8(i8),
-    Uint8(u8),
+    Num(i64),
     DataType(DataType),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
@@ -1305,16 +1293,12 @@ pub struct MyAnalysis {
     pub name_to_dtype: HashMap<String, DataType>,
 }
 impl MyAnalysis {
+    /// Legacy function: gets Num value as a usize. Before Num, we instead had a
+    /// Num construct.
     pub fn get_usize(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> usize {
         match &egraph[id].data {
-            MyAnalysisData::Usize(s) => *s,
+            &MyAnalysisData::Num(s) => s.try_into().unwrap(),
             _ => panic!(),
-        }
-    }
-    pub fn get_i32(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> i32 {
-        match &egraph[id].data {
-            MyAnalysisData::Int32(x) => *x,
-            _ => panic!("cannot get i32 for {:?}", egraph[id].data),
         }
     }
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
@@ -1550,14 +1534,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Usize(rows),
-                        MyAnalysisData::Usize(cols),
+                        MyAnalysisData::Num(rows),
+                        MyAnalysisData::Num(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Usize(kh),
-                        MyAnalysisData::Usize(kw),
-                        MyAnalysisData::Usize(stride_h),
-                        MyAnalysisData::Usize(stride_w),
+                        MyAnalysisData::Num(kh),
+                        MyAnalysisData::Num(kw),
+                        MyAnalysisData::Num(stride_h),
+                        MyAnalysisData::Num(stride_w),
                     ) => (*rows, *cols, weights, data, *kh, *kw, *stride_h, *stride_w),
                     _ => panic!("Does not type check"),
                 };
@@ -1567,15 +1551,20 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let (n, h, w, c) = (data[0], data[1], data[2], data[3]);
                 let (_kh, _kw, _c, o) = (weights[0], weights[1], weights[2], weights[3]);
                 assert_eq!(c, _c);
-                assert_eq!(kh, _kh);
-                assert_eq!(kw, _kw);
+                assert_eq!(usize::try_from(kh).unwrap(), _kh);
+                assert_eq!(usize::try_from(kw).unwrap(), _kw);
 
                 // These aren't actually requirements at the moment.
                 //assert_eq!(o % cols, 0);
                 //assert_eq!(c % rows, 0);
 
-                let new_h = (h - (kh - 1) + stride_h - 1) / stride_h;
-                let new_w = (w - (kw - 1) + stride_w - 1) / stride_w;
+                let new_h = (usize::try_from(h).unwrap() - usize::try_from(kh - 1).unwrap()
+                    + usize::try_from(stride_h).unwrap()
+                    - 1)
+                    / usize::try_from(stride_h).unwrap();
+                let new_w =
+                    (w - usize::try_from(kw - 1).unwrap() + usize::try_from(stride_w).unwrap() - 1)
+                        / usize::try_from(stride_w).unwrap();
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&[n, new_h, new_w, o]),
@@ -1603,14 +1592,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Usize(rows),
-                        MyAnalysisData::Usize(cols),
+                        MyAnalysisData::Num(rows),
+                        MyAnalysisData::Num(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Usize(kh),
-                        MyAnalysisData::Usize(kw),
-                        MyAnalysisData::Usize(stride_h),
-                        MyAnalysisData::Usize(stride_w),
+                        MyAnalysisData::Num(kh),
+                        MyAnalysisData::Num(kw),
+                        MyAnalysisData::Num(stride_h),
+                        MyAnalysisData::Num(stride_w),
                     ) => (*rows, *cols, weights, data, *kh, *kw, *stride_h, *stride_w),
                     _ => panic!("Does not type check"),
                 };
@@ -1620,14 +1609,18 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let (n, h, w, c) = (data[0], data[1], data[2], data[3]);
                 let (_kh, _kw, _c, o) = (weights[0], weights[1], weights[2], weights[3]);
                 assert_eq!(c, _c);
-                assert_eq!(kh, _kh);
-                assert_eq!(kw, _kw);
+                assert_eq!(usize::try_from(kh).unwrap(), _kh);
+                assert_eq!(usize::try_from(kw).unwrap(), _kw);
 
-                assert_eq!(o % cols, 0);
-                assert_eq!(c % rows, 0);
+                assert_eq!(o % usize::try_from(cols).unwrap(), 0);
+                assert_eq!(c % usize::try_from(rows).unwrap(), 0);
 
-                let new_h = (h - (kh - 1) + stride_h - 1) / stride_h;
-                let new_w = (w - (kw - 1) + stride_w - 1) / stride_w;
+                let new_h =
+                    (h - usize::try_from(kh - 1).unwrap() + usize::try_from(stride_h).unwrap() - 1)
+                        / usize::try_from(stride_h).unwrap();
+                let new_w =
+                    (w - usize::try_from(kw - 1).unwrap() + usize::try_from(stride_w).unwrap() - 1)
+                        / usize::try_from(stride_w).unwrap();
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&[n, new_h, new_w, o]),
@@ -1655,14 +1648,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Usize(rows),
-                        MyAnalysisData::Usize(cols),
+                        MyAnalysisData::Num(rows),
+                        MyAnalysisData::Num(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Usize(kh),
-                        MyAnalysisData::Usize(kw),
-                        MyAnalysisData::Usize(stride_h),
-                        MyAnalysisData::Usize(stride_w),
+                        MyAnalysisData::Num(kh),
+                        MyAnalysisData::Num(kw),
+                        MyAnalysisData::Num(stride_h),
+                        MyAnalysisData::Num(stride_w),
                     ) => (*rows, *cols, weights, data, *kh, *kw, *stride_h, *stride_w),
                     _ => panic!("Does not type check"),
                 };
@@ -1672,15 +1665,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let (n, c, h, w) = (data[0], data[1], data[2], data[3]);
                 let (o, _c, _kh, _kw) = (weights[0], weights[1], weights[2], weights[3]);
                 assert_eq!(c, _c);
-                assert_eq!(kh, _kh);
-                assert_eq!(kw, _kw);
+                assert_eq!(usize::try_from(kh).unwrap(), _kh);
+                assert_eq!(usize::try_from(kw).unwrap(), _kw);
 
                 // These aren't actually requirements for the moment.
                 //assert_eq!(o % cols, 0);
                 //assert_eq!(c % rows, 0);
 
-                let new_h = (h - (kh - 1) + stride_h - 1) / stride_h;
-                let new_w = (w - (kw - 1) + stride_w - 1) / stride_w;
+                let new_h =
+                    (h - usize::try_from(kh - 1).unwrap() + usize::try_from(stride_h).unwrap() - 1)
+                        / usize::try_from(stride_h).unwrap();
+                let new_w =
+                    (w - usize::try_from(kw - 1).unwrap() + usize::try_from(stride_w).unwrap() - 1)
+                        / usize::try_from(stride_w).unwrap();
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&[n, o, new_h, new_w]),
@@ -1708,14 +1705,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                     &egraph[stride_w_id].data,
                 ) {
                     (
-                        MyAnalysisData::Usize(rows),
-                        MyAnalysisData::Usize(cols),
+                        MyAnalysisData::Num(rows),
+                        MyAnalysisData::Num(cols),
                         MyAnalysisData::AccessPattern(weights),
                         MyAnalysisData::AccessPattern(data),
-                        MyAnalysisData::Usize(kh),
-                        MyAnalysisData::Usize(kw),
-                        MyAnalysisData::Usize(stride_h),
-                        MyAnalysisData::Usize(stride_w),
+                        MyAnalysisData::Num(kh),
+                        MyAnalysisData::Num(kw),
+                        MyAnalysisData::Num(stride_h),
+                        MyAnalysisData::Num(stride_w),
                     ) => (*rows, *cols, weights, data, *kh, *kw, *stride_h, *stride_w),
                     _ => panic!("Does not type check"),
                 };
@@ -1725,14 +1722,18 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let (n, c, h, w) = (data[0], data[1], data[2], data[3]);
                 let (o, _c, _kh, _kw) = (weights[0], weights[1], weights[2], weights[3]);
                 assert_eq!(c, _c);
-                assert_eq!(kh, _kh);
-                assert_eq!(kw, _kw);
+                assert_eq!(usize::try_from(kh).unwrap(), _kh);
+                assert_eq!(usize::try_from(kw).unwrap(), _kw);
 
-                assert_eq!(o % cols, 0);
-                assert_eq!(c % rows, 0);
+                assert_eq!(o % usize::try_from(cols).unwrap(), 0);
+                assert_eq!(c % usize::try_from(rows).unwrap(), 0);
 
-                let new_h = (h - (kh - 1) + stride_h - 1) / stride_h;
-                let new_w = (w - (kw - 1) + stride_w - 1) / stride_w;
+                let new_h =
+                    (h - usize::try_from(kh - 1).unwrap() + usize::try_from(stride_h).unwrap() - 1)
+                        / usize::try_from(stride_h).unwrap();
+                let new_w =
+                    (w - usize::try_from(kw - 1).unwrap() + usize::try_from(stride_w).unwrap() - 1)
+                        / usize::try_from(stride_w).unwrap();
 
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: IxDyn(&[n, o, new_h, new_w]),
@@ -1847,7 +1848,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(_group), MyAnalysisData::Num(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
                             {
                                 let mut data_shape = data
                                     .shape
@@ -1868,9 +1869,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let h = access_window_shape[1];
                                 let w = access_window_shape[2];
                                 AccessPatternData {
-                                    shape: IxDyn(&[n, c, h, w]),
+                                    shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
                                     item_shape: IxDyn(&[]),
-                                    relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                    relay_shape: Some(IxDyn(&[n, c.try_into().unwrap(), h, w])),
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: true,
                                 }
@@ -1998,8 +1999,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         assert_eq!(params.len(), 3);
 
                         let axis = match &egraph[params[1]].data {
-                            MyAnalysisData::Usize(v) => *v as i64,
-                            MyAnalysisData::Int32(v) => *v as i64,
+                            MyAnalysisData::Num(v) => *v,
                             _ => panic!(),
                         };
 
@@ -2101,12 +2101,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                         };
                         // TODO(@gussmith23) This pattern appears a lot, and it's annoying.
                         let axis: i64 = match &egraph[params[2]].data {
-                            MyAnalysisData::Int64(v) => *v,
+                            MyAnalysisData::Num(v) => *v,
                             _ => panic!(),
                         };
                         let num_axis: i64 = match &egraph[params[3]].data {
-                            MyAnalysisData::Int64(v) => *v,
-                            MyAnalysisData::Usize(v) => *v as i64,
+                            MyAnalysisData::Num(v) => *v,
                             _ => panic!(),
                         };
 
@@ -2260,8 +2259,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
 
                         let axis = match egraph[params[params.len() - 1]].data {
-                            MyAnalysisData::Int32(v) => v,
-                            MyAnalysisData::Usize(v) => i32::try_from(v).unwrap(),
+                            MyAnalysisData::Num(v) => i32::try_from(v).unwrap(),
                             _ => panic!(),
                         };
                         // This comes right from the Relay impl.
@@ -2330,7 +2328,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(indices), MyAnalysisData::Usize(axis)] => {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(indices), MyAnalysisData::Num(axis)] => {
                                 (data.clone(), indices.clone(), axis.clone())
                             }
                             _ => panic!(),
@@ -2338,12 +2336,12 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         let data_shape = data.as_vec();
                         let indices_shape = indices.as_vec();
-                        assert!(axis < data_shape.len());
+                        assert!(usize::try_from(axis).unwrap() < data_shape.len());
 
-                        let out_shape: Vec<_> = data_shape[..axis]
+                        let out_shape: Vec<_> = data_shape[..axis.try_into().unwrap()]
                             .iter()
                             .chain(indices_shape.iter())
-                            .chain(data_shape[axis + 1..].iter())
+                            .chain(data_shape[usize::try_from(axis).unwrap() + 1..].iter())
                             .cloned()
                             .collect();
 
@@ -2490,7 +2488,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::Usize(sections), MyAnalysisData::Int32(axis)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::Num(sections), MyAnalysisData::Num(axis)] =>
                             {
                                 let relay_shape = if let Some(relay_shape) =
                                     data.relay_shape.clone()
@@ -2500,7 +2498,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     IxDyn(&[data.shape.slice(), data.item_shape.slice()].concat())
                                 };
                                 let axis = if *axis < 0 {
-                                    (*axis + relay_shape.ndim() as i32) as usize
+                                    usize::try_from(
+                                        *axis + i64::try_from(relay_shape.ndim()).unwrap(),
+                                    )
+                                    .unwrap()
                                 } else {
                                     *axis as usize
                                 };
@@ -2508,7 +2509,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 for _ in 0..*sections {
                                     let mut oshape: Vec<_> =
                                         relay_shape.slice().iter().cloned().collect();
-                                    oshape[axis] = oshape[axis] / *sections;
+                                    oshape[axis] =
+                                        oshape[axis] / usize::try_from(*sections).unwrap();
                                     access_vec.push(MyAnalysisData::AccessPattern(
                                         AccessPatternData {
                                             shape: IxDyn(&[]),
@@ -2522,7 +2524,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 }
                                 MyAnalysisData::Tuple(access_vec)
                             }
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::List(sections), MyAnalysisData::Int32(axis)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::List(sections), MyAnalysisData::Num(axis)] =>
                             {
                                 let relay_shape = if let Some(relay_shape) =
                                     data.relay_shape.clone()
@@ -2532,7 +2534,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     IxDyn(&[data.shape.slice(), data.item_shape.slice()].concat())
                                 };
                                 let axis = if *axis < 0 {
-                                    (*axis + relay_shape.ndim() as i32) as usize
+                                    usize::try_from(
+                                        *axis + i64::try_from(relay_shape.ndim()).unwrap(),
+                                    )
+                                    .unwrap()
                                 } else {
                                     *axis as usize
                                 };
@@ -2580,8 +2585,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(usize_data)] =>
-                            {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Num(usize_data)] => {
                                 let shape_length =
                                     a.shape.slice().len() + a.item_shape.slice().len();
                                 let relay_shape = a
@@ -2592,26 +2596,34 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     .cloned()
                                     .collect::<Vec<_>>();
                                 let axis = *usize_data;
-                                assert!(axis < shape_length);
-                                if axis == shape_length - 1 {
+                                assert!(usize::try_from(axis).unwrap() < shape_length);
+                                if usize::try_from(axis).unwrap() == shape_length - 1 {
                                     AccessPatternData {
                                         shape: IxDyn(&[]),
-                                        item_shape: IxDyn(&relay_shape[..axis]),
+                                        item_shape: IxDyn(&relay_shape[..axis.try_into().unwrap()]),
                                         zero_regions: HashMap::default(),
-                                        relay_shape: Some(IxDyn(&relay_shape[..axis])),
+                                        relay_shape: Some(IxDyn(
+                                            &relay_shape[..axis.try_into().unwrap()],
+                                        )),
                                         contains_accelerator_calls: a.contains_accelerator_calls,
                                     }
                                 } else {
                                     AccessPatternData {
                                         shape: IxDyn(&[]),
                                         item_shape: IxDyn(
-                                            &[&relay_shape[..axis], &relay_shape[axis + 1..]]
-                                                .concat(),
+                                            &[
+                                                &relay_shape[..axis.try_into().unwrap()],
+                                                &relay_shape[usize::try_from(axis).unwrap() + 1..],
+                                            ]
+                                            .concat(),
                                         ),
                                         zero_regions: HashMap::default(),
                                         relay_shape: Some(IxDyn(
-                                            &[&relay_shape[..axis], &relay_shape[axis + 1..]]
-                                                .concat(),
+                                            &[
+                                                &relay_shape[..axis.try_into().unwrap()],
+                                                &relay_shape[usize::try_from(axis).unwrap() + 1..],
+                                            ]
+                                            .concat(),
                                         )),
                                         contains_accelerator_calls: a.contains_accelerator_calls,
                                     }
@@ -2689,7 +2701,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
                             {
                                 match act_layout {
                                     crate::language::RelayActivationLayout::NCHW => (),
@@ -2716,9 +2728,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         let h = access_window_shape[1];
                                         let w = access_window_shape[2];
                                         AccessPatternData {
-                                            shape: IxDyn(&[n, c, h, w]),
+                                            shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
                                             item_shape: IxDyn(&[]),
-                                            relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                            relay_shape: Some(IxDyn(&[
+                                                n,
+                                                c.try_into().unwrap(),
+                                                h,
+                                                w,
+                                            ])),
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls
@@ -2736,7 +2753,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         }
                                         assert_eq!(c, *channels);
                                         assert_eq!(group, channels);
-                                        assert_eq!(kernel_size.shape[0], *channels);
+                                        assert_eq!(
+                                            kernel_size.shape[0],
+                                            usize::try_from(*channels).unwrap()
+                                        );
 
                                         let weight_shape = weight
                                             .shape
@@ -2746,7 +2766,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             .cloned()
                                             .collect::<Vec<_>>();
 
-                                        assert_eq!(weight_shape[1], data_shape[1] / group);
+                                        assert_eq!(
+                                            weight_shape[1],
+                                            data_shape[1] / usize::try_from(*group).unwrap()
+                                        );
 
                                         let access_window_shape = access_windows_resulting_shape(
                                             &IxDyn(&data_shape[2..]),
@@ -2758,9 +2781,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         let w = access_window_shape[1];
 
                                         AccessPatternData {
-                                            shape: IxDyn(&[n, c, h, w]),
+                                            shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
                                             item_shape: IxDyn(&[]),
-                                            relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                            relay_shape: Some(IxDyn(&[
+                                                n,
+                                                c.try_into().unwrap(),
+                                                h,
+                                                w,
+                                            ])),
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls
@@ -2878,7 +2906,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Usize(_) | MyAnalysisData::Shape(_)] => {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::Num(_) | MyAnalysisData::Shape(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
@@ -3112,9 +3140,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Int32(_)
-                            | MyAnalysisData::Usize(_)
-                            | MyAnalysisData::Shape(_)] => a.clone(),
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Num(_) | MyAnalysisData::Shape(_)] => {
+                                a.clone()
+                            }
                             _ => panic!("Parameters do not type check"),
                         };
 
@@ -3134,7 +3162,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Usize(_) | MyAnalysisData::Shape(_), MyAnalysisData::Literal(_)] => {
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::AccessPattern(_), MyAnalysisData::Num(_) | MyAnalysisData::Shape(_), MyAnalysisData::Literal(_)] => {
                                 a.clone()
                             }
                             _ => panic!("Parameters do not type check"),
@@ -3428,31 +3456,41 @@ impl egg::Analysis<Language> for MyAnalysis {
                     access.zero_regions = HashMap::default();
                 }
                 let axis = match egraph[axis_id].data {
-                    MyAnalysisData::Int64(v) => v as usize,
-                    MyAnalysisData::Usize(v) => v,
+                    MyAnalysisData::Num(v) => v,
                     _ => panic!(),
                 };
 
-                assert!(axis <= access.shape.ndim() + access.item_shape.ndim());
+                assert!(
+                    usize::try_from(axis).unwrap()
+                        <= access.shape.ndim() + access.item_shape.ndim()
+                );
 
-                if axis <= access.shape.ndim() {
+                if usize::try_from(axis).unwrap() <= access.shape.ndim() {
                     access.shape = IxDyn(
-                        access.shape.slice()[..axis]
+                        access.shape.slice()[..axis.try_into().unwrap()]
                             .iter()
                             .cloned()
                             .chain(std::iter::once(1))
-                            .chain(access.shape.slice()[axis..].iter().cloned())
+                            .chain(
+                                access.shape.slice()[axis.try_into().unwrap()..]
+                                    .iter()
+                                    .cloned(),
+                            )
                             .collect::<Vec<_>>()
                             .as_slice(),
                     );
                 } else {
                     let n = access.shape.ndim();
                     access.item_shape = IxDyn(
-                        access.item_shape.slice()[..axis - n]
+                        access.item_shape.slice()[..usize::try_from(axis).unwrap() - n]
                             .iter()
                             .cloned()
                             .chain(std::iter::once(1))
-                            .chain(access.item_shape.slice()[axis - n..].iter().cloned())
+                            .chain(
+                                access.item_shape.slice()[usize::try_from(axis).unwrap() - n..]
+                                    .iter()
+                                    .cloned(),
+                            )
                             .collect::<Vec<_>>()
                             .as_slice(),
                     );
@@ -4230,11 +4268,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         || a1.contains_accelerator_calls,
                 })
             }
-            Usize(u) => MyAnalysisData::Usize(*u),
-            Int32(x) => MyAnalysisData::Int32(*x),
-            Uint8(u) => MyAnalysisData::Uint8(*u),
-            Int64(x) => MyAnalysisData::Int64(*x),
-            Int8(x) => MyAnalysisData::Int8(*x),
+            Num(u) => MyAnalysisData::Num(*u),
             Symbol(name) => {
                 MyAnalysisData::Shape(ShapeData {
                     shape: ndarray::IxDyn(
@@ -6792,8 +6826,8 @@ mod tests {
         let operator_id = program.add(Language::RelayOperator(RelayOperator::RelaySplit));
         let tensor_id = program.add(Language::Symbol("data".into()));
         let access_data = program.add(Language::AccessTensor(tensor_id));
-        let sections = program.add(Language::Usize(5));
-        let axis = program.add(Language::Int32(1));
+        let sections = program.add(Language::Num(5));
+        let axis = program.add(Language::Num(1));
         let _relay_operator_call = program.add(Language::RelayOperatorCall(
             vec![operator_id, access_data, sections, axis].into_boxed_slice(),
         ));
