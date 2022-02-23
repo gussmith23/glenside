@@ -228,10 +228,25 @@ impl CostFunction<Language> for AcceleratorCostFunction {
         let base_cost = match enode {
             // We only consider accelerator calls and relay operators for now when
             // extracting a model
-            Language::RelayOperatorCall(_) => 1,
-            Language::AcceleratorCall(_)   => 0,
-            Language::AcceleratorFunc(_) => 0,
-            _ => usize::MAX
+            
+            Language::AcceleratorCall(_)
+            | Language::AcceleratorFunc(_) 
+            | Language::Literal(_) => 0,
+            Language::RelayOperatorCall(_)
+            | Language::RelayOperator(_)
+            | Language::Shape(_)
+            | Language::NotNanFloat64(_)
+            | Language::RelayKernelLayout(_)
+            | Language::RelayActivationLayout(_)
+            | Language::List(_)
+            | Language::AccessShape(_)
+            | Language::AccessReshape(_)
+            | Language::AccessTensor(_)
+            | Language::Access(_)
+            | Language::AccessInsertAxis(_)
+            | Language::AccessBroadcast(_)
+            | Language::Symbol(_) => 1,
+            _ => 100
         };
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
     }
