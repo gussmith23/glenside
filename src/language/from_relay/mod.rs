@@ -11,6 +11,7 @@ use tvm::ir::module::*;
 use tvm::ir::relay::*;
 use tvm::ir::tir::*;
 use tvm::ir::ty::*;
+use tvm::runtime::array::Array;
 use tvm::runtime::IsObjectRef;
 
 use super::ComputeType;
@@ -1076,6 +1077,46 @@ fn compile_expression(
                     (
                         glenside_expr.add(Language::RelayOperatorCall(
                             vec![take_op_id, data_id, indices_id, axis_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
+                "strided_slice" => {
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    assert!(use_opaque_operators_for
+                        .contains(&crate::language::RelayOperator::RelayStridedSlice),);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::StridedSliceAttrs>()
+                        .unwrap();
+                    assert_eq!(attrs.slice_mode, "end");
+                    let f = |l: Array<IntImm>| l.into_iter().map(|i| i.value).collect::<Vec<_>>();
+                    let begin = f(attrs.begin.clone());
+                    let end = f(attrs.end.clone());
+                    let strides = f(attrs.strides.clone());
+                    assert_eq!(begin.len(), end.len());
+                    assert_eq!(begin.len(), strides.len());
+
+                    let mut f = |l: Vec<i64>| {
+                        let ids = l
+                            .iter()
+                            .map(|i| glenside_expr.add(Language::Usize(*i as usize)))
+                            .collect::<Vec<_>>();
+                        glenside_expr.add(Language::Shape(ids.into_boxed_slice()))
+                    };
+                    let begin_id = f(begin);
+                    let end_id = f(end);
+                    let strides_id = f(strides);
+
+                    let relay_operator_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayStridedSlice,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_operator_id, data_id, begin_id, end_id, strides_id]
+                                .into_boxed_slice(),
                         )),
                         None,
                     )
