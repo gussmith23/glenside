@@ -373,6 +373,9 @@ pub enum RelayOperator {
 
     /// (relay-operator round <data: access>)
     RelayRound,
+
+    /// (relay-operator relay-take <data: access> <indices: access> <axis: usize>)
+    RelayTake,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -405,6 +408,7 @@ impl FromStr for RelayOperator {
             "relay-left-shift" => Ok(RelayOperator::RelayLeftShift),
             "relay-right-shift" => Ok(RelayOperator::RelayRightShift),
             "relay-round" => Ok(RelayOperator::RelayRound),
+            "relay-take" => Ok(RelayOperator::RelayTake),
             _ => Err(()),
         }
     }
@@ -442,6 +446,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayLeftShift => "relay-left-shift",
                 RelayOperator::RelayRightShift => "relay-right-shift",
                 RelayOperator::RelayRound => "relay-round",
+                RelayOperator::RelayTake => "relay-take",
             }
         )
     }
@@ -1848,6 +1853,46 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                             _ => panic!("Invalid bit-shifting"),
                         }
+                    }
+                    crate::language::RelayOperator::RelayTake => {
+                        let (data, indices, axis) = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(indices), MyAnalysisData::Usize(axis)] => {
+                                (data.clone(), indices.clone(), axis.clone())
+                            }
+                            _ => panic!(),
+                        };
+
+                        let data_shape = data.as_vec();
+                        let indices_shape = indices.as_vec();
+                        assert!(axis < data_shape.len());
+
+                        let out_shape: Vec<_> = data_shape[..axis]
+                            .iter()
+                            .chain(indices_shape.iter())
+                            .chain(data_shape[axis + 1..].iter())
+                            .cloned()
+                            .collect();
+
+                        if !data.zero_regions.is_empty() || !indices.zero_regions.is_empty() {
+                            debug!(
+                                "Throwing away zero region analysis data on line {}",
+                                std::line!()
+                            );
+                        }
+                        let zero_regions = HashMap::default();
+
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&out_shape),
+                            item_shape: IxDyn(&[]),
+                            zero_regions,
+                            relay_shape: Some(IxDyn(&out_shape)),
+                            contains_accelerator_calls: data.contains_accelerator_calls
+                                || indices.contains_accelerator_calls,
+                        })
                     }
                     crate::language::RelayOperator::RelayAdd
                     | crate::language::RelayOperator::RelayMultiply
@@ -6531,28 +6576,120 @@ mod tests {
             _ => panic!(),
         }
     }
-}
 
-#[test]
-fn test_relay_cast() {
-    let mut map = HashMap::default();
-    map.insert("data".to_string(), vec![2, 3, 32, 32]);
-    let dtypes = [("data".into(), crate::language::DataType::Int(32))]
+    #[test]
+    fn test_relay_cast() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![2, 3, 32, 32]);
+        let dtypes = [("data".into(), crate::language::DataType::Int(32))]
+            .iter()
+            .cloned()
+            .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+    (relay-operator-call relay-cast data float32)
+    ";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::Shape(shape) => {
+                assert_eq!(shape.dtype, crate::language::DataType::Float(32))
+            }
+            _ => panic!("Not a valid cast"),
+        }
+    }
+    #[test]
+    fn relay_take_0() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![5, 6, 7]);
+        map.insert("indices".to_string(), vec![2, 3]);
+        let dtypes = [
+            ("data".into(), crate::language::DataType::Float(32)),
+            ("indices".into(), crate::language::DataType::Int(32)),
+        ]
         .iter()
         .cloned()
         .collect();
-    let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
-        name_to_shape: map,
-        name_to_dtype: dtypes,
-    });
-    let program = "
-    (relay-operator-call relay-cast data float32)
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+    (relay-operator-call relay-take (access-tensor data) (access-tensor indices) 0)
     ";
-    let id = egraph.add_expr(&program.parse().unwrap());
-    match &egraph[id].data {
-        MyAnalysisData::Shape(shape) => {
-            assert_eq!(shape.dtype, crate::language::DataType::Float(32))
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[2, 3, 6, 7]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
         }
-        _ => panic!("Not a valid cast"),
+    }
+
+    /// def @main(%data: Tensor[(5, 6, 7), float32], %indices: Tensor[(2, 3), int32]) -> Tensor[(5, 6, 2, 3), float32] {
+    ///   take(%data, %indices, axis=-1) /* ty=Tensor[(5, 6, 2, 3), float32] */
+    /// }
+    #[test]
+    fn relay_take_1() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![5, 6, 7]);
+        map.insert("indices".to_string(), vec![2, 3]);
+        let dtypes = [
+            ("data".into(), crate::language::DataType::Float(32)),
+            ("indices".into(), crate::language::DataType::Int(32)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+    (relay-operator-call relay-take (access-tensor data) (access-tensor indices) 1)
+    ";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[5, 2, 3, 7]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    /// def @main(%data: Tensor[(5, 6, 7), float32], %indices: Tensor[(2, 3), int32]) -> Tensor[(5, 6, 2, 3), float32] {
+    ///   take(%data, %indices, axis=2) /* ty=Tensor[(5, 6, 2, 3), float32] */
+    /// }
+    #[test]
+    fn relay_take_2() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![5, 6, 7]);
+        map.insert("indices".to_string(), vec![2, 3]);
+        let dtypes = [
+            ("data".into(), crate::language::DataType::Float(32)),
+            ("indices".into(), crate::language::DataType::Int(32)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+    (relay-operator-call relay-take (access-tensor data) (access-tensor indices) 2)
+    ";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[5, 6, 2, 3]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
     }
 }
