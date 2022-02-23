@@ -388,6 +388,9 @@ pub enum RelayOperator {
 
     /// (relay-operator relay-stack <data: access> ... <axis: i32>)
     RelayStack,
+
+    /// (relay-operator relay-log-softmax <data: access> <axis: usize>)
+    RelayLogSoftmax,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -423,6 +426,7 @@ impl FromStr for RelayOperator {
             "relay-take" => Ok(RelayOperator::RelayTake),
             "relay-dropout" => Ok(RelayOperator::RelayDropout),
             "relay-stack" => Ok(RelayOperator::RelayStack),
+            "relay-log-softmax" => Ok(RelayOperator::RelayLogSoftmax),
             _ => Err(()),
         }
     }
@@ -464,6 +468,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayDropout => "relay-dropout",
                 RelayOperator::RelayTanh => "relay-tanh",
                 RelayOperator::RelayStack => "relay-stack",
+                RelayOperator::RelayLogSoftmax => "relay-log-softmax",
             }
         )
     }
@@ -2666,7 +2671,8 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                         MyAnalysisData::AccessPattern(access)
                     }
-                    crate::language::RelayOperator::RelaySoftmax => {
+                    crate::language::RelayOperator::RelayLogSoftmax
+                    | crate::language::RelayOperator::RelaySoftmax => {
                         let mut access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
