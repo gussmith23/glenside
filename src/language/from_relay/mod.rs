@@ -895,12 +895,16 @@ fn compile_expression(
         );
         assert!(
             tuple_type.dtype == "float32".parse().unwrap()
-                || tuple_type.dtype == "int32".parse().unwrap(),
+                || tuple_type.dtype == "int32".parse().unwrap()
+                || tuple_type.dtype == "int64".parse().unwrap()
+                || tuple_type.dtype == "int8".parse().unwrap()
+                || tuple_type.dtype == "uint8".parse().unwrap(),
             "Only float32x1 or int32x1 constants supported for now",
         );
-        assert_eq!(
-            constant.data.size(),
-            4,
+        assert!(
+            constant.data.size() == 4
+            || constant.data.size() == 8
+            || constant.data.size() == 2,
             "Only scalar constants supported for now"
         );
         // TODO(@gussmith23) This is broken at the moment
@@ -909,11 +913,6 @@ fn compile_expression(
         //     0,
         //     "Only scalar constants supported for now"
         // );
-        assert!(
-            constant.data.dtype() == "float32".parse().unwrap()
-                || constant.data.dtype() == "int32".parse().unwrap(),
-            "Only float32x1 or int32x1 constants supported for now",
-        );
         // TODO(@gussmith23) This is a hack
         // Jared and Max are working on ndarray at the moment.
         if constant.data.dtype() == "float32".parse().unwrap() {
@@ -924,9 +923,21 @@ fn compile_expression(
             let literal_id = glenside_expr.add(Language::Literal(literal_id));
             let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
             (access_literal_id, None)
-        } else {
+        } else if constant.data.dtype() == "int32".parse().unwrap() {
             let value: i32 = unsafe { *(constant.data.as_dltensor().data as *const i32) };
             let literal_id = glenside_expr.add(Language::Int32(value));
+            (literal_id, None)
+        } else if constant.data.dtype() == "int64".parse().unwrap() {
+            let value: i64 = unsafe { *(constant.data.as_dltensor().data as *const i64) };
+            let literal_id = glenside_expr.add(Language::Int64(value));
+            (literal_id, None)
+        } else if constant.data.dtype() == "int8".parse().unwrap() {
+            let value: i8 = unsafe { *(constant.data.as_dltensor().data as *const i8) };
+            let literal_id = glenside_expr.add(Language::Int8(value));
+            (literal_id, None)
+        } else {
+            let value: u8 = unsafe { *(constant.data.as_dltensor().data as *const u8) };
+            let literal_id = glenside_expr.add(Language::Uint8(value));
             (literal_id, None)
         }
     } else if let Ok(tuple_get_item) = relay_expr

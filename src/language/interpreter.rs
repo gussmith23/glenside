@@ -14,6 +14,8 @@ pub enum Value<DataType> {
     Access(Access<DataType>),
     Usize(usize),
     Int32(i32),
+    Int64(i64),
+    Int8(i8),
     Uint8(u8),
     Shape(IxDyn),
     ComputeType(ComputeType),
@@ -960,6 +962,8 @@ where
         ),
         &Language::Usize(u) => Value::Usize(u),
         &Language::Int32(x) => Value::Int32(x),
+        &Language::Int64(x) => Value::Int64(x),
+        &Language::Int8(x) => Value::Int8(x),
         &Language::Uint8(u) => Value::Uint8(u),
 
         &Language::SystolicArray(_)
