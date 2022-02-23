@@ -1,5 +1,6 @@
 use super::{Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
 use egg::{rewrite, Applier, ConditionalApplier, EGraph, Id, Pattern, Rewrite, Subst, Var};
+use itertools::Itertools;
 use ndarray::Dimension;
 use ndarray::IxDyn;
 
@@ -2280,6 +2281,35 @@ pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
                          move |a| a.item_shape.ndim() == 1
                                     && a.item_shape[0] % window_len == 0)
     )
+}
+
+/// Moves a reshape through a compute reduce-max. We do this by simply throwing
+/// away the shape associated with the compute dimensions.
+pub fn bubble_access_reshape_through_compute_reduce_max() -> RW {
+    struct ApplierImpl {
+        shape: Var,
+    }
+    impl Applier<Language, MyAnalysis> for ApplierImpl {
+        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+            let shape = match &egraph[subst[self.shape]].data {
+                MyAnalysisData::AccessPattern(a) => a.shape.slice(),
+                _ => panic!(),
+            };
+            format!(
+                "(access-reshape
+                  (compute reduce-max ?a)
+                  (access-shape (shape {shape}) (shape)))",
+                shape = shape.iter().map(usize::to_string).join(" ")
+            )
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .apply_one(egraph, matched_id, subst)
+        }
+    }
+    rewrite!("bubble-access-reshape-through-compute-reduce-max";
+     "(compute reduce-max
+       (access-reshape ?a ?shape))" =>
+     { ApplierImpl {shape: "?shape".parse().unwrap()}})
 }
 
 #[cfg(test)]
@@ -4981,5 +5011,40 @@ mod tests {
         }
 
         todo!();
+    }
+
+    #[test]
+    fn bubble_access_reshape_through_compute_reduce_max() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![16, 4]);
+
+        let program = "
+         (compute reduce-max
+          (access-reshape 
+           (access (access-tensor data) 1)
+           (access-shape (shape 4 4) (shape 1 2 2))))"
+            .parse()
+            .unwrap();
+
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::bubble_access_reshape_through_compute_reduce_max()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+         (access-reshape
+          (compute reduce-max 
+           (access (access-tensor data) 1))
+          (access-shape (shape 4 4) (shape)))"
+            .parse::<Pattern<_>>()
+            .unwrap()
+            .search_eclass(&runner.egraph, id)
+            .unwrap();
+        assert_eq!(matches.substs.len(), 1);
     }
 }
