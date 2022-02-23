@@ -311,7 +311,7 @@ pub fn conv2d(
             // TODO(@gussmith23) Make grouped conv take advantage of new
             // access-windows semantics
 
-            let data_id = access(expr, data_id, 0);
+            let _data_id = access(expr, data_id, 0);
 
             let mut stride_list = Vec::default();
             stride_list.push(expr.add(Language::Usize(1)));
