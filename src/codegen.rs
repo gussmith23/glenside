@@ -338,14 +338,13 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 3]
-            &Language::AccessConcatenate(ids) => {
+            &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
             }
             // [Id; 4]
             &Language::SystolicArray(ids)
-            | &Language::AccessWindows(ids)
             | &Language::SystolicArrayWithBlocking(ids)
             | &Language::AccessSlice(ids) => {
                 for id in ids.iter() {
@@ -439,14 +438,13 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
                 }
             }
             // [Id; 3]
-            &Language::AccessConcatenate(ids) => {
+            &Language::AccessConcatenate(ids) | &Language::AccessWindows(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
             }
             // [Id; 4]
             &Language::SystolicArray(ids)
-            | &Language::AccessWindows(ids)
             | &Language::SystolicArrayWithBlocking(ids)
             | &Language::AccessSlice(ids) => {
                 for id in ids.iter() {
@@ -1069,7 +1067,7 @@ add_with_broadcasting((float*) {out}, (float*) {X}, (float*) {Y}, (int*)  {out_s
                 RelayOperator::RelayMinimum => todo!(),
             }
         }
-        &Language::AccessWindows([access_id, _data_shape_id, filters_shape_id, stride_shape_id]) => {
+        &Language::AccessWindows([access_id, filters_shape_id, stride_shape_id]) => {
             let access = match &expr[access_id].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
