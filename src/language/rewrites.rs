@@ -2672,8 +2672,10 @@ mod tests {
         let mut map = HashMap::new();
         map.insert("data".to_string(), vec![1, 3, 32]);
         map.insert("weights".to_string(), vec![8, 3, 3]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![
@@ -3617,8 +3619,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![super::collapse_nested_transposes()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
@@ -3643,8 +3647,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![super::remove_trivial_transpose()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
@@ -3662,8 +3668,10 @@ mod tests {
         let program = "(access (access (access-tensor t) 0) 1)".parse().unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![super::collapse_nested_accesses()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
@@ -3681,8 +3689,10 @@ mod tests {
         let program = "(access (access-tensor t) 0)".parse().unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![super::pad_slice_accesses(
             0,
@@ -3750,8 +3760,10 @@ mod tests {
         // kernel height, kernel width, in channels, out channels
         map.insert("weights".to_string(), vec![3, 3, 3, 8]);
 
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let rws = vec![
@@ -3936,8 +3948,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), vec![8, 10]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_slice_through_access_pad_inequal_axes()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
@@ -3963,8 +3977,10 @@ mod tests {
         let program = "(access (access-tensor t) 0)".parse().unwrap();
         let mut map = HashMap::default();
         map.insert("t".to_string(), vec![1, 2, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![
             super::pad_slice_accesses(
@@ -4106,8 +4122,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 3, 3, 4]);
         map.insert("b".to_string(), vec![10, 3, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws =
             vec![super::bubble_access_slice_through_access_cartesian_product_not_item_axis_left()];
@@ -4142,8 +4160,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 3, 3, 4]);
         map.insert("b".to_string(), vec![10, 3, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws =
             vec![super::bubble_access_slice_through_access_cartesian_product_not_item_axis_right()];
@@ -4178,8 +4198,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 16, 3, 3, 4]);
         map.insert("b".to_string(), vec![10, 3, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws =
             vec![super::bubble_access_slice_through_access_cartesian_product_same_item_axis()];
@@ -4215,8 +4237,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 16, 3, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws = vec![super::bubble_access_slice_through_compute_dot_product_not_item_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
@@ -4253,8 +4277,10 @@ mod tests {
         .unwrap();
         let mut map = HashMap::default();
         map.insert("a".to_string(), vec![4, 16, 3, 3, 4]);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
         let rws =
             vec![super::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis()];
@@ -4293,8 +4319,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![
@@ -4419,8 +4447,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("data".to_string(), data_shape);
         map.insert("kernel".to_string(), kernel_shape);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let rws = vec![
@@ -4485,8 +4515,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("data".to_string(), data_shape);
         map.insert("kernel".to_string(), kernel_shape);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let rws = vec![
@@ -4595,8 +4627,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("data".to_string(), data_shape);
         map.insert("kernel".to_string(), kernel_shape);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let rws = vec![
@@ -4699,8 +4733,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::bubble_access_transpose_through_access_pad()];
@@ -4761,8 +4797,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("data".to_string(), data_shape);
         map.insert("kernel".to_string(), kernel_shape);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let rws = vec![
@@ -4872,8 +4910,10 @@ mod tests {
         let mut map = HashMap::default();
         map.insert("data".to_string(), data_shape);
         map.insert("kernel".to_string(), kernel_shape);
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&expr);
 
         let rws = vec![
@@ -4973,8 +5013,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::flexasr_maxpool()];
@@ -5014,8 +5056,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::reassociate_max(2, 2)];
@@ -5053,8 +5097,10 @@ mod tests {
         "
         .parse()
         .unwrap();
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::reassociate_max(2, 2)];
@@ -5111,8 +5157,10 @@ mod tests {
         map.insert("data".to_string(), vec![3, 16, 4, 4]);
 
         // Insert the expression into the egraph.
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         // Define our rewrites. These rewrites are what map the max pool to
@@ -5211,8 +5259,10 @@ mod tests {
             .parse()
             .unwrap();
 
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::bubble_access_reshape_through_compute_reduce_max()];
@@ -5244,8 +5294,10 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::simplify_multiple_transposes()];
@@ -5273,8 +5325,10 @@ mod tests {
         .parse()
         .unwrap();
 
-        let mut egraph =
-            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
         let id = egraph.add_expr(&program);
 
         let rws = vec![super::simplify_multiple_transposes()];
