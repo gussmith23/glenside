@@ -362,56 +362,58 @@ pub fn conv2d(
                 .into_boxed_slice(),
             ));
 
-            let mut to_be_concatted = Vec::default();
+            (operator_call_id, None)
+            // mike: we comment out these code for flexible matching
+            // it will blow up the size of egraph, which prevent
+            // im2col rewrite rules from being fired
+            // let mut to_be_concatted = Vec::default();
 
-            for channel_idx in 0..in_channels {
-                // Get this group's input channel
-                // TODO(@gussmith23) layout assumption
-                let data_id = access_slice(
-                    expr,
-                    data_id,
-                    1,
-                    channel_idx.try_into().unwrap(),
-                    (channel_idx + 1).try_into().unwrap(),
-                );
-                let data_id = expr.add(Language::AccessWindows([
-                    data_id,
-                    weights_shape_id,
-                    stride_shape_id,
-                ]));
-                let data_id = access(expr, data_id, 4);
-                // Result should be
-                // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
+            // for channel_idx in 0..in_channels {
+            //     // Get this group's input channel
+            //     // TODO(@gussmith23) layout assumption
+            //     let data_id = access_slice(
+            //         expr,
+            //         data_id,
+            //         1,
+            //         channel_idx.try_into().unwrap(),
+            //         (channel_idx + 1).try_into().unwrap(),
+            //     );
+            //     let data_id = expr.add(Language::AccessWindows([
+            //         data_id,
+            //         weights_shape_id,
+            //         stride_shape_id,
+            //     ]));
+            //     let data_id = access(expr, data_id, 4);
+            //     // Result should be
+            //     // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
 
-                // Get this group's kernel
-                // TODO(@gussmith23) layout assumption
-                let weights_id = access_slice(
-                    expr,
-                    weights_id,
-                    0,
-                    channel_idx.try_into().unwrap(),
-                    (channel_idx + 1).try_into().unwrap(),
-                );
-                let weights_id = access(expr, weights_id, 0);
+            //     // Get this group's kernel
+            //     // TODO(@gussmith23) layout assumption
+            //     let weights_id = access_slice(
+            //         expr,
+            //         weights_id,
+            //         0,
+            //         channel_idx.try_into().unwrap(),
+            //         (channel_idx + 1).try_into().unwrap(),
+            //     );
+            //     let weights_id = access(expr, weights_id, 0);
 
-                let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
-                // Results should be
-                // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
+            //     let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+            //     // Results should be
+            //     // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
 
-                let data_id = compute(expr, ComputeType::DotProduct, data_id);
-                // Results should be
-                // [1 1 new_H new_W]
+            //     let data_id = compute(expr, ComputeType::DotProduct, data_id);
+            //     // Results should be
+            //     // [1 1 new_H new_W]
 
-                to_be_concatted.push(data_id);
-            }
+            //     to_be_concatted.push(data_id);
+            // }
 
-            let mut concatted_id = to_be_concatted[0];
-            for to_be_concatted_id in to_be_concatted[1..].iter() {
-                // TODO(@gussmith23) Layout assumption
-                concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
-            }
-
-            (concatted_id, Some(operator_call_id))
+            // let mut concatted_id = to_be_concatted[0];
+            // for to_be_concatted_id in to_be_concatted[1..].iter() {
+            //     // TODO(@gussmith23) Layout assumption
+            //     concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
+            // }
         }
         _ => panic!("Groups not implemented for groups={}", groups),
     };
