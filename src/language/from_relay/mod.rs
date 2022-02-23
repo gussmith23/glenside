@@ -1001,6 +1001,38 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "stack" => {
+                    let tuple = call.args.get(0).unwrap().downcast::<Tuple>().unwrap();
+                    let ids: Vec<_> = tuple
+                        .fields
+                        .clone()
+                        .into_iter()
+                        .map(|e| get_compiled_expression(e))
+                        .collect();
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::transform::StackAttrs>()
+                        .unwrap();
+
+                    let axis_id =
+                        glenside_expr.add(Language::Int32(attrs.axis.value.try_into().unwrap()));
+
+                    let stack_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayStack,
+                    ));
+
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            std::iter::once(&stack_op_id)
+                                .chain(ids.iter())
+                                .chain(std::iter::once(&axis_id))
+                                .cloned()
+                                .collect(),
+                        )),
+                        None,
+                    )
+                }
                 "nn.dropout" => {
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let attrs = call
