@@ -650,7 +650,7 @@ pub fn conv2d_on_hlscnn() -> RW {
     rewrite!("conv2d-on-hlscnn";
             "(relay-operator-call relay-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)"
             =>
-            "(accelerator-call hlscnn-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout)"
+            "(accelerator-call hlscnn-conv2d ?data ?kernel ?strides ?padding ?group ?channels ?kshape ?layout ?klayout (shape 0))"
             if is_one("?group".parse().unwrap()))
 }
 
@@ -671,7 +671,7 @@ pub fn dot_product_with_vta() -> RW {
     }
     rewrite!("dot-product-on-vta";
         "(compute dot-product (access-cartesian-product ?x ?w))"
-        => "(accelerator-call vta-dense ?x ?w)"
+        => "(accelerator-call vta-dense ?x ?w (shape 0))"
             if dim_supported("?x".parse().unwrap())
             if dim_supported("?w".parse().unwrap()))
 }
@@ -683,7 +683,7 @@ pub fn dot_product_to_linear() -> RW {
             // let x_shape = match_shape_data(&egraph[subst[self.0]].data);
             let w_shape = match_shape_data(&egraph[subst[self.1]].data);
             format!(
-                "(accelerator-call flex-linear ?x ?w (constant-tensor 0 (shape 1 {})))",
+                "(accelerator-call flex-linear ?x ?w (constant-tensor 0 (shape 1 {})) (shape 0))",
                 w_shape[1]
             )
             .parse::<Pattern<_>>()
@@ -753,8 +753,24 @@ pub fn lstm_to_flexasr() -> RW {
 
         Pattern::from(pattern_ast)
     };
+    struct LSTMApplier;
+    impl Applier<Language, MyAnalysis> for LSTMApplier {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+        ) -> Vec<Id> {
+            let out_shape = match &egraph[eclass].data {
+                MyAnalysisData::AccessPattern(access) => access.as_vec(),
+                _ => panic!("invalid access pattern for LSTM"),
+            };
+            format!("(accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0 (shape {}))", out_shape.into_iter().map(|x| x.to_string()).join(" "))
+            .parse::<Pattern<_>>().unwrap().apply_one(egraph, eclass, subst)
+        }
+    }
     rewrite!("flex-lstm"; 
-        { pattern } => "(accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)")
+        { pattern } => { LSTMApplier {} })
 }
 
 /// Model rewrite
@@ -871,7 +887,7 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
             ?bias
             ?axis)"
         =>
-        "(accelerator-call flex-linear ?x ?w ?bias)")
+        "(accelerator-call flex-linear ?x ?w ?bias (shape 0))")
 }
 
 /// Tensorizes a computation to an externally-blocked systolic array.
@@ -2344,7 +2360,7 @@ pub fn flexasr_maxpool() -> Rewrite<Language, MyAnalysis> {
     "(access
       (access-transpose
        (accelerator-call flex-maxpool
-        (access (access-transpose ?a (list 1 0)) 0))
+        (access (access-transpose ?a (list 1 0)) 0) (shape 0))
        (list 1 0))
       1)"
     if constrain_access("?a".parse().unwrap(), move |a| {
@@ -5111,7 +5127,7 @@ mod tests {
                 (access-transpose 
                  (access (access-tensor a) 1)
                  (list 1 0))
-                 0))
+                 0) ?shape)
               (list 1 0))
              1)"
         .parse::<Pattern<_>>()
@@ -5307,8 +5323,8 @@ mod tests {
                    (shape 2 2)
                    (shape 2 2)))
                  (list 1 0))
-                0))
-              0))
+                0) ?shape0)
+              0) ?shape1)
             (list 1 0))
            1)
           (access-shape (shape 3 16 2 2) (shape)))
