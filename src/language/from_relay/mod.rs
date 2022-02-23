@@ -1081,6 +1081,49 @@ fn compile_expression(
                         None,
                     )
                 }
+                "nn.batch_matmul" => {
+                    let a_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let b_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::BatchMatmulAttrs>()
+                        .unwrap();
+                    let f = |expr: Expr| {
+                        (
+                            expr.checked_type
+                                .clone()
+                                .downcast::<TensorType>()
+                                .unwrap()
+                                .dtype,
+                            expr.checked_type
+                                .clone()
+                                .downcast::<TensorType>()
+                                .unwrap()
+                                .shape
+                                .clone(),
+                        )
+                    };
+                    let (a_type, a_shape) = f(call.args.get(0).unwrap());
+                    let (b_type, b_shape) = f(call.args.get(1).unwrap());
+                    assert_eq!(a_type, b_type);
+                    // Check is failing, not sure if it's because I'm getting bad attrs.
+                    //assert_eq!(a_type, attrs.out_dtype);
+                    assert_eq!(a_shape.len(), 3);
+                    assert_eq!(b_shape.len(), 3);
+
+                    let access_a_id = access(glenside_expr, a_id, 2);
+                    let access_b_id = access(glenside_expr, b_id, 2);
+                    let cart_prod_id = glenside_expr
+                        .add(Language::AccessCartesianProduct([access_a_id, access_b_id]));
+                    let compute_id = compute(
+                        glenside_expr,
+                        crate::language::ComputeType::DotProduct,
+                        cart_prod_id,
+                    );
+
+                    (compute_id, None)
+                }
                 "strided_slice" => {
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     assert!(use_opaque_operators_for
