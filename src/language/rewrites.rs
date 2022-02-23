@@ -664,31 +664,18 @@ pub fn dot_product_with_vta() -> RW {
             _ => false,
         }
     }
-    struct ApplierImpl(Var, Var);
-    impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            let data_shape = match_shape_data(&egraph[subst[self.0]].data);
-            let weight_shape = match_shape_data(&egraph[subst[self.1]].data);
-            let output_shape = data_shape
-                .into_iter()
-                .chain(weight_shape.into_iter())
-                .collect::<Vec<usize>>();
-            format!(
-                "(accelerator-call vta-dense ?x ?w (shape {}))",
-                output_shape
-                    .into_iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            )
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .apply_one(egraph, eclass, subst)
-        }
-    }
+    // struct ApplierImpl(Var, Var);
+    // impl Applier<Language, MyAnalysis> for ApplierImpl {
+    //     fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+    //         "(accelerator-call vta-dense ?x ?w)"
+    //         .parse::<Pattern<_>>()
+    //         .unwrap()
+    //         .apply_one(egraph, eclass, subst)
+    //     }
+    // }
     rewrite!("dot-product-on-vta";
         "(compute dot-product (access-cartesian-product ?x ?w))"
-        => { ApplierImpl("?x".parse().unwrap(), "?w".parse().unwrap()) }
+        => "(accelerator-call vta-dense ?x ?w)"
             if no_access_dim("?x".parse().unwrap())
             if no_access_dim("?w".parse().unwrap()))
 }
@@ -796,29 +783,21 @@ pub fn linear_layer_accelerator_rewrites() -> RW {
     struct ApplierImpl;
     impl Applier<Language, MyAnalysis> for ApplierImpl {
         fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
-            let shape = match &egraph[eclass].data {
-                MyAnalysisData::Shape(shape_data) => shape_data.shape.clone(),
-                MyAnalysisData::AccessPattern(access) => {
-                    if let Some(output_shape) = &access.relay_shape {
-                        output_shape.clone()
-                    } else {
-                        IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat())
-                    }
-                }
-                x => panic!("Not a valid pattern match {:?}", x),
-            };
-            format!(
-                "(accelerator-call flex-linear ?x ?w ?bias (shape {}))",
-                shape
-                    .slice()
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            )
-            .parse::<Pattern<Language>>()
-            .unwrap()
-            .apply_one(egraph, eclass, subst)
+            // let shape = match &egraph[eclass].data {
+            //     MyAnalysisData::Shape(shape_data) => shape_data.shape.clone(),
+            //     MyAnalysisData::AccessPattern(access) => {
+            //         if let Some(output_shape) = &access.relay_shape {
+            //             output_shape.clone()
+            //         } else {
+            //             IxDyn(&[access.shape.slice(), access.item_shape.slice()].concat())
+            //         }
+            //     }
+            //     x => panic!("Not a valid pattern match {:?}", x),
+            // };
+            "(accelerator-call flex-linear ?x ?w ?bias)"
+                .parse::<Pattern<Language>>()
+                .unwrap()
+                .apply_one(egraph, eclass, subst)
         }
     }
     rewrite!("linear_to_flexnlp";
