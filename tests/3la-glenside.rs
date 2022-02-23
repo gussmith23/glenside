@@ -79,7 +79,7 @@ fn test_3la_glenside_linear_rewrite() {
         .to_svg("/home/dh63/marlowe/smoke-test/glenside/render_egraph.svg")
         .unwrap();
     println!("{}", runner.egraph.record().to_record_instructions(id));
-    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction {});
+    let extractor = Extractor::new(&runner.egraph, AcceleratorCostFunction(runner.egraph.total_size() as f64));
     let (_cost, best) = extractor.find_best(id);
     println!("{}", best.pretty(80));
 }
