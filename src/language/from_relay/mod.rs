@@ -87,7 +87,7 @@ pub fn conv1d(
     // };
 
     let pad_axis_id = expr.add(Language::Usize(2));
-    let access_dim_id = expr.add(Language::Usize(1));
+    // let access_dim_id = expr.add(Language::Usize(1));
     let pad_before_id = expr.add(Language::Usize(padding[0]));
     let pad_after_id = expr.add(Language::Usize(padding[1]));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
@@ -114,11 +114,23 @@ pub fn conv1d(
     let usize_o_id = expr.add(Language::Usize(1));
     let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
     let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
-    let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
+    let weights_shape_id = expr.add(Language::Shape(Box::new([
+        usize_c_id,
+        usize_kw_id,
+    ])));
+
+    let usize_data_n_id = expr.add(Language::Usize(data_shape[0]));
+    let usize_data_c_id = expr.add(Language::Usize(data_shape[1]));
+    let usize_data_w_id = expr.add(Language::Usize(data_shape[2]));
+    let data_shape_id = expr.add(Language::Shape(Box::new([
+        usize_data_n_id,
+        usize_data_c_id,
+        usize_data_w_id])));
     let data_id = access(expr, data_id, 1);
     // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessWindows([
         data_id,
+        data_shape_id,
         weights_shape_id,
         stride_shape_id,
     ]));
@@ -219,6 +231,17 @@ pub fn conv2d(
         pad_after_id,
     ]));
 
+    let usize_data_n_id = expr.add(Language::Usize(data_shape[0]));
+    let usize_data_c_id = expr.add(Language::Usize(data_shape[1]));
+    let usize_data_h_id = expr.add(Language::Usize(data_shape[2]));
+    let usize_data_w_id = expr.add(Language::Usize(data_shape[3]));
+    let data_shape_id = expr.add(Language::Shape(Box::new([
+        usize_data_n_id,
+        usize_data_c_id,
+        usize_data_h_id,
+        usize_data_w_id,
+    ])));
+
     let in_channels = data_shape[1];
 
     let data_id = match groups as usize {
@@ -243,6 +266,7 @@ pub fn conv2d(
 
             let data_id = expr.add(Language::AccessWindows([
                 data_id,
+                data_shape_id,
                 weights_shape_id,
                 stride_shape_id,
             ]));
@@ -310,6 +334,7 @@ pub fn conv2d(
                 );
                 let data_id = expr.add(Language::AccessWindows([
                     data_id,
+                    data_shape_id,
                     weights_shape_id,
                     stride_shape_id,
                 ]));
@@ -1057,21 +1082,14 @@ fn compile_expression(
                 }
                 "nn.max_pool2d" => {
                     assert_eq!(call.args.len(), 1);
+                    let data_shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
                     let attrs = call
                         .attrs
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::nn::MaxPool2DAttrs>()
                         .unwrap();
                     assert_eq!(
-                        call.args
-                            .get(0)
-                            .unwrap()
-                            .checked_type
-                            .clone()
-                            .downcast::<TensorType>()
-                            .unwrap()
-                            .shape
-                            .len(),
+                        data_shape.len(),
                         4
                     );
                     assert_eq!(attrs.pool_size.len(), 2);
@@ -1266,8 +1284,21 @@ fn compile_expression(
                                 ],
                             );
 
+                            let data_shape_n_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            let data_shape_c_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            let data_shape_h_id = glenside_expr.add(Language::Usize(data_shape[0]));
+                            let data_shape_w_id = glenside_expr.add(Language::Usize(data_shape[0]));
+
+                            let data_shape_id = glenside_expr.add(Language::Shape(Box::new([
+                                data_shape_n_id,
+                                data_shape_c_id,
+                                data_shape_h_id,
+                                data_shape_w_id,
+                            ])));
+
                             let data_id = glenside_expr.add(Language::AccessWindows([
                                 data_id,
+                                data_shape_id,
                                 pool_window_shape_id,
                                 stride_shape_id,
                             ]));
