@@ -8,7 +8,6 @@ use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::cmp::Ordering;
-use std::mem;
 
 pub fn merge_if_different<D: PartialEq>(to: &mut D, new: D) -> bool {
     if *to == new {
@@ -1445,29 +1444,30 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let wgt_data = &egraph[ids[2]].data;
                         let inp_shape = match inp_data {
                             MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
-                            MyAnalysisData::Legacy(p)        => p.shape.clone(),
+                            MyAnalysisData::Shape(s)        => Some(s.shape.clone()),
                             _ => panic!("Data for input should have shape info")
                         };
                         let wgt_shape = match wgt_data {
                             MyAnalysisData::AccessPattern(p) => Some(p.shape.clone()),
-                            MyAnalysisData::Legacy(p)        => p.shape.clone(),
+                            MyAnalysisData::Shape(s)        => Some(s.shape.clone()),
                             _ => panic!("Data for weight should have shape info")
                         };
                         let out_shape = match (inp_shape, wgt_shape) {
-                            (Some(inp_shape), Some(wgt_shape)) => Some(IxDyn(&[inp_shape[0], wgt_shape[0]])),
-                            (_, _) => None,
+                            (Some(inp_shape), Some(wgt_shape)) => IxDyn(&[inp_shape[0], wgt_shape[0]]),
+                            (_, _) => panic!("Cannot infer type for {:?}", accelerator_func_data.pattern),
                         };
-                        MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                            shape: out_shape,
-                            usize_value: None
+                        MyAnalysisData::Shape(ShapeData {
+                            shape: out_shape
                         })
                     },
                       crate::language::AcceleratorFunc::VTAConv1D
                     | crate::language::AcceleratorFunc::FlexLSTM => {
                         // TODO: add shape here
-                        MyAnalysisData::Legacy(MyAnalysisDataLegacyData {
-                            shape: None,
-                            usize_value: None,
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&[]),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: None
                         })
                     }
                 }
@@ -1584,31 +1584,23 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .iter()
                         .map(|id| &egraph[*id].data)
                         .collect::<Vec<_>>()[..] {
-                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Legacy(legacy)] => {
-                                if let Some(axis) = legacy.usize_value {
-                                    let shape_length = a.shape.slice().len();
-                                    assert!(axis < shape_length);
-                                    if axis == shape_length - 1 {
-                                        AccessPatternData {
-                                            shape: IxDyn(&[]),
-                                            item_shape: IxDyn(&a.shape.slice()[..axis]),
-                                            zero_regions: HashMap::default(),
-                                            relay_shape: Some(IxDyn(&a.shape.slice()[..axis])),
-                                        }
-                                    } else {
-                                        AccessPatternData {
-                                            shape: IxDyn(&[]),
-                                            item_shape: IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat()),
-                                            zero_regions: HashMap::default(),
-                                            relay_shape: Some(IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat())),
-                                        }
+                            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Usize(usize_data)] => {
+                                let shape_length = a.shape.slice().len();
+                                let axis = *usize_data;
+                                assert!(axis < shape_length);
+                                if axis == shape_length - 1 {
+                                    AccessPatternData {
+                                        shape: IxDyn(&[]),
+                                        item_shape: IxDyn(&a.shape.slice()[..axis]),
+                                        zero_regions: HashMap::default(),
+                                        relay_shape: Some(IxDyn(&a.shape.slice()[..axis])),
                                     }
                                 } else {
                                     AccessPatternData {
                                         shape: IxDyn(&[]),
-                                        item_shape: IxDyn(&[]),
+                                        item_shape: IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat()),
                                         zero_regions: HashMap::default(),
-                                        relay_shape: Some(IxDyn(&[])),
+                                        relay_shape: Some(IxDyn(&[&a.shape.slice()[..axis], &a.shape.slice()[axis + 1..]].concat())),
                                     }
                                 }
                             }
@@ -2562,10 +2554,9 @@ impl egg::Analysis<Language> for MyAnalysis {
             &AccessReshape([access_id, access_shape_id]) => {
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
-                    MyAnalysisData::Legacy(p) => match &p.shape {
-                        Some(s) => AccessPatternData {shape: s.clone(), item_shape: IxDyn(&[]), zero_regions: HashMap::default(),
-                                                      relay_shape: None},
-                        None => panic!("No shape information before")
+                    MyAnalysisData::Shape(s) => {
+                        AccessPatternData {shape: s.shape.clone(), item_shape: IxDyn(&[]), zero_regions: HashMap::default(),
+                                                      relay_shape: None}
                     }
                     _ => panic!("Expected an access as the first argument to access-reshape"),
                 };
