@@ -5026,19 +5026,21 @@ mod tests {
     fn flexasr_maxpool_split_tensorize() {
         test_logger::ensure_env_logger_initialized();
 
-        let mut map = HashMap::default();
-        map.insert("data".to_string(), vec![16, 4, 4]);
-
         // TODO(@gussmith23) change to rn50 maxpool shape
         // Very simple "max pool" layer with unrealistic shapes.
         let program = "
          (compute reduce-max 
           (access-windows 
-           (access (access-tensor data) 1) 
+           (access (access-tensor data) 2) 
            (shape 2 2) (shape 2 2)))
          "
         .parse()
         .unwrap();
+
+        // Define the shape of the input data. In this case, we're using
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![3, 16, 4, 4]);
+
 
         let mut egraph =
             egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
@@ -5083,7 +5085,7 @@ mod tests {
                 (access-transpose
                  (access-flatten
                   (access-windows
-                   (access (access-tensor data) 1)
+                   (access (access-tensor data) 2)
                    (shape 2 2)
                    (shape 2 2)))
                  (list 1 0))
@@ -5091,7 +5093,7 @@ mod tests {
               0))
             (list 1 0))
            1)
-          (access-shape (shape 16 2 2) (shape)))
+          (access-shape (shape 3 16 2 2) (shape)))
         "
         .parse::<Pattern<_>>()
         .unwrap()
