@@ -78,6 +78,8 @@ define_language! {
         "systolic-array-conv2d-im2col-nchw-oihw-with-blocking" = SystolicArrayConv2dIm2colNchwOihwWithBlocking([Id; 8]),
         "systolic-array-conv2d-im2col-nhwc-hwio-with-blocking" = SystolicArrayConv2dIm2colNhwcHwioWithBlocking([Id; 8]),
 
+        "flexasr-maxpool" = FlexASRMaxPool([Id; 1]),
+
         // (access-windows <access> <filters-shape: Shape> <stride-shape: Shape>)
         // Form the windows which will be convolved over.
         // TODO(@gussmith23) AccessWindows shouldn't be specific to filters.
@@ -1261,6 +1263,17 @@ impl egg::Analysis<Language> for MyAnalysis {
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
         use Language::*;
         match enode {
+            &Language::FlexASRMaxPool([access_id]) => {
+                let mut access = match &egraph[access_id].data  {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                };
+
+                assert_eq!(access.item_shape.slice(), &[2]);
+                access.item_shape = IxDyn(&[]);
+
+                MyAnalysisData::AccessPattern(access)
+            }
             &SystolicArrayConv2dIm2colNhwcHwioWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
