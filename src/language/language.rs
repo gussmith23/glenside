@@ -1466,8 +1466,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
-                    crate::language::RelayOperator::RelayAdd
-                    | crate::language::RelayOperator::RelayMaximum
+                      crate::language::RelayOperator::RelayMaximum
                     | crate::language::RelayOperator::RelayMinimum => {
                         let (a, b) = match params[1..]
                             .iter()
@@ -1517,6 +1516,32 @@ impl egg::Analysis<Language> for MyAnalysis {
                             zero_regions,
                         })
                     }
+                    crate::language::RelayOperator::RelayAdd => {
+                        let access = match params[1..]
+                                            .iter()
+                                            .map(|id| &egraph[*id].data)
+                                            .collect::<Vec<_>>()[..] {
+                                    [MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)] => {
+                                        let size_a = a.shape
+                                                    .slice()
+                                                    .into_iter()
+                                                    .map(|&x| x)
+                                                    .reduce(|x, y| x * y);
+                                        let size_b = b.shape
+                                                    .slice()
+                                                    .into_iter()
+                                                    .map(|&x| x)
+                                                    .reduce(|x, y| x * y);
+                                        if size_a > size_b {
+                                            a.clone()
+                                        } else {
+                                            b.clone()
+                                        }
+                                    }
+                                    _ => panic!("Relay Add only supports 2 params currently")
+                                };
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::RelayDense => {
                         let zero_regions = HashMap::default();
                         let access = match params[1..]
@@ -1527,7 +1552,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let batch = a.shape[0];
                                 let in_feat = a.shape[1];
                                 let out_feat = b.shape[0];
-                                let new_shape = [batch, out_feat, 0, 0];
+                                assert_eq!(b.shape[1], in_feat);
+                                let new_shape = [batch, out_feat];
                                 AccessPatternData {
                                     shape: IxDyn(&new_shape),
                                     item_shape: IxDyn(&[]),
@@ -1545,6 +1571,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     .map(|id| &egraph[*id].data)
                                     .collect::<Vec<_>>()[..] {
                                         [MyAnalysisData::AccessPattern(a), MyAnalysisData::Shape(shape_data)] => {
+                                            assert_eq!(a.shape.slice()
+                                                              .into_iter()
+                                                              .map(|&x| x)
+                                                              .reduce(|x, y| x * y),
+                                                       shape_data.shape.slice()
+                                                                       .into_iter()
+                                                                       .map(|&x| x)
+                                                                       .reduce(|x, y| x * y));
                                             AccessPatternData {
                                                 shape: IxDyn(shape_data.shape.slice()),
                                                 item_shape: IxDyn(&[]),
