@@ -115,14 +115,6 @@ pub fn conv1d(
     let usize_c_id = expr.add(Language::Usize(weights_shape[1]));
     let usize_kw_id = expr.add(Language::Usize(weights_shape[2]));
     let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
-
-    // let usize_data_n_id = expr.add(Language::Usize(data_shape[0]));
-    // let usize_data_c_id = expr.add(Language::Usize(data_shape[1]));
-    // let usize_data_w_id = expr.add(Language::Usize(data_shape[2]));
-    // let data_shape_id = expr.add(Language::Shape(Box::new([
-    //     usize_data_n_id,
-    //     usize_data_c_id,
-    //     usize_data_w_id])));
     let data_id = access(expr, data_id, 1);
     // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessWindows([
