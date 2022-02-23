@@ -2,9 +2,9 @@ name: Check formatting
 
 on:
   push:
-    branches: [ main, 3la-pldi-push-main ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, 3la-pldi-push-main ]
+    branches: [ main ]
 
 jobs:
   check-formatting:
