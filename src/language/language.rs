@@ -1649,7 +1649,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             MyAnalysisData::AccessPattern(a) => a.clone(),
                             _ => panic!(),
                         };
-        
+
                         assert_eq!(access.item_shape.ndim(), 2);
                         assert_eq!(access.shape.ndim(), 0);
                         let t = access.item_shape[0];
@@ -1658,7 +1658,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         assert_eq!(h % 16, 0);
                         access.item_shape[0] = access.item_shape[0] / 2;
                         access.contains_accelerator_calls = true;
-        
+
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::AcceleratorFunc::HlsCNNConv2D => {
@@ -2055,7 +2055,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         assert_eq!(group, channels);
                                         assert_eq!(kernel_size.shape[0], *channels);
 
-                                        let mut weight_shape = weight
+                                        let weight_shape = weight
                                             .shape
                                             .slice()
                                             .iter()
