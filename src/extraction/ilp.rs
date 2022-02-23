@@ -611,6 +611,7 @@ mod tests {
         map.insert("t".to_string(), shape.clone());
         let mut egraph = EGraph::new(MyAnalysis {
             name_to_shape: map.clone(),
+            name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
 
@@ -622,7 +623,10 @@ mod tests {
         let (out_expr, _old_id_to_new_id_map) = extract_single_expression(
             &model,
             &result.variables,
-            EGraph::new(MyAnalysis { name_to_shape: map }),
+            EGraph::new(MyAnalysis {
+                name_to_shape: map,
+                name_to_dtype: HashMap::default(),
+            }),
         );
 
         for eclass in out_expr.classes() {
