@@ -2185,16 +2185,59 @@ pub fn systolic_array_conv2d_im2col_fc_with_blocking(
 }
 
 /// Rewrite mapping maxpools to the FlexASR accelerator.
+///
+/// A single invocation of FlexASR's maxpool operator does the following:
+/// Given a number of *timesteps* t and *hidden states* h, the input data looks
+/// like:
+/// ```text
+/// [ [d_0_0, ..., d_0_h], ..., [d_t_0, ..., d_t_h] ]
+/// ```
+/// The maxpool computes the max between `d_0_i` and `d_1_i`, between `d_2_i`
+/// and `d_3_i`, etc., for all `i`. The result is an array with the same number
+/// of hidden states but half the number of timesteps. Because the number of
+/// timesteps is halved, we require the timesteps to be divisible by 2.
+///
+/// Memory is laid out in the manner described above. Within FlexASR, Each
+/// timestep is 128 bits: 16 hidden states, where each state is 8 bits. However,
+/// FlexASR supports more than 16 hidden states. It also supports timesteps not
+/// divisible by 2, though I don't think we're going to worry about supporting
+/// that on the Glenside side for now, because all of our examples should be
+/// divisible by 2.
+///
+/// Number of hidden states should be a multiple of 16.
+///
+/// Note how we transform the access pattern that is fed into `flexasr-maxpool`.
+/// First, we transpose the access pattern, to indicate the "timestep-major"
+/// (like row-major) layout in memory. Then, we re-access at dimension 0, to
+/// indicate that the input data should be viewed as an opaque input tensor.
+/// This re-access is not necessary, and moreso in place so as not to abuse
+/// access pattern semantics.
 pub fn flexasr_maxpool() -> Rewrite<Language, MyAnalysis> {
     rewrite!("flexasr-maxpool";
-             "(compute reduce-max ?a)" => "(flexasr-maxpool ?a)"
-             if constrain_access("?a".parse().unwrap(),
-                                 move |a| a.shape.ndim() <= 1 && a.item_shape.slice() == &[2]))
+    "(compute reduce-max
+      (access-windows ?a (shape 2) (shape 2)))" =>
+    "(access
+      (access-transpose
+       (flexasr-maxpool
+        (access (access-transpose ?a (list 1 0)) 0))
+       (list 1 0))
+      1)"
+    if constrain_access("?a".parse().unwrap(), move |a| {
+       // Hidden states divisible by 16.
+       a.shape.ndim() == 1 && a.shape[0] % 16 == 0
+       // This check is a bit redundant (access-windows providing a
+       // length 1 stride/window shape means the compute dimensions
+       // here must be len 1) but we include it just to be clear!
+       && a.item_shape.ndim() == 1
+    }))
 }
 
 /// Breaks a large reduce-max into smaller reduce-maxes which are then reduced
 /// by the original reduce-max.
 pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
+    // TODO(@gussmith23) explain why...
+    assert!(strides <= window_len, "Strides > window_len will not work.");
+
     struct ApplierImpl {
         a: Var,
         window_len: usize,
@@ -2238,6 +2281,7 @@ pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
                                     && a.item_shape[0] % window_len == 0)
     )
 }
+
 #[cfg(test)]
 mod tests {
 
@@ -4756,5 +4800,186 @@ mod tests {
         .search_eclass(&runner.egraph, id)
         .unwrap();
         assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn flexasr_maxpool() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![32, 32]);
+        let program = "
+         (compute reduce-max (access-windows (access (access-tensor a) 1) (shape 2) (shape 2)))
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::flexasr_maxpool()];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+        match runner.stop_reason.unwrap() {
+            egg::StopReason::Saturated => (),
+            _ => panic!(),
+        };
+
+        let matches = "
+            (access
+             (access-transpose
+              (flexasr-maxpool
+               (access 
+                (access-transpose 
+                 (access (access-tensor a) 1)
+                 (list 1 0))
+                 0))
+              (list 1 0))
+             1)"
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn reassociate_max() {
+        let mut map = HashMap::default();
+        map.insert("a".to_string(), vec![16, 4]);
+        let program = "
+         (compute reduce-max (access (access-tensor a) 1))
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::reassociate_max(2, 2)];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (compute reduce-max
+             (access
+              (compute reduce-max
+               (access-windows
+                (access (access-tensor a) 1)
+                (shape 2)
+                (shape 2)))
+              1))
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    #[test]
+    fn reassociate_max_maxpool_2d() {
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![16, 4]);
+        let program = "
+         (compute reduce-max 
+          (access-windows 
+           (access (access-tensor data) 1) 
+           (shape 4) (shape 4)))
+        "
+        .parse()
+        .unwrap();
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![super::reassociate_max(2, 2)];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .run(&rws);
+
+        let matches = "
+            (compute reduce-max
+             (access
+              (compute reduce-max
+               (access-windows
+                (access-windows 
+                 (access (access-tensor data) 1) 
+                 (shape 4) (shape 4))
+                (shape 2)
+                (shape 2)))
+              2))
+             "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        assert_eq!(matches.substs.len(), 1);
+    }
+
+    /// Test in which we "split" or "reassociate" and "tensorize" to flexasr.
+    /// This is without flattening.
+    #[test]
+    fn flexasr_maxpool_split_tensorize() {
+        test_logger::ensure_env_logger_initialized();
+
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), vec![16, 4]);
+
+        // TODO(@gussmith23) change to rn50 maxpool shape
+        // Very simple "max pool" layer with unrealistic shapes.
+        let program = "
+         (compute reduce-max 
+          (access-windows 
+           (access (access-tensor data) 1) 
+           (shape 4) (shape 4)))
+         "
+        .parse()
+        .unwrap();
+
+        let mut egraph =
+            egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis { name_to_shape: map });
+        let id = egraph.add_expr(&program);
+
+        let rws = vec![
+            // Split.
+            super::reassociate_max(2, 2),
+            // Tensorize.
+            super::flexasr_maxpool(),
+
+            super::flatten_unflatten_any_access(),
+        ];
+
+        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
+            .with_egraph(egraph)
+            .with_iter_limit(60)
+            .run(&rws);
+
+        runner.print_report();
+
+        let matches = "
+            (compute reduce-max
+             (access
+              (compute reduce-max
+               (access-windows
+                (access-reshape (access-flatten (access-windows (access (access-tensor data) 1) (shape 4) (shape 4))) ?shape0)
+                (shape 2)
+                (shape 2)))
+              2))
+        "
+        .parse::<Pattern<_>>()
+        .unwrap()
+        .search_eclass(&runner.egraph, id)
+        .unwrap();
+        //assert_eq!(matches.substs.len(), 1);
+
+        for subst in matches.substs {
+            println!("{:?}", runner.egraph[subst["?print-me".parse().unwrap()]]);
+        }
+
+        todo!();
     }
 }
