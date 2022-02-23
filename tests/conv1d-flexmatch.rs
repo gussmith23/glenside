@@ -86,5 +86,4 @@ fn test_conv1d_flexmatch() {
     let _ = std::fs::write(data_output, data_json_dump.to_string()).unwrap();
     // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
     // let _ = std::fs::write(output_file, model).unwrap();
-    assert!(false);
 }
