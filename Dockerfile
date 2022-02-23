@@ -9,7 +9,7 @@ FROM ubuntu:18.04
 # https://stackoverflow.com/questions/44331836/apt-get-install-tzdata-noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update
-RUN apt install -y git libgtest-dev libssl-dev cmake wget unzip libtinfo-dev libz-dev libcurl4-openssl-dev libopenblas-dev g++ sudo python3-dev libclang-dev curl lsb-release wget software-properties-common pkg-config python3-pip
+RUN apt install -y git libgtest-dev cmake wget unzip libtinfo-dev libz-dev libcurl4-openssl-dev libopenblas-dev g++ sudo python3-dev libclang-dev curl lsb-release wget software-properties-common python3-pip libssl-dev pkg-config
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -60,5 +60,7 @@ RUN pip3 install --upgrade pip
 COPY ./requirements.txt ./requirements.txt
 RUN pip3 install -r requirements.txt
 
+# Build Glenside.
 WORKDIR /root/glenside
 COPY . .
+RUN --mount=type=ssh cargo build --no-default-features --features "tvm"
