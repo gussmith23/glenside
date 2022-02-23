@@ -2483,11 +2483,13 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
         conv1d,
         1e-60,
         r#"
-#[version = "0.0.5"]
-def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 3, 38, 20), float32] {
-  nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3)
-}
+    #[version = "0.0.5"]
+    def @main(%data: Tensor[(1, 3, 32), float32], %weights: Tensor[(8, 3, 3), float32]) -> Tensor[(1, 8, 17), float32] {
+        nn.conv1d(%data, %weights, strides=[2], padding=[3, 4]) /* ty=Tensor[(1, 8, 17), float32] */
+    }
 "#,
+
+
         r#"
 (access-transpose
  (compute dot-product
