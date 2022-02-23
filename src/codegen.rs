@@ -673,10 +673,10 @@ fn codegen_helper(
         &expr[id].nodes[0]
     } {
         // TODO(mike): we probably could make codegen happen here
-        Language::AcceleratorCall(_ids) => None,
-        Language::ConstantTensor(_ids) => None,
-        Language::AcceleratorFunc(_) => None,
-        Language::DataType(_) => None,
+        Language::AcceleratorCall(_ids) => todo!(),
+        Language::ConstantTensor(_ids) => todo!(),
+        Language::AcceleratorFunc(_) => todo!(),
+        Language::DataType(_) => todo!(),
         Language::RelayOperatorCall(ids) => {
             let relay_op = match &expr[ids[0]].data {
                 MyAnalysisData::RelayOperator(op) => op,
@@ -829,8 +829,8 @@ softmax1D((float*) {X}, (float*) {Y}, {N});
 
                     Some(softmax_out)
                 }
-                RelayOperator::RelayDense => Some(format!("")),
-                RelayOperator::RelayReshape => None,
+                RelayOperator::RelayDense => todo!(),
+                RelayOperator::RelayReshape => todo!(),
                 RelayOperator::RelayReLU => {
                     let data = get_c_variable_for_id(expr, ids[1]);
 
