@@ -1827,7 +1827,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 let index = MyAnalysis::get_usize(ids[1], egraph);
                 let data = match &egraph[ids[0]].data {
                     MyAnalysisData::Tuple(x) => x,
-                    _ => panic!(),
+                    _ => panic!("Expected {:?} to be a Tuple.", &egraph[ids[0]]),
                 };
                 data[index].clone()
             }
