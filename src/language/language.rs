@@ -1626,8 +1626,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     .map(|id| &egraph[*id].data)
                                     .collect::<Vec<_>>()[..] {
                                         [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight)] => {
-                                            let data_shape = data.item_shape.slice();
-                                            let weight_shape = weight.shape.slice();
+                                            let data_shape = data.shape.slice().iter().chain(data.item_shape.slice().iter()).cloned().collect::<Vec<_>>();
+                                            let weight_shape = weight.shape.slice().iter().chain(weight.item_shape.slice().iter()).cloned().collect::<Vec<_>>();
                                             assert_eq!(data_shape.len(), 3);
                                             assert_eq!(weight_shape.len(), 3);
                                             assert_eq!(data_shape[1], weight_shape[1]);
