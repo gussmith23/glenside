@@ -833,10 +833,9 @@ fn compile_expression(
             0,
             "Only scalar constants supported for now"
         );
-        assert_eq!(
-            tuple_type.dtype,
-            "float32".parse().unwrap(),
-            "Only float32x1 constants supported for now",
+        assert!(
+            tuple_type.dtype == "float32".parse().unwrap() || tuple_type.dtype == "int32".parse().unwrap(),
+            "Only float32x1 or int32x1 constants supported for now",
         );
         assert_eq!(
             constant.data.size(),
@@ -849,20 +848,25 @@ fn compile_expression(
         //     0,
         //     "Only scalar constants supported for now"
         // );
-        assert_eq!(
-            constant.data.dtype(),
-            "float32".parse().unwrap(),
-            "Only float32x1 constants supported for now",
+        assert!(
+            constant.data.dtype() == "float32".parse().unwrap() || constant.data.dtype() == "int32".parse().unwrap(),
+            "Only float32x1 or int32x1 constants supported for now",
         );
         // TODO(@gussmith23) This is a hack
         // Jared and Max are working on ndarray at the moment.
-        let value: f32 = unsafe { *(constant.data.as_dltensor().data as *const f32) };
-        let literal_id = glenside_expr.add(Language::NotNanFloat64(
-            NotNan::<f64>::new(value as f64).unwrap(),
-        ));
-        let literal_id = glenside_expr.add(Language::Literal(literal_id));
-        let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
-        (access_literal_id, None)
+        if constant.data.dtype() == "float32".parse().unwrap() {
+            let value: f32 = unsafe { *(constant.data.as_dltensor().data as *const f32) };
+            let literal_id = glenside_expr.add(Language::NotNanFloat64(
+                NotNan::<f64>::new(value as f64).unwrap(),
+            ));
+            let literal_id = glenside_expr.add(Language::Literal(literal_id));
+            let access_literal_id = glenside_expr.add(Language::AccessLiteral(literal_id));
+            (access_literal_id, None)
+        } else {
+            let value: i32 = unsafe { *(constant.data.as_dltensor().data as *const i32) };
+            let literal_id = glenside_expr.add(Language::Int32(value));
+            (literal_id, None)
+        }
     } else if let Ok(tuple_get_item) = relay_expr
         .clone()
         .downcast::<tvm::ir::relay::TupleGetItem>()
@@ -1388,6 +1392,36 @@ fn compile_expression(
                         )
                     }
 
+                    (data_id, None)
+                }
+                "nn.pad" => {
+                    let attrs = call.attrs.clone().downcast::<tvm::ir::relay::attrs::nn::PadAttrs>().unwrap();
+                    assert_eq!(call.args.len(), 2);
+                    assert_eq!(attrs.pad_mode, "constant");
+                    let pad_value = unsafe {
+                        *(call.args.get(1).unwrap().downcast::<tvm::ir::relay::Constant>().unwrap().data.as_dltensor().data as *const i32)
+                    };
+                    assert_eq!(pad_value, 0);
+                    let mut data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let pad_type_id = glenside_expr.add(Language::PadType(PadType::ZeroPadding));
+                    for axis in 0..attrs.pad_width.len() {
+                        let padding = attrs.pad_width.get(axis as isize).unwrap();
+                        assert_eq!(padding.len(), 2);
+                        let pad_before = padding.get(0).unwrap()
+                            .downcast::<IntImm>()
+                            .unwrap()
+                            .value as i32;
+                        let pad_after = padding.get(1).unwrap()
+                            .downcast::<IntImm>()
+                            .unwrap()
+                            .value as i32;
+                        if pad_before > 0 || pad_after > 0 {
+                            let axis_id = glenside_expr.add(Language::Usize(axis as usize));
+                            let pad_before_id = glenside_expr.add(Language::Usize(pad_before as usize));
+                            let pad_after_id = glenside_expr.add(Language::Usize(pad_after as usize));
+                            data_id = glenside_expr.add(Language::AccessPad([data_id, pad_type_id, axis_id, pad_before_id, pad_after_id]));
+                        }
+                    }
                     (data_id, None)
                 }
                 "nn.dense" => {
@@ -2772,6 +2806,17 @@ def @main(%data: Tensor[(1, 32, 32, 3), float32], %weights: Tensor[(3, 3, 3, 8),
 )
 "#
     );
+
+    test!(pad, 1e-60, r#"
+#[version = "0.0.5"]
+def @main(%data: Tensor[(1, 2, 3), float32]) {
+    nn.pad(%data, 0, pad_width=[[0, 0], [1, 0], [1, 1]])
+}"#,
+    r#"
+(access-pad 
+    (access-pad (access-tensor data) zero-padding 1 1 0)
+    zero-padding 2 1 1)
+"#);
 
     test!(
         multiply,

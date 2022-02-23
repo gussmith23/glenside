@@ -258,6 +258,8 @@ define_language! {
 
         Usize(usize),
 
+        Int32(i32),
+
         // Important that this go after usize, so that usizes are parsed as
         // usizes, not as floats.
         NotNanFloat64(NotNan<f64>),
@@ -626,6 +628,7 @@ pub struct AcceleratorFuncData {
 pub enum MyAnalysisData {
     Literal(ndarray::ArrayD<f64>),
     Usize(usize),
+    Int32(i32),
     AccessPattern(AccessPatternData),
     Shape(ShapeData),
     Tuple(Vec<MyAnalysisData>),
@@ -1122,6 +1125,12 @@ impl MyAnalysis {
             _ => panic!(),
         }
     }
+    pub fn get_i32(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> i32 {
+        match &egraph[id].data {
+            MyAnalysisData::Int32(x) => *x,
+            _ => panic!("cannot get i32 for {:?}", egraph[id].data),
+        }
+    }
     pub(crate) fn get_shape(id: Id, egraph: &EGraph<Language, MyAnalysis>) -> &IxDyn {
         match &egraph[id].data {
             MyAnalysisData::Shape(s) => &s.shape,
@@ -1180,7 +1189,7 @@ impl egg::Analysis<Language> for MyAnalysis {
         if let MyAnalysisData::AccessPattern(AccessPatternData {
             shape,
             item_shape,
-            zero_regions,
+            zero_regions: _,
             relay_shape,
         }) = to
         {
@@ -3242,6 +3251,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 })
             }
             Usize(u) => MyAnalysisData::Usize(*u),
+            Int32(x) => MyAnalysisData::Int32(*x),
             Symbol(name) => {
                 MyAnalysisData::Shape(ShapeData {
                     shape: ndarray::IxDyn(
