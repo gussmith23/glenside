@@ -1,7 +1,7 @@
 #![cfg(feature = "tvm")]
 
 use egg::EGraph;
-use glenside::language::MyAnalysis;
+use glenside::language::{MyAnalysis, MyAnalysisData};
 
 #[test]
 fn lstm_relay_to_glenside() {
@@ -909,5 +909,22 @@ def @main(%data: Tensor[(35, 10), int32], %hidden0: Tensor[(1, 10, 128), float32
         name_to_dtype: dtypes_vec.iter().cloned().collect(),
     });
 
-    egraph.add_expr(&expr);
+    let id = egraph.add_expr(&expr);
+
+    match &egraph[id].data {
+        MyAnalysisData::Tuple(v) => match v.as_slice() {
+            [MyAnalysisData::AccessPattern(a), MyAnalysisData::Tuple(t)] => {
+                assert_eq!(a.as_vec(), vec![350, 33278]);
+                match t.as_slice() {
+                    [MyAnalysisData::Tuple(t0), MyAnalysisData::Tuple(t1)] => {
+                        assert_eq!(t0.len(), 0);
+                        assert_eq!(t1.len(), 0);
+                    }
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        },
+        _ => panic!(),
+    }
 }
