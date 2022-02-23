@@ -7005,16 +7005,16 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
         &vec![RelayOperator::RelaySqueeze]
     );
 
-        test!(
-            conv2d,
-            1e-5,
-            r#"
+    test!(
+        conv2d,
+        1e-5,
+        r#"
     #[version = "0.0.5"]
     def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3), float32]) -> Tensor[(1, 8, 17, 12), float32] {
       nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4]) /* ty=Tensor[(1, 8, 17, 12), float32] */
     }
     "#,
-            r#"
+        r#"
     (access-transpose
      (compute dot-product
       (access-cartesian-product
@@ -7048,18 +7048,18 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
     "#,
         &vec![super::conv2d_relay_to_glenside(),],
         &vec![RelayOperator::RelayConv2D]
-        );
-    
-        test!(
-            conv2d_nhwc_hwio,
-            1e-5,
-            r#"
+    );
+
+    test!(
+        conv2d_nhwc_hwio,
+        1e-5,
+        r#"
     #[version = "0.0.5"]
     def @main(%data: Tensor[(1, 32, 32, 3), float32], %weights: Tensor[(3, 3, 3, 8), float32]) -> Tensor[(1, 17, 12, 8), float32] {
       nn.conv2d(%data, %weights, strides=[2, 3], padding=[1, 2, 3, 4], data_layout="NHWC", kernel_layout="HWIO")
     }
     "#,
-            r#"
+        r#"
     (access-transpose
      (access-transpose
       (compute dot-product
@@ -7099,6 +7099,5 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
     "#,
         &vec![super::conv2d_relay_to_glenside(),],
         &vec![RelayOperator::RelayConv2D]
-        );
-
+    );
 }
