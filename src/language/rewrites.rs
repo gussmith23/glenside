@@ -2648,7 +2648,7 @@ pub fn conv2d_relay_to_glenside() -> RW {
             };
 
             assert_eq!(group, 1);
-            assert_eq!(strides.shape.ndim(), 3);
+            assert_eq!(strides.shape.ndim(), 2);
 
             let mut expr = RecExpr::default();
             let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
@@ -2659,7 +2659,7 @@ pub fn conv2d_relay_to_glenside() -> RW {
                 data.as_vec().as_slice(),
                 weights_id,
                 weight.as_vec().as_slice(),
-                &strides.shape.slice()[1..3],
+                &strides.shape.slice(),
                 padding.shape.slice(),
                 &[1, 1],
                 group.try_into().unwrap(),

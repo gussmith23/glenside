@@ -2201,7 +2201,6 @@ fn compile_expression(
 
                     let stride_shape_id = {
                         let mut stride_list = Vec::default();
-                        stride_list.push(glenside_expr.add(Language::Num(1)));
                         stride_list.push(
                             glenside_expr.add(Language::Num(
                                 attrs
@@ -2297,8 +2296,10 @@ fn compile_expression(
                     };
                     let groups_id =
                         glenside_expr.add(Language::Num(attrs.groups.try_into().unwrap()));
-                    let channel_id =
-                        glenside_expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
+
+                    // Channels seems to not be set. We will have to calculate output channels ourselves.
+                    let channel_id = glenside_expr.add(Language::Num(0));
+
                     let activation_layout_id = glenside_expr.add(Language::RelayActivationLayout(
                         match attrs.data_layout.as_str().unwrap() {
                             "NCHW" => RelayActivationLayout::NCHW,
