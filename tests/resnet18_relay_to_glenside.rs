@@ -288,7 +288,7 @@ def @main(%data: Tensor[(1, 3, 224, 224), float32], %bn_data_gamma: Tensor[(3), 
 
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec, _) =
+    let (expr, shapes_vec, dtypes_vec) =
         glenside::language::from_relay::from_relay(&module, false, &vec![]);
 
     let mut env = HashMap::default();

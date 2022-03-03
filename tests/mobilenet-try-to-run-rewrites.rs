@@ -38,7 +38,7 @@ fn mobilenet_try_to_run_rewrites() {
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec, _) =
+    let (expr, shapes_vec, dtypes_vec) =
         glenside::language::from_relay::from_relay(&module, false, &vec![]);
 
     let mut env = HashMap::default();
