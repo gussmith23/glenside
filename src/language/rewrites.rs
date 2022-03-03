@@ -3386,6 +3386,33 @@ pub fn squeeze_relay_to_glenside() -> RW {
                 { Impl{axis_var:"?axis".parse().unwrap(), data_var: "?data".parse().unwrap()} })
 }
 
+pub fn relay_to_glenside_rewrites() -> Vec<RW> {
+    vec![
+        conv2d_relay_to_glenside(),
+        conv1d_relay_to_glenside(),
+        softmax_relay_to_glenside(),
+        relu_relay_to_glenside(),
+        negative_relay_to_glenside(),
+        sqrt_relay_to_glenside(),
+        max_pool2d_relay_to_glenside_nchw(),
+        global_avg_pool2d_relay_to_glenside_nchw(),
+        expand_dims_relay_to_glenside(),
+        eliminate_expand_dims_zero_num_newaxis(),
+        pad_relay_to_glenside(),
+        dense_relay_to_glenside(),
+        add_relay_to_glenside(),
+        multiply_relay_to_glenside(),
+        divide_relay_to_glenside(),
+        batch_flatten_relay_to_glenside(),
+        bias_add_relay_to_glenside(),
+        concatenate_relay_to_glenside(),
+        simplify_tuple_get_item(),
+        transpose_relay_to_glenside(),
+        reshape_relay_to_glenside(),
+        squeeze_relay_to_glenside(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
 
