@@ -3165,6 +3165,11 @@ pub fn bias_add_relay_to_glenside() -> RW {
                 MyAnalysisData::AccessPattern(v) => v.clone(),
                 _ => panic!(),
             };
+            let axis = if axis < 0 {
+                axis + i64::try_from(data_shape.as_vec().len()).unwrap()
+            } else {
+                axis
+            };
 
             let mut expr = RecExpr::default();
             let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
