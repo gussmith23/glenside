@@ -2701,41 +2701,55 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(_channels), MyAnalysisData::Shape(_kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(ker_layout)] =>
                             {
-                                match act_layout {
-                                    crate::language::RelayActivationLayout::NCHW => (),
-                                    crate::language::RelayActivationLayout::NHWC => warn!("Conv2d with NHWC layout detected. The conv2d RelayOperator for Conv2d is broken, but we don't currently have time to fix it before PLDI."),
-                                }
-                                let mut data_shape = data
-                                    .shape
-                                    .slice()
-                                    .iter()
-                                    .chain(data.item_shape.slice().iter())
-                                    .cloned()
-                                    .collect::<Vec<_>>();
-                                data_shape[2] += padding.shape[0] + padding.shape[2];
-                                data_shape[3] += padding.shape[1] + padding.shape[3];
-                                let n = data_shape[0].clone();
-                                let c = channels.clone();
+                                let (n, c, h, w) = match (act_layout, &data.as_vec()[..]) {
+                                    (
+                                        crate::language::RelayActivationLayout::NCHW,
+                                        &[n, c, h, w],
+                                    ) => (n, c, h, w),
+                                    (
+                                        crate::language::RelayActivationLayout::NHWC,
+                                        &[n, h, w, c],
+                                    ) => (n, c, h, w),
+                                    _ => panic!(),
+                                };
+                                let (o, i, kh, kw) = match (ker_layout, &weight.as_vec()[..]) {
+                                    (crate::language::RelayKernelLayout::OIHW, &[o, i, h, w]) => {
+                                        (o, i, h, w)
+                                    }
+                                    (crate::language::RelayKernelLayout::HWIO, &[h, w, i, o]) => {
+                                        (o, i, h, w)
+                                    }
+                                    _ => panic!(),
+                                };
+                                let h = padding.shape[0] + h + padding.shape[2];
+                                let w = padding.shape[1] + w + padding.shape[3];
+                                assert_eq!(strides.shape.ndim(), 2);
                                 match *group {
                                     1 => {
+                                        assert_eq!(i, c);
                                         let access_window_shape = access_windows_resulting_shape(
-                                            &IxDyn(&data_shape[1..]),
-                                            &kernel_size.shape,
+                                            &IxDyn(&[h, w]),
+                                            &IxDyn(&[kh, kw]),
                                             &strides.shape,
                                         );
-                                        let h = access_window_shape[1];
-                                        let w = access_window_shape[2];
+                                        assert_eq!(access_window_shape.len(), 2);
+                                        let h = access_window_shape[0];
+                                        let w = access_window_shape[1];
+                                        let out_shape = match act_layout {
+                                            crate::language::RelayActivationLayout::NCHW => {
+                                                vec![n, o, h, w]
+                                            }
+
+                                            crate::language::RelayActivationLayout::NHWC => {
+                                                vec![n, h, w, o]
+                                            }
+                                        };
                                         AccessPatternData {
-                                            shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
+                                            shape: IxDyn(&out_shape),
                                             item_shape: IxDyn(&[]),
-                                            relay_shape: Some(IxDyn(&[
-                                                n,
-                                                c.try_into().unwrap(),
-                                                h,
-                                                w,
-                                            ])),
+                                            relay_shape: Some(IxDyn(&out_shape)),
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls
@@ -2747,36 +2761,23 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             crate::language::RelayActivationLayout::NCHW => (),
                                             crate::language::RelayActivationLayout::NHWC => todo!("Not currently supported, supporting only NCHW for PLDI push.")
                                         }
-                                        match _ker_layout {
+                                        match ker_layout {
                                             crate::language::RelayKernelLayout::OIHW => (),
                                             crate::language::RelayKernelLayout::HWIO => todo!("Not currently supported, supporting only OIHW for PLDI push.")
                                         }
-                                        assert_eq!(c, *channels);
-                                        assert_eq!(group, channels);
-                                        assert_eq!(
-                                            kernel_size.shape[0],
-                                            usize::try_from(*channels).unwrap()
-                                        );
-
-                                        let weight_shape = weight
-                                            .shape
-                                            .slice()
-                                            .iter()
-                                            .chain(weight.item_shape.slice().iter())
-                                            .cloned()
-                                            .collect::<Vec<_>>();
 
                                         assert_eq!(
-                                            weight_shape[1],
-                                            data_shape[1] / usize::try_from(*group).unwrap()
+                                            i,
+                                            usize::try_from(c).unwrap()
+                                                / usize::try_from(*group).unwrap()
                                         );
 
                                         let access_window_shape = access_windows_resulting_shape(
-                                            &IxDyn(&data_shape[2..]),
-                                            &IxDyn(&kernel_size.shape.slice()[1..]),
-                                            &IxDyn(&strides.shape.slice()[1..]),
+                                            &IxDyn(&[h, w]),
+                                            &IxDyn(&[kh, kw]),
+                                            &IxDyn(&strides.shape.slice()),
                                         );
-
+                                        assert_eq!(access_window_shape.len(), 2);
                                         let h = access_window_shape[0];
                                         let w = access_window_shape[1];
 
@@ -7100,7 +7101,7 @@ mod tests {
          (relay-operator-call relay-conv2d
             (access-tensor data)
             (access-tensor weights)
-            (shape 1 2 3)
+            (shape 2 3)
             (shape 1 2 3 4)
             3
             3
@@ -7145,7 +7146,7 @@ mod tests {
          (relay-operator-call relay-conv2d
             (access-tensor data)
             (access-tensor weights)
-            (shape 1 4 1)
+            (shape 4 1)
             (shape 0 2 1 5)
             3
             3
