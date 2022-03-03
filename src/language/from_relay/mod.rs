@@ -432,6 +432,7 @@ pub fn conv2d(
     };
 
     // Transpose from NCHW to original layout
+    assert!(!use_opaque_operators);
     match data_layout {
         "NCHW" => data_id,
         "NHWC" => access_transpose(expr, data_id, &[0, 2, 3, 1]),
