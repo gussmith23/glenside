@@ -853,7 +853,7 @@ pub fn bubble_reshape_through_linear_generalized() -> Vec<RW> {
                     if can_broadcast("?bias".parse().unwrap())),
         rewrite!("add-to-bias-add";
                 "(relay-operator-call relay-add ?x ?b)"
-                => "(relay-operator-call relay-bias-add ?x ?b 1)"
+                => "(relay-operator-call relay-bias-add ?x ?b -1)"
                     if can_broadcast("?b".parse().unwrap())),
     ]
 }
