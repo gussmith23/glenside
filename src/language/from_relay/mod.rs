@@ -2189,7 +2189,6 @@ fn compile_expression(
                             .value,
                         1
                     );
-                    assert_eq!(attrs.groups, 1);
                     assert_eq!(attrs.out_layout, "");
                     assert_eq!(
                         attrs.out_dtype,
