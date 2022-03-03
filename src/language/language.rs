@@ -2880,7 +2880,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 assert_eq!(rhs_relay_shape[1], in_feat);
                                 let new_shape = [batch, out_feat];
                                 AccessPatternData {
-                                    shape: IxDyn(&[]),
+                                    shape: IxDyn(&new_shape),
                                     item_shape: IxDyn(&[]),
                                     relay_shape: Some(IxDyn(&new_shape)),
                                     zero_regions,
