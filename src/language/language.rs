@@ -1,7 +1,7 @@
 use crate::language::RelayOperator::*;
-use egg::{define_language, EGraph, Id};
+use egg::{define_language, EGraph, Id, Language as LanguageTrait};
 use itertools::{any, multizip, EitherOrBoth::*, Itertools};
-use log::{debug, warn};
+use log::debug;
 use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
@@ -425,6 +425,56 @@ pub enum RelayOperator {
     /// (relay-operator-call relay-squeeze <data: access> <axes: list of num>)
     RelaySqueeze,
 }
+
+/// All variants of [`RelayOperator`].
+/// TODO(@gussmith23) We shouldn't always need this. Currently just used for
+/// from_relay.
+pub static RELAY_OPS: &[RelayOperator] = &[
+    RelayBatchNormInference,
+    RelaySoftmax,
+    RelayReLU,
+    RelayLeakyReLU,
+    RelayMaxPool2D,
+    RelayGlobalAvgPool2D,
+    RelayAvgPool2D,
+    RelayUpSampling,
+    RelayBatchFlatten,
+    RelayBiasAdd,
+    RelayDense,
+    RelayReshape,
+    RelayConv1D,
+    RelayErf,
+    RelayMean,
+    RelayAdd,
+    RelayMultiply,
+    RelayDivide,
+    RelaySigmoid,
+    RelayMaximum,
+    RelayMinimum,
+    RelayConv2D,
+    RelaySplit,
+    RelayCast,
+    RelayClip,
+    RelayLeftShift,
+    RelayRightShift,
+    RelayRound,
+    RelayTake,
+    RelayDropout,
+    RelayTanh,
+    RelayStack,
+    RelayLogSoftmax,
+    RelayStridedSlice,
+    RelayLayerNorm,
+    RelayBatchMatmul,
+    RelayZeros,
+    RelaySqrt,
+    RelayNegative,
+    RelayExpandDims,
+    RelayPad,
+    RelayConcatenate,
+    RelayTranspose,
+    RelaySqueeze,
+];
 
 impl FromStr for RelayOperator {
     type Err = ();
