@@ -4,6 +4,7 @@ use glenside::extraction::AcceleratorCostFunction;
 use glenside::language::{serialize_analysis_data, MyAnalysis};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use test_logger::test;
 
 #[test]
 fn test_resmlp() {
@@ -32,12 +33,8 @@ fn test_resmlp() {
         glenside::language::rewrites::linear_layer_accelerator_rewrites(),
     ];
     rws.extend(glenside::language::rewrites::bubble_reshape_through_linear_generalized());
-    let (id, id_map) = egraph.add_expr_with_record(&expr);
-    for (left, right) in equiv_worklist {
-        if let (Some(&new_left), Some(&new_right)) = (id_map.get(&left), id_map.get(&right)) {
-            egraph.union(new_left, new_right);
-        }
-    }
+    rws.append(&mut glenside::language::rewrites::relay_to_glenside_rewrites());
+    let (id, _id_map) = egraph.add_expr_with_record(&expr);
     egraph.rebuild();
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
