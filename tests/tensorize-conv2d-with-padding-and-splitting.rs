@@ -39,6 +39,7 @@ fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
         "NHWC",
         "HWIO",
         "",
+        false,
     );
 
     let mut map = HashMap::default();
