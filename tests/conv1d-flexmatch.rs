@@ -20,7 +20,7 @@ fn test_conv1d_flexmatch() {
     // }
     // "#;
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-    let (expr, shape_info, dtype_info, equiv_worklist) =
+    let (expr, shape_info, dtype_info) =
         glenside::language::from_relay::from_relay(&module, false, &vec![]);
     let mut env = HashMap::default();
     for (name, shape) in &shape_info {

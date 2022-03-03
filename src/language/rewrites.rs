@@ -718,7 +718,7 @@ pub fn lstm_to_flexasr() -> RW {
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         // The pattern in the Glenside language.
-        let (orig_pattern, _, _, _) = crate::language::from_relay::from_relay(
+        let (orig_pattern, _, _) = crate::language::from_relay::from_relay(
             &module,
             false,
             // Has to stay the same as the list above...
@@ -2672,6 +2672,7 @@ pub fn conv2d_relay_to_glenside() -> RW {
                     crate::language::RelayKernelLayout::HWIO => "HWIO",
                 },
                 "",
+                false,
             );
 
             let pattern_ast = PatternAst::from(
@@ -4708,6 +4709,7 @@ mod tests {
             "NHWC",
             "HWIO",
             "",
+            false,
         );
 
         let mut map = HashMap::default();
@@ -5398,6 +5400,7 @@ mod tests {
             "NHWC",
             "HWIO",
             "",
+            false,
         );
 
         let mut map = HashMap::default();
@@ -5467,6 +5470,7 @@ mod tests {
             "NCHW",
             "OIHW",
             "",
+            false,
         );
 
         let mut map = HashMap::default();
@@ -5582,6 +5586,7 @@ mod tests {
             "NHWC",
             "HWIO",
             "",
+            false,
         );
 
         let mut map = HashMap::default();
@@ -5754,6 +5759,7 @@ mod tests {
             "NCHW",
             "OIHW",
             "",
+            false,
         );
 
         let mut map = HashMap::default();
@@ -5870,6 +5876,7 @@ mod tests {
             "NHWC",
             "HWIO",
             "",
+            false,
         );
 
         let mut map = HashMap::default();
@@ -6341,7 +6348,7 @@ mod tests {
 
                 let module = tvm::ir::module::IRModule::parse("", $relay_str).unwrap();
 
-                let (expr, shapes_vec, dtypes_vec, _) =
+                let (expr, shapes_vec, dtypes_vec) =
                     from_relay::from_relay(&module, false, $use_opaque_operators_for);
 
                 let mut env = HashMap::default();

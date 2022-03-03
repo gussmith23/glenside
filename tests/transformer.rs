@@ -14,7 +14,7 @@ fn transformer() {
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec, _) = glenside::language::from_relay::from_relay(
+    let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         false,
         &vec![

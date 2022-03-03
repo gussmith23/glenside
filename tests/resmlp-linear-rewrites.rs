@@ -13,8 +13,11 @@ fn test_resmlp() {
     ));
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
-    let (expr, shape_info, dtype_info, equiv_worklist) =
-        glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shape_info, dtype_info) = glenside::language::from_relay::from_relay(
+        &module,
+        false,
+        &glenside::language::RELAY_OPS.into(),
+    );
     let mut env = HashMap::default();
     for (name, shape) in &shape_info {
         env.insert(name.clone(), shape.clone());

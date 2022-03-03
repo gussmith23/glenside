@@ -27,7 +27,7 @@ fn lstm_relay_to_glenside() {
 
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec, _) = glenside::language::from_relay::from_relay(
+    let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         false,
         &vec![
@@ -74,7 +74,7 @@ fn lstm_relay_to_glenside() {
         let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
         // The pattern in the Glenside language.
-        let (orig_pattern, _, _, _) = glenside::language::from_relay::from_relay(
+        let (orig_pattern, _, _) = glenside::language::from_relay::from_relay(
             &module,
             false,
             // Has to stay the same as the list above...
