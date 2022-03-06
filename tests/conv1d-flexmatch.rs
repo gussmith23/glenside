@@ -38,7 +38,7 @@ fn test_conv1d_flexmatch() {
         glenside::language::rewrites::dot_product_with_vta(),
     ];
     rws.append(&mut glenside::language::rewrites::relay_to_glenside_rewrites());
-    let (id, _id_map) = egraph.add_expr_with_record(&expr);
+    let id = egraph.add_expr(&expr);
     egraph.rebuild();
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
@@ -55,22 +55,23 @@ fn test_conv1d_flexmatch() {
     let model = best.pretty(80);
     println!("{}", model);
     println!("{}", _cost);
-    let json_dump = best.serialize();
-    let output_file = PathBuf::from(format!("{}/models/conv1d.json", env!("CARGO_MANIFEST_DIR")));
-    let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
-    egraph = EGraph::new(MyAnalysis {
-        name_to_shape: env.clone(),
-        name_to_dtype: dtype_info.into_iter().collect(),
-    });
-    let (_, id_map) = egraph.add_expr_with_record(&best);
-    let mut native_map = HashMap::new();
-    for (k, v) in id_map.into_iter() {
-        native_map.insert(k, v);
-    }
-    let data_json_dump = serialize_analysis_data(&egraph, &native_map);
-    let data_output = PathBuf::from(format!(
-        "{}/models/conv1d_data.json",
-        env!("CARGO_MANIFEST_DIR")
-    ));
-    let _ = std::fs::write(data_output, data_json_dump.to_string()).unwrap();
+    todo!("having to comment out the rest of this code b/c of serialize and add_expr_with_record");
+    // let json_dump = best.serialize();
+    // let output_file = PathBuf::from(format!("{}/models/conv1d.json", env!("CARGO_MANIFEST_DIR")));
+    // let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
+    // egraph = EGraph::new(MyAnalysis {
+    //     name_to_shape: env.clone(),
+    //     name_to_dtype: dtype_info.into_iter().collect(),
+    // });
+    // let (_, id_map) = egraph.add_expr_with_record(&best);
+    // let mut native_map = HashMap::new();
+    // for (k, v) in id_map.into_iter() {
+    //     native_map.insert(k, v);
+    // }
+    // let data_json_dump = serialize_analysis_data(&egraph, &native_map);
+    // let data_output = PathBuf::from(format!(
+    //     "{}/models/conv1d_data.json",
+    //     env!("CARGO_MANIFEST_DIR")
+    // ));
+    // let _ = std::fs::write(data_output, data_json_dump.to_string()).unwrap();
 }

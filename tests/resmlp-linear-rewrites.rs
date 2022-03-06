@@ -34,7 +34,7 @@ fn test_resmlp() {
     ];
     rws.extend(glenside::language::rewrites::bubble_reshape_through_linear_generalized());
     rws.append(&mut glenside::language::rewrites::relay_to_glenside_rewrites());
-    let (id, _id_map) = egraph.add_expr_with_record(&expr);
+    let id = egraph.add_expr(&expr);
     egraph.rebuild();
     let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
         .with_egraph(egraph)
@@ -51,20 +51,21 @@ fn test_resmlp() {
     println!("{}", best.pretty(80));
     // let output_file = PathBuf::from(format!("{}/models/resmlp-rewrite", env!("CARGO_MANIFEST_DIR")));
     // let _ = std::fs::write(output_file, model).unwrap();
-    let json_dump = best.serialize();
-    let output_file = PathBuf::from(format!(
-        "{}/models/resmlp-dump.json",
-        env!("CARGO_MANIFEST_DIR")
-    ));
-    let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
-    egraph = EGraph::new(MyAnalysis {
-        name_to_shape: env.clone(),
-        name_to_dtype: dtype_info.into_iter().collect(),
-    });
-    let (_, id_map) = egraph.add_expr_with_record(&best);
-    let mut native_map = HashMap::new();
-    for (k, v) in id_map.into_iter() {
-        native_map.insert(k, v);
-    }
-    let _data_json_dump = serialize_analysis_data(&egraph, &native_map);
+    todo!("commenting out the rest b/c of serialize and add_expr_with_record")
+    // let json_dump = best.serialize();
+    // let output_file = PathBuf::from(format!(
+    //     "{}/models/resmlp-dump.json",
+    //     env!("CARGO_MANIFEST_DIR")
+    // ));
+    // let _ = std::fs::write(output_file, json_dump.to_string()).unwrap();
+    // egraph = EGraph::new(MyAnalysis {
+    //     name_to_shape: env.clone(),
+    //     name_to_dtype: dtype_info.into_iter().collect(),
+    // });
+    // let (_, id_map) = egraph.add_expr_with_record(&best);
+    // let mut native_map = HashMap::new();
+    // for (k, v) in id_map.into_iter() {
+    //     native_map.insert(k, v);
+    // }
+    // let _data_json_dump = serialize_analysis_data(&egraph, &native_map);
 }
