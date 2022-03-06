@@ -324,7 +324,7 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
                 }
             }
             // [Id; 1]
-            &Language::ShapeOf(ids) => {
+            &Language::GetAccessShape(ids) | &Language::ShapeOf(ids) => {
                 for id in ids.iter() {
                     find_vars_recursive_helper(set, expr, *id);
                 }
@@ -411,7 +411,7 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
                 helper(worklist, expr, id);
             }
             // [Id; 1]
-            &Language::ShapeOf(ids) => {
+            &Language::GetAccessShape(ids) | &Language::ShapeOf(ids) => {
                 for id in ids.iter() {
                     helper(worklist, expr, *id);
                 }
@@ -669,6 +669,7 @@ fn codegen_helper(
         &expr[id].nodes[0]
     } {
         // TODO(mike): we probably could make codegen happen here
+        Language::GetAccessShape(_) => todo!(),
         Language::AcceleratorCall(_ids) => todo!(),
         Language::ConstantTensor(_ids) => todo!(),
         Language::AcceleratorFunc(_) => todo!(),

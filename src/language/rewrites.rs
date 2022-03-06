@@ -471,54 +471,8 @@ pub fn rewrite_nonmatching_cartesian_product_concatenate() -> Rewrite<Language, 
 // }
 
 pub fn flatten_unflatten_any_access() -> RW {
-    struct ApplierImpl(Var);
-    impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(
-            &self,
-            egraph: &mut EG,
-            eclass: Id,
-            subst: &Subst,
-            _searcher_ast: Option<&PatternAst<Language>>,
-            _rule_name: Symbol,
-        ) -> Vec<Id> {
-            let shape = match &egraph[subst[self.0]].data {
-                MyAnalysisData::AccessPattern(a) => a,
-                _ => panic!(),
-            };
-
-            format!(
-                "(access-reshape
-                      (access-flatten
-                       ?access
-                      )
-                      (access-shape
-                       (shape {})
-                       (shape {})
-                      )
-                     )",
-                shape
-                    .shape
-                    .slice()
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                shape
-                    .item_shape
-                    .slice()
-                    .iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            )
-            .parse::<Pattern<Language>>()
-            .unwrap()
-            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
-        }
-    }
     rewrite!("flatten-unflatten-all-accesses";
-             "?access" =>
-             { ApplierImpl("?access".parse().unwrap()) }
+             "?access" => "(access-reshape (access-flatten ?access) (get-access-shape ?access))"
              if is_access())
 }
 
