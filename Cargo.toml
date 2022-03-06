@@ -22,6 +22,7 @@ ndarray-npy = "0.6.0"
 
 [dependencies]
 approx = "0.3.2"
+egg = "0.7"
 either = "1.5.3"
 itertools = "0.9.0"
 log = "0.4.8"
@@ -53,12 +54,6 @@ git = "ssh://git@github.com/uwsampl/3la-tvm.git"
 # branch = "3la-pldi-push-main"
 rev = "82699dbfcbd942d49237addc4369f3f82c1f1147"
 optional = true
-
-[dependencies.egg]
-# rev = "39415f19acdacd6dde62f40cb2bb08f8669acc85"
-git = "https://github.com/gussmith23/egg"
-rev = "67f47d58c8c1b1e1ed07905894d4c8c58d1596fe"
-features = ["serde-json"]
 
 [dependencies.ndarray]
 version = "0.13.0"

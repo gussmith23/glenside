@@ -128,11 +128,11 @@ fn lstm_relay_to_glenside() {
 
     let runner = Runner::default().with_egraph(egraph).run(vec![&rewrite]);
 
-    let matches = "
+    let test_pattern = "
      (accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0)"
         .parse::<Pattern<_>>()
-        .unwrap()
-        .search(&runner.egraph);
+        .unwrap();
+    let matches = test_pattern.search(&runner.egraph);
     assert_eq!(matches.len(), 1);
 
     struct Cost {

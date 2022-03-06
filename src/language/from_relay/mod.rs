@@ -3019,6 +3019,7 @@ mod tests {
                     name_to_dtype: dtypes_vec.into_iter().collect(),
                 });
                 let id = egraph.add_expr(&expr);
+                egraph.rebuild();
 
                 let pattern = $glenside_str.parse::<Pattern<Language>>().unwrap();
                 assert!(pattern.search_eclass(&egraph, id).is_some());
