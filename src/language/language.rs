@@ -1898,7 +1898,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             zero_regions: HashMap::default(),
                             shape: IxDyn(&out_shape[..]),
                             item_shape: IxDyn(&[]),
-                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+                            // Setting this to false for now b/c their shapes are all messed up.
+                            // access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: true,
                         })
                     }
@@ -1915,9 +1917,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     zero_regions: HashMap::default(),
                                     shape: IxDyn(&[activations.as_vec()[0], weights.as_vec()[0]]),
                                     item_shape: IxDyn(&[]),
-                                    access_pattern_shape_settled: all_children_are_settled(
-                                        egraph, enode,
-                                    ),
+                                    // Setting this to false for now b/c their shapes are all messed up.
+                                    // access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+                                    access_pattern_shape_settled: false,
                                     contains_accelerator_calls: true,
                                 })
                             }
@@ -1930,7 +1932,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&[]),
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
-                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+                            // Setting this to false for now b/c their shapes are all messed up.
+                            // access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: true,
                         })
                     }
@@ -1948,8 +1952,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                         assert_eq!(h % 16, 0);
                         access.item_shape[0] = access.item_shape[0] / 2;
                         access.contains_accelerator_calls = true;
-                        access.access_pattern_shape_settled =
-                            all_children_are_settled(egraph, enode);
+                        // Setting this to false for now b/c their shapes are all messed up.
+                        // access.access_pattern_shape_settled =
+                        // all_children_are_settled(egraph, enode);
+                        access.access_pattern_shape_settled = false;
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -1982,9 +1988,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 AccessPatternData {
                                     shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
                                     item_shape: IxDyn(&[]),
-                                    access_pattern_shape_settled: all_children_are_settled(
-                                        egraph, enode,
-                                    ),
+                                    // Setting this to false for now b/c their shapes are all messed up.
+                                    // access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+                                    access_pattern_shape_settled: false,
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: true,
                                 }
