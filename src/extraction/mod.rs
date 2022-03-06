@@ -130,6 +130,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             Language::DataType(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
             Language::RelayKernelLayout(_) => todo!(),
+            Language::GetAccessShape(_) => todo!(),
         };
 
         enode.fold(base_cost, |sum, id| sum + costs(id))
@@ -163,6 +164,7 @@ impl CostFunction<Language> for SimpleCostFunction {
         use crate::language::Language::*;
         let base_cost = match enode {
             Language::RelayOperator(_) => todo!(),
+            Language::GetAccessShape(_) => todo!(),
             Language::RelayOperatorCall(_) => todo!(),
             Language::RelayActivationLayout(_) => todo!(),
             Language::RelayKernelLayout(_) => todo!(),
@@ -238,6 +240,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             Language::Access(_)
             | Language::List(_)
             | Language::Shape(_)
+            | Language::GetAccessShape(_)
             | Language::Num(_)
             | Language::AccessLiteral(_)
             | Language::Literal(_)

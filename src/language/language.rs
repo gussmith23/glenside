@@ -148,12 +148,19 @@ define_language! {
 
         // (get-access-shape <access>)
         // Returns the shape of the access.
-        // "get-access-shape" = GetAccessShape(Id),
+        "get-access-shape" = GetAccessShape([Id;1]),
+        // The below comment is wrong:
+        //
         // This shouldn't actually be needed at the moment. We are handling all
         // statically-sized networks, and so anywhere where we would have used
         // this, we should be able to just plug in a literal access-shape. If
         // and when we start supporting dynamic networks, this will become
         // needed.
+        //
+        // Turns out we need this for flatten-unflatten. We can't just use
+        // static shapes because the underlying shape might change as the shapes
+        // "settle". It would be better to not have this "settling" at all, but
+        // for now, we do.
 
         // (access-reshape <access> <shape>)
         // Reshapes the access to have the given
@@ -1628,6 +1635,15 @@ impl egg::Analysis<Language> for MyAnalysis {
 
         use Language::*;
         match enode {
+            &GetAccessShape([id]) => match egraph[id].data.clone() {
+                MyAnalysisData::AccessPattern(mut a) => {
+                    a.zero_regions = HashMap::default();
+                    a.contains_accelerator_calls = false;
+                    // settled should remain the same!
+                    MyAnalysisData::AccessPattern(a)
+                }
+                _ => panic!(),
+            },
             &SystolicArrayConv2dIm2colNhwcHwioWithBlocking(
                 [rows_id, cols_id, weights_id, data_id, kh_id, kw_id, stride_h_id, stride_w_id],
             ) => {
