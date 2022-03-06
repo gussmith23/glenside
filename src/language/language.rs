@@ -1881,47 +1881,25 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                     crate::language::AcceleratorFunc::FlexLinear
                     | crate::language::AcceleratorFunc::VTADense => {
-                        let inp_data = &egraph[ids[1]].data;
-                        let wgt_data = &egraph[ids[2]].data;
-                        let inp_shape = match inp_data {
-                            MyAnalysisData::AccessPattern(p) => Some(
-                                p.shape
-                                    .slice()
-                                    .iter()
-                                    .chain(p.item_shape.slice().iter())
-                                    .cloned()
-                                    .collect::<Vec<_>>(),
-                            ),
-                            MyAnalysisData::Shape(s) => Some(s.shape.slice().to_vec()),
-                            _ => panic!("Data for input should have shape info"),
-                        };
-                        let wgt_shape = match wgt_data {
-                            MyAnalysisData::AccessPattern(p) => Some(
-                                p.shape
-                                    .slice()
-                                    .iter()
-                                    .chain(p.item_shape.slice().iter())
-                                    .cloned()
-                                    .collect::<Vec<_>>(),
-                            ),
-                            MyAnalysisData::Shape(s) => Some(s.shape.slice().to_vec()),
-                            _ => panic!("Data for weight should have shape info"),
-                        };
-                        let out_shape = match (inp_shape, wgt_shape) {
-                            (Some(inp_shape), Some(wgt_shape)) => {
-                                IxDyn(&[inp_shape[0], wgt_shape[0]])
+                        match (&egraph[ids[1]].data, &egraph[ids[2]].data) {
+                            (
+                                MyAnalysisData::AccessPattern(activations),
+                                MyAnalysisData::AccessPattern(weights),
+                            ) => {
+                                assert_eq!(activations.as_vec().len(), 2);
+                                assert_eq!(weights.as_vec().len(), 2);
+                                MyAnalysisData::AccessPattern(AccessPatternData {
+                                    zero_regions: HashMap::default(),
+                                    shape: IxDyn(&[activations.as_vec()[0], weights.as_vec()[0]]),
+                                    item_shape: IxDyn(&[]),
+                                    access_pattern_shape_settled: all_children_are_settled(
+                                        egraph, enode,
+                                    ),
+                                    contains_accelerator_calls: true,
+                                })
                             }
-                            (_, _) => {
-                                panic!("Cannot infer type for {:?}", accelerator_func_data.pattern)
-                            }
-                        };
-                        MyAnalysisData::AccessPattern(AccessPatternData {
-                            zero_regions: HashMap::default(),
-                            shape: IxDyn(&[]),
-                            item_shape: out_shape.clone(),
-                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                            contains_accelerator_calls: true,
-                        })
+                            _ => panic!(),
+                        }
                     }
                     crate::language::AcceleratorFunc::VTAConv1D => {
                         // TODO: add shape here
