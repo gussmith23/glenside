@@ -2235,6 +2235,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             );
                         }
 
+                        a.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(a)
                     }
                     crate::language::RelayOperator::RelayZeros => {
@@ -2294,7 +2296,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                         })
                     }
                     crate::language::RelayOperator::RelayLayerNorm => {
-                        egraph[params[1]].data.clone()
+                        let mut out = match &egraph[params[1]].data {
+                            MyAnalysisData::AccessPattern(a) => a.clone(),
+                            _ => panic!(),
+                        };
+                        out.access_pattern_shape_settled = false;
+                        MyAnalysisData::AccessPattern(out)
                     }
                     crate::language::RelayOperator::RelayRound => match &egraph[params[1]].data {
                         x @ MyAnalysisData::AccessPattern(_) => x.clone(),
@@ -2391,7 +2398,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         })
                     }
                     crate::language::RelayOperator::RelayDropout => {
-                        let (access, _) = match params[1..]
+                        let (mut access, _) = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
@@ -2405,6 +2412,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             ),
                             _ => panic!("Parameters do not type check"),
                         };
+
+                        access.access_pattern_shape_settled = false;
 
                         // See the documentation (well, the code comments...) for dropout.
                         MyAnalysisData::Tuple(vec![
@@ -2914,7 +2923,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()[..]
                         {
                             [MyAnalysisData::AccessPattern(data), _] => {
-                                MyAnalysisData::AccessPattern(data.clone())
+                                let mut out = data.clone();
+                                out.access_pattern_shape_settled = false;
+                                MyAnalysisData::AccessPattern(out)
                             }
                             [MyAnalysisData::Shape(from_shape), MyAnalysisData::DataType(dtype)] => {
                                 MyAnalysisData::Shape(ShapeData {
@@ -2932,7 +2943,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .collect::<Vec<_>>()[..]
                         {
                             [MyAnalysisData::AccessPattern(access), _, _] => {
-                                MyAnalysisData::AccessPattern(access.clone())
+                                let mut out = access.clone();
+                                out.access_pattern_shape_settled = false;
+                                MyAnalysisData::AccessPattern(out)
                             }
                             [MyAnalysisData::Shape(shape), _, _] => {
                                 MyAnalysisData::AccessPattern(AccessPatternData {
