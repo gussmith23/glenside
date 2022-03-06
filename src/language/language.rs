@@ -1,6 +1,6 @@
 use crate::language::RelayOperator::*;
 use egg::{define_language, DidMerge, EGraph, Id, Language as LanguageTrait};
-use itertools::{any, multizip, EitherOrBoth::*, Itertools};
+use itertools::{any, multizip};
 use log::{debug, warn};
 use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
@@ -1436,9 +1436,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: to_shape,
                     item_shape: to_item_shape,
-                    zero_regions: to_zero_regions,
                     access_pattern_shape_settled: to_access_pattern_shape_settled,
                     contains_accelerator_calls: to_contains_accel_calls,
+                    ..
                 }),
                 MyAnalysisData::AccessPattern(
                     b_ap
@@ -1446,9 +1446,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                     AccessPatternData {
                         shape: from_shape,
                         item_shape: from_item_shape,
-                        zero_regions: from_zero_regions,
                         access_pattern_shape_settled: from_access_pattern_shape_settled,
                         contains_accelerator_calls: from_contains_accel_calls,
+                        ..
                     },
                 ),
             ) => {
@@ -4286,7 +4286,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
                 };
-                let mut shape = access
+                let shape = access
                     .shape
                     .as_array_view()
                     .iter()
