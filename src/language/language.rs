@@ -1,12 +1,12 @@
 use crate::language::RelayOperator::*;
-use egg::{define_language, EGraph, Id, Language as LanguageTrait};
+use egg::{define_language, DidMerge, EGraph, Id, Language as LanguageTrait};
 use itertools::{any, multizip, EitherOrBoth::*, Itertools};
-use log::debug;
+use log::{debug, warn};
 use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
 use serde_json::json;
-use std::cmp::Ordering;
+
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::convert::TryInto;
@@ -1246,7 +1246,24 @@ pub struct AccessPatternData {
     /// time efficient, though, and I'm even more certain that it wouldn't be
     /// space efficient.
     pub zero_regions: HashMap<Ix, BoolVecRangeSet>,
-    pub relay_shape: Option<IxDyn>,
+    /// Indicates whether the access pattern shape for this eclass has
+    /// "settled". An access pattern shape for an eclass containing only Relay
+    /// nodes is likely to change, because Relay nodes treat access pattern
+    /// shapes e.g. ((a, b), (c, d)) as tensor shapes e.g. (a, b, c, d), and
+    /// often the Relay nodes choose either the shape or the item shape to store
+    /// the tensor shape. The access pattern is thus likely to change when the
+    /// class gets merged, so we call it "unsettled". An enode is considered to
+    /// have a settled shape if and only if:
+    ///
+    /// - The node is a Glenside node, and
+    /// - All of the node's children of access pattern type are also settled.
+    ///
+    /// (This specifies how we implement make().)
+    ///
+    /// An eclass's shape is settled if at least one of its nodes is settled.
+    /// (This specifies how we implement merge().)
+    ///
+    pub access_pattern_shape_settled: bool,
     pub contains_accelerator_calls: bool,
 }
 
@@ -1259,7 +1276,7 @@ impl AccessPatternData {
     ///         shape: ndarray::IxDyn(&[1, 2, 3]),
     ///         item_shape: ndarray::IxDyn(&[4, 5]),
     ///         zero_regions: std::collections::HashMap::default(),
-    ///         relay_shape: None,
+    ///         contains_only_relay_nodes:false,
     ///         contains_accelerator_calls: false,
     ///     }
     ///     .as_vec(),
@@ -1413,161 +1430,202 @@ pub fn serialize_analysis_data(
 impl egg::Analysis<Language> for MyAnalysis {
     type Data = MyAnalysisData;
 
-    fn merge(&self, to: &mut Self::Data, from: Self::Data) -> Option<Ordering> {
-        if let MyAnalysisData::AccessPattern(AccessPatternData {
-            shape,
-            item_shape,
-            zero_regions: _,
-            relay_shape,
-            contains_accelerator_calls: _,
-        }) = to
-        {
-            if let None = relay_shape {
-                if shape.ndim() > 0 || item_shape.ndim() > 0 {
-                    *relay_shape = Some(IxDyn(&[shape.slice(), item_shape.slice()].concat()));
-                }
-            }
-        }
+    fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
         match (to, &from) {
             (
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     shape: to_shape,
                     item_shape: to_item_shape,
                     zero_regions: to_zero_regions,
-                    relay_shape: to_relay_shape,
+                    access_pattern_shape_settled: to_access_pattern_shape_settled,
                     contains_accelerator_calls: to_contains_accel_calls,
                 }),
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: from_shape,
-                    item_shape: from_item_shape,
-                    zero_regions: from_zero_regions,
-                    relay_shape: from_relay_shape,
-                    contains_accelerator_calls: from_contains_accel_calls,
-                }),
+                MyAnalysisData::AccessPattern(
+                    b_ap
+                    @
+                    AccessPatternData {
+                        shape: from_shape,
+                        item_shape: from_item_shape,
+                        zero_regions: from_zero_regions,
+                        access_pattern_shape_settled: from_access_pattern_shape_settled,
+                        contains_accelerator_calls: from_contains_accel_calls,
+                    },
+                ),
             ) => {
-                if *to_relay_shape == None && *from_relay_shape == None {
-                    assert_eq!(to_shape, from_shape);
-                    assert_eq!(to_item_shape, from_item_shape);
-                }
-                if *from_contains_accel_calls {
-                    *to_contains_accel_calls = true;
-                }
-
-                let mut calculated = false;
-                if to_shape.ndim() > 0 || to_item_shape.ndim() > 0 {
-                    calculated = true;
-                }
-
                 // Merge zero regions.
                 // TODO(@gussmith23) Make sure merge returns `true` infrequently
                 // Returning `true` more often forces more rebuilds, which kills
                 // performance!
                 // let mut changed = false;
-                for (axis_index, from_range_set) in from_zero_regions.iter() {
-                    // Skip if `from` doesn't contain any interesting data.
-                    if !from_range_set.iter().any(|v| *v) {
-                        continue;
+                // for (axis_index, from_range_set) in from_zero_regions.iter() {
+                //     // Skip if `from` doesn't contain any interesting data.
+                //     if !from_range_set.iter().any(|v| *v) {
+                //         continue;
+                //     }
+
+                //     if let Some(to_range_set) = to_zero_regions.get_mut(&axis_index) {
+                //         // We first check whether `from_zero_regions` contains
+                //         // any information not already known in
+                //         // `to_zero_regions`. This is done by checking them
+                //         // element-by-element. If it is ever true that
+                //         // `from_zero_regions` contains a `true` where
+                //         // `to_zero_regions` contains a `false` or does not have
+                //         // data (because they may be different lengths), then
+                //         // they're different and must be merged.
+
+                //         // TODO(@gussmith23) Delete these
+                //         //println!("to: {:?}", to_range_set.len());
+                //         //println!("from: {:?}", from_range_set.len());
+
+                //         // Check.
+                //         let needs_merge = to_range_set
+                //             .iter()
+                //             .zip_longest(from_range_set.iter())
+                //             .map(|v| {
+                //                 match v {
+                //                     // `*from` being true implies `*to` must be true.
+                //                     Both(to, from) => {
+                //                         if *from {
+                //                             *from != *to
+                //                         } else {
+                //                             false
+                //                         }
+                //                     }
+                //                     // If `to` has a value and `from` doesn't, then
+                //                     // no merging needed.
+                //                     Left(_) => false,
+                //                     // If `from` has a value, then we need to merge
+                //                     // if that value is true.
+                //                     Right(from) => *from,
+                //                 }
+                //             })
+                //             .any(|v| v);
+
+                //         if needs_merge {
+                //             *to_range_set = to_range_set
+                //                 .iter()
+                //                 .zip_longest(from_range_set.iter())
+                //                 .map(|v| match v {
+                //                     Both(to, from) => *to || *from,
+                //                     Left(to) => *to,
+                //                     Right(from) => *from,
+                //                 })
+                //                 .collect();
+                //             // changed = true;
+                //         }
+                //     } else {
+                //         // If no info exists for this axis in `to_zero_regions`,
+                //         // then we insert the information from
+                //         // `from_zero_regions`, but only if there's actual
+                //         // useful information there (i.e. at least one `true`
+                //         // value).
+                //         if from_range_set.iter().any(|v| *v) {
+                //             to_zero_regions.insert(*axis_index, from_range_set.clone());
+                //             // changed = true;
+                //         }
+                //     }
+                // }
+
+                let (mut a_merged, mut b_merged) = (false, false);
+
+                match (
+                    *to_access_pattern_shape_settled,
+                    *from_access_pattern_shape_settled,
+                ) {
+                    (false, false) => {
+                        // Both underlying tensor shapes should match.
+                        assert_eq!(
+                            // Underlying tensor shape of a/to. Sorry this is
+                            // ugly, can't use as_vec b/c can't capture a_ap
+                            // mutably and also capture its fields mutably.
+                            vec![to_shape.slice(), to_item_shape.slice()].concat(),
+                            // Underlying tensor shape of b/from.
+                            b_ap.as_vec()
+                        );
+
+                        // Do nothing, though. Neither one is more correct.
                     }
+                    (false, true) => {
+                        // Both underlying tensor shapes should match.
+                        assert_eq!(
+                            vec![to_shape.slice(), to_item_shape.slice()].concat(),
+                            b_ap.as_vec()
+                        );
 
-                    if let Some(to_range_set) = to_zero_regions.get_mut(&axis_index) {
-                        // We first check whether `from_zero_regions` contains
-                        // any information not already known in
-                        // `to_zero_regions`. This is done by checking them
-                        // element-by-element. If it is ever true that
-                        // `from_zero_regions` contains a `true` where
-                        // `to_zero_regions` contains a `false` or does not have
-                        // data (because they may be different lengths), then
-                        // they're different and must be merged.
+                        // Take the shape of b/from and put it into a/to. b/from is settled, and thus correct.
+                        let (a_shape_old, a_item_shape_old) =
+                            (to_shape.clone(), to_item_shape.clone());
+                        *to_shape = from_shape.clone();
+                        *to_item_shape = from_item_shape.clone();
+                        a_merged |=
+                            (a_shape_old != *to_shape) | (a_item_shape_old != *to_item_shape);
+                    }
+                    (true, false) => {
+                        // Both underlying tensor shapes should match.
+                        assert_eq!(
+                            vec![to_shape.slice(), to_item_shape.slice()].concat(),
+                            b_ap.as_vec()
+                        );
 
-                        // TODO(@gussmith23) Delete these
-                        //println!("to: {:?}", to_range_set.len());
-                        //println!("from: {:?}", from_range_set.len());
-
-                        // Check.
-                        let needs_merge = to_range_set
-                            .iter()
-                            .zip_longest(from_range_set.iter())
-                            .map(|v| {
-                                match v {
-                                    // `*from` being true implies `*to` must be true.
-                                    Both(to, from) => {
-                                        if *from {
-                                            *from != *to
-                                        } else {
-                                            false
-                                        }
-                                    }
-                                    // If `to` has a value and `from` doesn't, then
-                                    // no merging needed.
-                                    Left(_) => false,
-                                    // If `from` has a value, then we need to merge
-                                    // if that value is true.
-                                    Right(from) => *from,
-                                }
-                            })
-                            .any(|v| v);
-
-                        if needs_merge {
-                            *to_range_set = to_range_set
-                                .iter()
-                                .zip_longest(from_range_set.iter())
-                                .map(|v| match v {
-                                    Both(to, from) => *to || *from,
-                                    Left(to) => *to,
-                                    Right(from) => *from,
-                                })
-                                .collect();
-                            // changed = true;
-                        }
-                    } else {
-                        // If no info exists for this axis in `to_zero_regions`,
-                        // then we insert the information from
-                        // `from_zero_regions`, but only if there's actual
-                        // useful information there (i.e. at least one `true`
-                        // value).
-                        if from_range_set.iter().any(|v| *v) {
-                            to_zero_regions.insert(*axis_index, from_range_set.clone());
-                            // changed = true;
-                        }
+                        // Take the shape of a/to and put it into b/from. Though
+                        // we don't actually edit b/from, because it's being
+                        // merged into a. But we do calculate whether b changed,
+                        // so that we can trigger updates on the enodes that
+                        // point to b.
+                        b_merged |=
+                            (*from_shape != *to_shape) | (*from_item_shape != *to_item_shape);
+                    }
+                    (true, true) => {
+                        // If both are settled, then they must match.
+                        assert_eq!(to_shape, from_shape);
+                        assert_eq!(to_item_shape, from_item_shape);
                     }
                 }
 
-                if calculated {
-                    return Some(Ordering::Greater);
-                }
+                a_merged |= !*to_contains_accel_calls && *from_contains_accel_calls;
+                b_merged |= *to_contains_accel_calls && !*from_contains_accel_calls;
+                *to_contains_accel_calls |= *from_contains_accel_calls;
 
-                if *to_relay_shape == None && *from_relay_shape == None {
-                    Some(Ordering::Greater)
-                } else if let (Some(left_shape), Some(right_shape)) =
-                    (to_relay_shape.clone(), from_relay_shape.clone())
-                {
-                    assert_eq!(left_shape, right_shape);
-                    if to_shape.ndim() >= from_shape.ndim()
-                        && to_item_shape.ndim() >= from_item_shape.ndim()
-                    {
-                        Some(Ordering::Greater)
-                    } else {
-                        Some(Ordering::Less)
-                    }
-                } else {
-                    if *to_relay_shape == None {
-                        *to_relay_shape = from_relay_shape.clone();
-                        Some(Ordering::Greater)
-                    } else {
-                        Some(Ordering::Greater)
-                    }
-                }
+                let to_access_pattern_shape_settled_old = *to_access_pattern_shape_settled;
+                *to_access_pattern_shape_settled |= *from_access_pattern_shape_settled;
+                a_merged |= to_access_pattern_shape_settled_old != *to_access_pattern_shape_settled;
+                b_merged |= *from_access_pattern_shape_settled != *to_access_pattern_shape_settled;
+
+                DidMerge(a_merged, b_merged)
             }
-            (MyAnalysisData::AccessPattern(_), _) => Some(Ordering::Greater),
+            // (MyAnalysisData::AccessPattern(_), _) => {
+            //     warn!("TODO(@gussmith23) need to refine this return value");
+            //     //return Some(Ordering::Greater);
+            //     return DidMerge(true, true);
+            // }
             (to @ _, _) => {
                 assert_eq!(*to, from);
                 merge_if_different(to, from);
-                Some(Ordering::Greater)
+                warn!("TODO(@gussmith23) need to refine this return value");
+                //return Some(Ordering::Greater);
+                return DidMerge(false, false);
             }
         }
     }
 
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
+        fn all_children_are_settled(
+            egraph: &EGraph<Language, MyAnalysis>,
+            enode: &Language,
+        ) -> bool {
+            enode
+                .children()
+                .iter()
+                .filter_map(|id| match &egraph[*id].data {
+                    MyAnalysisData::AccessPattern(AccessPatternData {
+                        access_pattern_shape_settled,
+                        ..
+                    }) => Some(*access_pattern_shape_settled),
+                    _ => None,
+                })
+                .all(std::convert::identity)
+        }
+
         use Language::*;
         match enode {
             &SystolicArrayConv2dIm2colNhwcHwioWithBlocking(
@@ -1623,7 +1681,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         debug!("Zero regions unimplemented");
                         HashMap::default()
                     },
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: data.contains_accelerator_calls
                         || weights.contains_accelerator_calls,
                 })
@@ -1679,7 +1737,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         debug!("Zero regions unimplemented");
                         HashMap::default()
                     },
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: data.contains_accelerator_calls
                         || weights.contains_accelerator_calls,
                 })
@@ -1736,7 +1794,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         debug!("Zero regions unimplemented");
                         HashMap::default()
                     },
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: data.contains_accelerator_calls
                         || weights.contains_accelerator_calls,
                 })
@@ -1792,7 +1850,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         debug!("Zero regions unimplemented");
                         HashMap::default()
                     },
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: data.contains_accelerator_calls
                         || weights.contains_accelerator_calls,
                 })
@@ -1817,7 +1875,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             zero_regions: HashMap::default(),
                             shape: IxDyn(&out_shape[..]),
                             item_shape: IxDyn(&[]),
-                            relay_shape: Some(IxDyn(&out_shape[..])),
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: true,
                         })
                     }
@@ -1861,7 +1919,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             zero_regions: HashMap::default(),
                             shape: IxDyn(&[]),
                             item_shape: out_shape.clone(),
-                            relay_shape: Some(out_shape),
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: true,
                         })
                     }
@@ -1871,7 +1929,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&[]),
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
-                            relay_shape: None,
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: true,
                         })
                     }
@@ -1889,6 +1947,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         assert_eq!(h % 16, 0);
                         access.item_shape[0] = access.item_shape[0] / 2;
                         access.contains_accelerator_calls = true;
+                        access.access_pattern_shape_settled =
+                            all_children_are_settled(egraph, enode);
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -1921,7 +1981,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 AccessPatternData {
                                     shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
                                     item_shape: IxDyn(&[]),
-                                    relay_shape: Some(IxDyn(&[n, c.try_into().unwrap(), h, w])),
+                                    access_pattern_shape_settled: all_children_are_settled(
+                                        egraph, enode,
+                                    ),
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: true,
                                 }
@@ -2012,7 +2074,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&new_shape),
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
-                            relay_shape: Some(IxDyn(&new_shape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
                         })
                     }
@@ -2041,7 +2103,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&new_shape),
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
-                            relay_shape: Some(IxDyn(&new_shape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: any(&[a], |a| a.contains_accelerator_calls),
                         })
                     }
@@ -2104,7 +2166,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&new_shape),
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
-                            relay_shape: Some(IxDyn(&new_shape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: any(access_pattern_iter, |a| {
                                 a.contains_accelerator_calls
                             }),
@@ -2138,7 +2200,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&newshape[..a.shape.ndim()]),
                             item_shape: IxDyn(&newshape[a.shape.ndim()..]),
                             zero_regions: HashMap::default(),
-                            relay_shape: Some(IxDyn(&newshape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: a.contains_accelerator_calls,
                         })
                     }
@@ -2211,7 +2273,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: s.clone(),
                             item_shape: IxDyn(&[]),
                             zero_regions: HashMap::default(),
-                            relay_shape: Some(s),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: false,
                         })
                     }
@@ -2247,7 +2309,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&out_shape),
                             item_shape: IxDyn(&[]),
                             zero_regions,
-                            relay_shape: Some(IxDyn(&out_shape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: any([a0, a1], |a| {
                                 a.contains_accelerator_calls
                             }),
@@ -2262,7 +2324,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             MyAnalysisData::AccessPattern(AccessPatternData {
                                 shape: IxDyn(&[]),
                                 item_shape: IxDyn(&shape.shape.slice()),
-                                relay_shape: Some(IxDyn(&shape.shape.slice())),
+                                access_pattern_shape_settled: false,
                                 zero_regions: HashMap::default(),
                                 contains_accelerator_calls: false,
                             })
@@ -2283,7 +2345,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 MyAnalysisData::AccessPattern(AccessPatternData {
                                     shape: IxDyn(&[]),
                                     item_shape: IxDyn(&shape.shape.slice()),
-                                    relay_shape: Some(IxDyn(&shape.shape.slice())),
+                                    access_pattern_shape_settled: false,
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: false,
                                 })
@@ -2344,7 +2406,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&out_shape),
                             item_shape: IxDyn(&[]),
                             zero_regions,
-                            relay_shape: Some(IxDyn(&out_shape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: any(accesses, |a| {
                                 a.contains_accelerator_calls
                             }),
@@ -2407,7 +2469,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(&out_shape),
                             item_shape: IxDyn(&[]),
                             zero_regions,
-                            relay_shape: Some(IxDyn(&out_shape)),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: data.contains_accelerator_calls
                                 || indices.contains_accelerator_calls,
                         })
@@ -2452,7 +2514,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(new_shape.as_slice()),
                             item_shape: IxDyn(&[]),
                             zero_regions: zero_regions,
-                            relay_shape: Some(IxDyn(new_shape.as_slice())),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: data.contains_accelerator_calls,
                         })
                     }
@@ -2510,7 +2572,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             shape: IxDyn(new_shape.as_slice()),
                             item_shape: IxDyn(&[]),
                             zero_regions,
-                            relay_shape: Some(IxDyn(new_shape.as_slice())),
+                            access_pattern_shape_settled: false,
                             contains_accelerator_calls: a.contains_accelerator_calls
                                 || b.contains_accelerator_calls,
                         })
@@ -2525,7 +2587,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 shape: a.shape.clone(),
                                 item_shape: a.item_shape.clone(),
                                 zero_regions: HashMap::default(),
-                                relay_shape: a.relay_shape.clone(),
+                                access_pattern_shape_settled: false,
                                 contains_accelerator_calls: a.contains_accelerator_calls,
                             },
                             _ => panic!("Erf only supports accepting 1 input tensor"),
@@ -2540,13 +2602,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         {
                             [MyAnalysisData::AccessPattern(data), MyAnalysisData::Num(sections), MyAnalysisData::Num(axis)] =>
                             {
-                                let relay_shape = if let Some(relay_shape) =
-                                    data.relay_shape.clone()
-                                {
-                                    relay_shape
-                                } else {
-                                    IxDyn(&[data.shape.slice(), data.item_shape.slice()].concat())
-                                };
+                                let relay_shape = IxDyn(&data.as_vec());
                                 let axis = if *axis < 0 {
                                     usize::try_from(
                                         *axis + i64::try_from(relay_shape.ndim()).unwrap(),
@@ -2565,7 +2621,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         AccessPatternData {
                                             shape: IxDyn(&[]),
                                             item_shape: IxDyn(&oshape[..]),
-                                            relay_shape: Some(IxDyn(&oshape[..])),
+                                            access_pattern_shape_settled: false,
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls,
@@ -2576,13 +2632,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                             [MyAnalysisData::AccessPattern(data), MyAnalysisData::List(sections), MyAnalysisData::Num(axis)] =>
                             {
-                                let relay_shape = if let Some(relay_shape) =
-                                    data.relay_shape.clone()
-                                {
-                                    relay_shape
-                                } else {
-                                    IxDyn(&[data.shape.slice(), data.item_shape.slice()].concat())
-                                };
+                                let relay_shape = IxDyn(&data.as_vec());
                                 let axis = if *axis < 0 {
                                     usize::try_from(
                                         *axis + i64::try_from(relay_shape.ndim()).unwrap(),
@@ -2606,7 +2656,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         AccessPatternData {
                                             shape: IxDyn(&[]),
                                             item_shape: IxDyn(&oshape[..]),
-                                            relay_shape: Some(IxDyn(&oshape[..])),
+                                            access_pattern_shape_settled: false,
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls,
@@ -2620,7 +2670,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 access_vec.push(MyAnalysisData::AccessPattern(AccessPatternData {
                                     shape: IxDyn(&[]),
                                     item_shape: IxDyn(&oshape[..]),
-                                    relay_shape: Some(IxDyn(&oshape[..])),
+                                    access_pattern_shape_settled: false,
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: data.contains_accelerator_calls,
                                 }));
@@ -2652,9 +2702,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         shape: IxDyn(&[]),
                                         item_shape: IxDyn(&relay_shape[..axis.try_into().unwrap()]),
                                         zero_regions: HashMap::default(),
-                                        relay_shape: Some(IxDyn(
-                                            &relay_shape[..axis.try_into().unwrap()],
-                                        )),
+                                        access_pattern_shape_settled: false,
                                         contains_accelerator_calls: a.contains_accelerator_calls,
                                     }
                                 } else {
@@ -2668,13 +2716,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             .concat(),
                                         ),
                                         zero_regions: HashMap::default(),
-                                        relay_shape: Some(IxDyn(
-                                            &[
-                                                &relay_shape[..axis.try_into().unwrap()],
-                                                &relay_shape[usize::try_from(axis).unwrap() + 1..],
-                                            ]
-                                            .concat(),
-                                        )),
+                                        access_pattern_shape_settled: false,
                                         contains_accelerator_calls: a.contains_accelerator_calls,
                                     }
                                 }
@@ -2736,7 +2778,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     shape: IxDyn(&[]),
                                     item_shape: IxDyn(output_shape.slice()),
                                     zero_regions: HashMap::default(),
-                                    relay_shape: Some(output_shape),
+                                    access_pattern_shape_settled: false,
                                     contains_accelerator_calls: data.contains_accelerator_calls
                                         || weight.contains_accelerator_calls,
                                 }
@@ -2799,7 +2841,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         AccessPatternData {
                                             shape: IxDyn(&out_shape),
                                             item_shape: IxDyn(&[]),
-                                            relay_shape: Some(IxDyn(&out_shape)),
+                                            access_pattern_shape_settled: false,
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls
@@ -2834,12 +2876,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         AccessPatternData {
                                             shape: IxDyn(&[n, c.try_into().unwrap(), h, w]),
                                             item_shape: IxDyn(&[]),
-                                            relay_shape: Some(IxDyn(&[
-                                                n,
-                                                c.try_into().unwrap(),
-                                                h,
-                                                w,
-                                            ])),
+                                            access_pattern_shape_settled: false,
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls
@@ -2882,7 +2919,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 AccessPatternData {
                                     shape: IxDyn(&new_shape),
                                     item_shape: IxDyn(&[]),
-                                    relay_shape: Some(IxDyn(&new_shape)),
+                                    access_pattern_shape_settled: false,
                                     zero_regions,
                                     contains_accelerator_calls: a.contains_accelerator_calls
                                         || b.contains_accelerator_calls,
@@ -2923,7 +2960,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 MyAnalysisData::AccessPattern(AccessPatternData {
                                     shape: IxDyn(&[]),
                                     item_shape: IxDyn(&shape.shape.slice()),
-                                    relay_shape: Some(IxDyn(&shape.shape.slice())),
+                                    access_pattern_shape_settled: false,
                                     zero_regions: HashMap::default(),
                                     contains_accelerator_calls: false,
                                 })
@@ -2942,7 +2979,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 AccessPatternData {
                                     shape: IxDyn(&[]),
                                     item_shape: IxDyn(shape_data.shape.slice()),
-                                    relay_shape: Some(IxDyn(shape_data.shape.slice())),
+                                    access_pattern_shape_settled: false,
                                     zero_regions,
                                     contains_accelerator_calls: access.contains_accelerator_calls,
                                 }
@@ -2970,6 +3007,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             );
                         }
                         access.zero_regions = HashMap::default();
+
+                        access.access_pattern_shape_settled = false;
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -3012,6 +3051,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         access.item_shape = IxDyn(&[]);
 
+                        access.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayGlobalAvgPool2D => {
@@ -3046,6 +3087,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 access[2] = 1;
                             }
                         }
+
+                        access.access_pattern_shape_settled = false;
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -3119,6 +3162,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                         }
 
+                        access.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayReLU | RelayNegative | RelaySqrt => {
@@ -3138,6 +3183,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             );
                         }
                         access.zero_regions = HashMap::default();
+
+                        access.access_pattern_shape_settled = false;
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -3161,6 +3208,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         access.zero_regions = HashMap::default();
 
+                        access.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelaySigmoid
@@ -3181,6 +3230,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             );
                         }
                         access.zero_regions = HashMap::default();
+
+                        access.access_pattern_shape_settled = false;
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -3205,6 +3256,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         access.zero_regions = HashMap::default();
 
+                        access.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayBatchNormInference => {
@@ -3226,6 +3279,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             );
                         }
                         access.zero_regions = HashMap::default();
+
+                        access.access_pattern_shape_settled = false;
 
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -3299,6 +3354,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             }
                         }
 
+                        access.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(access)
                     }
                     crate::language::RelayOperator::RelayUpSampling => {
@@ -3327,7 +3384,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     shape: shape.clone(),
                                     item_shape: a.item_shape.clone(),
                                     zero_regions: a.zero_regions.clone(),
-                                    relay_shape: Some(shape),
+                                    access_pattern_shape_settled: false,
                                     contains_accelerator_calls: a.contains_accelerator_calls,
                                 }
                             }
@@ -3342,6 +3399,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         access.zero_regions = HashMap::default();
 
+                        access.access_pattern_shape_settled = false;
+
                         MyAnalysisData::AccessPattern(access)
                     }
                 }
@@ -3354,7 +3413,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                     shape: IxDyn(&[]),
                     item_shape: IxDyn(t.shape()),
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: false,
                 }),
                 _ => panic!(),
@@ -3402,13 +3461,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     shape: IxDyn(&new_shape[..access.shape.ndim()]),
                     item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
                     zero_regions: new_zero_regions,
-                    relay_shape: Some(IxDyn(
-                        &[
-                            &new_shape[..access.shape.ndim()],
-                            &new_shape[access.shape.ndim()..],
-                        ]
-                        .concat(),
-                    )),
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
@@ -3489,7 +3542,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         HashMap::default()
                     },
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
@@ -3547,6 +3600,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     );
                 }
 
+                access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+
                 MyAnalysisData::AccessPattern(access)
             }
             &AccessSqueeze([access_id, axis_id]) => {
@@ -3577,6 +3632,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .item_shape
                         .remove_axis(ndarray::Axis(axis - access.shape.ndim()));
                 }
+
+                access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
 
                 MyAnalysisData::AccessPattern(access)
             }
@@ -3656,6 +3713,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     assert!(val.len() <= access[*axis]);
                 }
 
+                access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+
                 MyAnalysisData::AccessPattern(access)
             }
             &AccessTensor(t_id) => {
@@ -3670,7 +3729,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     // for each operator.
                     zero_regions: { HashMap::default() },
                     shape: shape.clone(),
-                    relay_shape: Some(shape),
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     item_shape: IxDyn(&[]),
                     contains_accelerator_calls: false,
                 })
@@ -3704,7 +3763,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                     shape: IxDyn(&combined[..(a.shape.ndim().saturating_sub(1))]),
                     item_shape: IxDyn(&combined[(a.shape.ndim().saturating_sub(1))..]),
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: a.contains_accelerator_calls,
                 })
             }
@@ -3740,7 +3799,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         HashMap::default()
                     },
                     shape: a0.shape.clone(),
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     item_shape: IxDyn(
                         std::iter::once(2)
                             .chain(a0.item_shape.as_array_view().iter().cloned())
@@ -3779,6 +3838,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     range_set.remove_elements(0, low - 0);
                 }
 
+                new_access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+
                 MyAnalysisData::AccessPattern(new_access)
             }
             &AccessConcatenate([a0_id, a1_id, axis_id]) => {
@@ -3793,14 +3854,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                             Language::RelayOperatorCall(_) => true,
                             _ => false,
                         }) {
-                            let relay_shape = a.relay_shape.as_ref().unwrap();
+                            let relay_shape = IxDyn(&a.as_vec());
                             let new_axis = new_access.shape.ndim();
                             assert!(new_axis <= relay_shape.ndim());
                             AccessPatternData {
                                 zero_regions: HashMap::default(),
                                 shape: IxDyn(&relay_shape.slice()[..new_axis]),
                                 item_shape: IxDyn(&relay_shape.slice()[new_axis..]),
-                                relay_shape: Some(IxDyn(relay_shape.slice())),
+                                access_pattern_shape_settled: all_children_are_settled(
+                                    egraph, enode,
+                                ),
                                 contains_accelerator_calls: a.contains_accelerator_calls,
                             }
                         } else {
@@ -3833,6 +3896,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         a1.item_shape[axis - new_access.shape.ndim()];
                 }
 
+                new_access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+
                 // new_access.relay_shape = Some(IxDyn(&[new_access.shape.slice(), new_access.item_shape.slice()].concat()));
                 MyAnalysisData::AccessPattern(new_access)
             }
@@ -3843,7 +3908,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         MyAnalysisData::Shape(s) => s.shape.clone(),
                         _ => panic!(),
                     },
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     item_shape: match &egraph[item_shape_id].data {
                         MyAnalysisData::Shape(s) => s.shape.clone(),
                         _ => panic!(),
@@ -3867,7 +3932,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         shape: s.shape.clone(),
                         item_shape: IxDyn(&[]),
                         zero_regions: HashMap::default(),
-                        relay_shape: None,
+                        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                         contains_accelerator_calls: false,
                     },
                     _ => panic!("Expected an access as the first argument to access-reshape"),
@@ -3889,6 +3954,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 //     a.shape.as_array_view().iter().product::<usize>(),
                 //     new_shape.shape.as_array_view().iter().product::<usize>(),
                 // );
+
+                new_shape.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+
                 MyAnalysisData::AccessPattern(new_shape)
             }
             &AccessFlatten(access_id) => {
@@ -3912,7 +3980,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                     shape: IxDyn(&[a.shape.as_array_view().iter().product()]),
                     item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: a.contains_accelerator_calls,
                 })
             }
@@ -3955,7 +4023,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             },
                             shape: a0.shape.clone(),
                             item_shape: ndarray::IxDyn(&[]),
-                            relay_shape: a0.relay_shape.clone(),
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
@@ -3981,7 +4049,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             },
                             shape: a0.shape.clone(),
                             item_shape: a0.item_shape.clone(),
-                            relay_shape: a0.relay_shape.clone(),
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
@@ -4006,7 +4074,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             },
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&a0.item_shape.slice()[1..]),
-                            relay_shape: None,
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
@@ -4038,7 +4106,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             },
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
-                            relay_shape: None,
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
@@ -4059,7 +4127,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             },
                             shape: a0.shape.clone(),
                             item_shape: IxDyn(&[]),
-                            relay_shape: Some(a0.shape.clone()),
+                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                             contains_accelerator_calls: a0.contains_accelerator_calls,
                         })
                     }
@@ -4075,6 +4143,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         let mut a = a0.clone();
                         a.zero_regions = HashMap::default();
+
+                        a.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
                         MyAnalysisData::AccessPattern(a)
                     }
                 }
@@ -4149,7 +4219,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                     shape: new_shape.clone(),
                     item_shape: new_item_shape.clone(),
-                    relay_shape: Some(IxDyn(&[new_shape.slice(), new_item_shape.slice()].concat())),
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: a0.contains_accelerator_calls
                         || a1.contains_accelerator_calls,
                 })
@@ -4223,13 +4293,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     .chain(access.item_shape.as_array_view().iter())
                     .cloned()
                     .collect::<Vec<_>>();
-                if shape.len() == 0 {
-                    if let Some(relay_shape) = &access.relay_shape {
-                        shape = relay_shape.slice().iter().cloned().collect();
-                    } else {
-                        panic!("No shape info")
-                    }
-                }
                 MyAnalysisData::AccessPattern(AccessPatternData {
                     // TODO(@gussmith23) Implement zero regions
                     // It's harmless (I think) if `zero_regions` defaults to
@@ -4246,7 +4309,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     },
                     shape: IxDyn(&shape[..dim]),
                     item_shape: IxDyn(&shape[dim..]),
-                    relay_shape: Some(IxDyn(&shape)),
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
@@ -4314,7 +4377,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .as_slice(),
                     ),
                     item_shape: IxDyn(&[]),
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: a0.contains_accelerator_calls
                         || a1.contains_accelerator_calls,
                 })
@@ -4417,7 +4480,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .as_slice(),
                     ),
                     item_shape: filters_shape.clone(),
-                    relay_shape: None,
+                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: access.contains_accelerator_calls,
                 })
             }
@@ -6890,7 +6953,7 @@ mod tests {
         let section_data = MyAnalysisData::AccessPattern(AccessPatternData {
             shape: IxDyn(&[]),
             item_shape: IxDyn(&[1, 1, 4]),
-            relay_shape: Some(IxDyn(&[1, 1, 4])),
+            access_pattern_shape_settled: false,
             zero_regions: HashMap::default(),
             contains_accelerator_calls: false,
         });
