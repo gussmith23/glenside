@@ -61,7 +61,7 @@ fn regular_small_multilayer_perceptron() {
         runner.stop_reason
     );
 
-    let matches = "
+    let test_pattern = "
 (access-concatenate
  (compute reduce-sum
   (access-pair
@@ -327,9 +327,10 @@ fn regular_small_multilayer_perceptron() {
 )
     "
     .parse::<Pattern<_>>()
-    .unwrap()
-    .search_eclass(&runner.egraph, id)
-    .expect("Did not find expected program");
+    .unwrap();
+    let matches = test_pattern
+        .search_eclass(&runner.egraph, id)
+        .expect("Did not find expected program");
 
     assert_eq!(matches.substs.len(), 1);
 }

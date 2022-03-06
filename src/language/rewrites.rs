@@ -8,6 +8,7 @@ use crate::language::from_relay::{
 use crate::language::{from_relay, ShapeData};
 
 use super::{ComputeType, Language, MyAnalysis, MyAnalysisData, PadType, RangeSet2};
+use egg::Symbol;
 use egg::{
     rewrite, Applier, ConditionalApplier, EGraph, ENodeOrVar, Id, Pattern, Rewrite, SearchMatches,
     Searcher, Subst, Var,
@@ -165,7 +166,9 @@ impl egg::Applier<Language, MyAnalysis> for RewriteNonMatchingCartConcatenateApp
         &self,
         _egraph: &mut EG,
         _id: egg::Id,
-        _subst: &egg::Subst,
+        _subst: &Subst,
+        _searcher_ast: Option<&PatternAst<Language>>,
+        _rule_name: Symbol,
     ) -> std::vec::Vec<egg::Id> {
         // For now, just want to handle these cases.
         assert!(self.a_axis == 0 || self.a_axis == 1);
@@ -230,7 +233,7 @@ pub fn relay_dense_rewrite() -> RW {
     //         &self,
     //         egraph: &mut EG,
     //         id: egg::Id,
-    //         subst: &egg::Subst,
+    //         subst: &Subst, _searcher_ast: Option<&PatternAst<Language>>,_rule_name: Symbol,
     //     ) -> std::vec::Vec<egg::Id> {
 
     //     }
@@ -291,7 +294,14 @@ struct BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier {
 impl Applier<Language, MyAnalysis>
     for BubbleConcatenateThroughCartesianProductNotLastAxisRightApplier
 {
-    fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(
+        &self,
+        egraph: &mut EG,
+        matched_id: Id,
+        subst: &Subst,
+        _searcher_ast: Option<&PatternAst<Language>>,
+        _rule_name: Symbol,
+    ) -> Vec<Id> {
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // So the axis gets shifted over by the a1, ..., an added in.
@@ -310,7 +320,7 @@ impl Applier<Language, MyAnalysis>
         .parse()
         .unwrap();
 
-        applier.apply_one(egraph, matched_id, subst)
+        applier.apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
     }
 }
 
@@ -341,7 +351,14 @@ struct BubbleConcatenateThroughCartesianProductLastAxisApplier {
     b1: Var,
 }
 impl Applier<Language, MyAnalysis> for BubbleConcatenateThroughCartesianProductLastAxisApplier {
-    fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+    fn apply_one(
+        &self,
+        egraph: &mut EG,
+        matched_id: Id,
+        subst: &Subst,
+        _searcher_ast: Option<&PatternAst<Language>>,
+        _rule_name: Symbol,
+    ) -> Vec<Id> {
         // cart-prod [a1, ..., an, c] [b1, ..., bm, c]
         // = [a1, ..., an, b1, ..., bm, 2, c]
         // axis1 and axis2 both point to their c dimension.
@@ -374,7 +391,7 @@ impl Applier<Language, MyAnalysis> for BubbleConcatenateThroughCartesianProductL
         .parse()
         .unwrap();
 
-        applier.apply_one(egraph, matched_id, subst)
+        applier.apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
     }
 }
 
@@ -456,7 +473,14 @@ pub fn rewrite_nonmatching_cartesian_product_concatenate() -> Rewrite<Language, 
 pub fn flatten_unflatten_any_access() -> RW {
     struct ApplierImpl(Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let shape = match &egraph[subst[self.0]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -487,9 +511,9 @@ pub fn flatten_unflatten_any_access() -> RW {
                     .collect::<Vec<_>>()
                     .join(" ")
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("flatten-unflatten-all-accesses";
@@ -516,7 +540,14 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
         right_shape: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let left_shape = match &egraph[subst[self.left_shape]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -587,9 +618,9 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
                     .collect::<Vec<_>>()
                     .join(" ")
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
 
@@ -625,7 +656,14 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
     }
     struct ApplierImpl(Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let a = match &egraph[subst[self.0]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -642,7 +680,7 @@ pub fn bubble_reshape_through_compute_dot_product() -> RW {
             )
             .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("bubble-reshape-through-compute";
@@ -690,16 +728,23 @@ pub fn dot_product_with_vta() -> RW {
 pub fn dot_product_to_linear() -> RW {
     struct ApplierImpl(Var, Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             // let x_shape = match_shape_data(&egraph[subst[self.0]].data);
             let w_shape = match_shape_data(&egraph[subst[self.1]].data);
             format!(
                 "(accelerator-call flex-linear ?x ?w (constant-tensor 0 (shape 1 {})) (shape 0))",
                 w_shape[1]
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("dot-product-to-linear";
@@ -771,13 +816,15 @@ pub fn lstm_to_flexasr() -> RW {
             egraph: &mut EGraph<Language, MyAnalysis>,
             eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let out_shape = match &egraph[eclass].data {
                 MyAnalysisData::AccessPattern(access) => access.as_vec(),
                 _ => panic!("invalid access pattern for LSTM"),
             };
             format!("(accelerator-call flex-lstm ?x hidden0 hidden1 rnn_weight_ih_l0 rnn_weight_hh_l0 rnn_bias_ih_l0 rnn_bias_hh_l0 (shape {}))", out_shape.into_iter().map(|x| x.to_string()).join(" "))
-            .parse::<Pattern<_>>().unwrap().apply_one(egraph, eclass, subst)
+            .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst,_searcher_ast,_rule_name)
         }
     }
     rewrite!("flex-lstm"; 
@@ -806,7 +853,14 @@ pub fn bubble_reshape_through_linear_generalized() -> Vec<RW> {
     }
     struct ApplierImpl(Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let shape_data = match &egraph[subst[self.0]].data {
                 MyAnalysisData::Shape(s) => s,
                 _ => panic!("not a valid shape data"),
@@ -818,7 +872,7 @@ pub fn bubble_reshape_through_linear_generalized() -> Vec<RW> {
                                 (access (access-broadcast (access-insert-axis ?bias 0) 
                                         (access-shape (shape {} {}) (shape))) 0)))
                         (access-shape ?shape (shape)))", shape_data.shape[1], shape_data.shape[2])
-                        .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst)
+                        .parse::<Pattern<Language>>().unwrap().apply_one(egraph, eclass, subst,_searcher_ast,_rule_name)
         }
     }
     vec![
@@ -923,6 +977,8 @@ pub fn add_bias_add_to_dense() -> RW {
             egraph: &mut EGraph<Language, MyAnalysis>,
             eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let shape_str = match &egraph[eclass].data {
                 MyAnalysisData::AccessPattern(a) => {
@@ -945,9 +1001,9 @@ pub fn add_bias_add_to_dense() -> RW {
                   1)",
                 shape_str
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("add_bias_add_to_dense";
@@ -970,7 +1026,14 @@ pub fn systolic_array_with_blocking(rows: usize, cols: usize) -> Rewrite<Languag
         b: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let (a, b) = match (&egraph[subst[self.a]].data, &egraph[subst[self.b]].data) {
                 (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => (a, b),
                 _ => panic!(),
@@ -989,7 +1052,7 @@ pub fn systolic_array_with_blocking(rows: usize, cols: usize) -> Rewrite<Languag
             .parse()
             .unwrap();
 
-            pattern.apply_one(egraph, eclass, subst)
+            pattern.apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
 
@@ -1018,7 +1081,14 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
         b: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let (a, b) = match (&egraph[subst[self.a]].data, &egraph[subst[self.b]].data) {
                 (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => (a, b),
                 _ => panic!(),
@@ -1039,7 +1109,7 @@ pub fn systolic_array() -> Rewrite<Language, MyAnalysis> {
             .parse()
             .unwrap();
 
-            pattern.apply_one(egraph, eclass, subst)
+            pattern.apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
 
@@ -1115,7 +1185,9 @@ pub fn slice_concatenate_accesses(
             &self,
             egraph: &mut EG,
             id: egg::Id,
-            _subst: &egg::Subst,
+            _subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> std::vec::Vec<egg::Id> {
             let shape = match &egraph[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1156,6 +1228,8 @@ pub fn slice_concatenate_accesses(
                 })
                 .unwrap();
 
+            egraph.union(id, top_concat_id);
+
             vec![top_concat_id]
         }
     }
@@ -1171,7 +1245,9 @@ pub fn slice_concatenate_accesses(
             &self,
             egraph: &mut EG,
             id: egg::Id,
-            _subst: &egg::Subst,
+            _subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> std::vec::Vec<egg::Id> {
             let shape = match &egraph[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1212,6 +1288,8 @@ pub fn slice_concatenate_accesses(
                 })
                 .unwrap();
 
+            egraph.union(id, top_concat_id);
+
             vec![top_concat_id]
         }
     }
@@ -1225,7 +1303,9 @@ pub fn slice_concatenate_accesses(
             &self,
             egraph: &mut EG,
             id: egg::Id,
-            _subst: &egg::Subst,
+            _subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> std::vec::Vec<egg::Id> {
             let access = match &egraph[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1244,9 +1324,9 @@ pub fn slice_concatenate_accesses(
                 dim_length = access[self.axis],
                 axis = self.axis
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, id, _subst)
+            .apply_one(egraph, id, _subst, _searcher_ast, _rule_name)
         }
     }
 
@@ -1328,7 +1408,9 @@ pub fn slice_concatenate_tensor_accesses(
             &self,
             egraph: &mut EG,
             id: egg::Id,
-            subst: &egg::Subst,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> std::vec::Vec<egg::Id> {
             let shape = match &egraph[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1352,9 +1434,9 @@ pub fn slice_concatenate_tensor_accesses(
                  )",
                 self.axis, low_bound, middle_bound, self.axis, middle_bound, high_bound, self.axis
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, id, subst)
+            .apply_one(egraph, id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!(format!("slice-concatenate-tensor-access-axis-{}", axis);
@@ -1373,7 +1455,14 @@ pub fn collapse_nested_access_slices() -> Rewrite<Language, MyAnalysis> {
         high1: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let low0: usize = MyAnalysis::get_usize(subst[self.low0], egraph);
             let high0: usize = MyAnalysis::get_usize(subst[self.high0], egraph);
             let low1: usize = MyAnalysis::get_usize(subst[self.low1], egraph);
@@ -1384,9 +1473,9 @@ pub fn collapse_nested_access_slices() -> Rewrite<Language, MyAnalysis> {
             let new_high: usize = new_low + (high1 - low1);
 
             format!("(access-slice ?t ?axis {} {})", new_low, new_high)
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, eclass, subst)
+                .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("collapse-nested-slices";
@@ -1405,7 +1494,14 @@ pub fn access_slice_access_transpose_composition_commutative() -> Rewrite<Langua
         slice_axis: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let axis_list = match &egraph[subst[self.axis_list]].data {
                 MyAnalysisData::List(l) => l,
                 _ => panic!("expected list"),
@@ -1418,7 +1514,7 @@ pub fn access_slice_access_transpose_composition_commutative() -> Rewrite<Langua
             )
             .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!(
@@ -1437,7 +1533,14 @@ pub fn bubble_access_concatenate_through_access_transpose() -> Rewrite<Language,
         axis_list: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let original_concatenate_axis: usize =
                 MyAnalysis::get_usize(subst[self.concatenate_axis], egraph);
             let axis_list = match &egraph[subst[self.axis_list]].data {
@@ -1461,9 +1564,9 @@ pub fn bubble_access_concatenate_through_access_transpose() -> Rewrite<Language,
                       (access-transpose ?b ?list) {})",
                 new_concatenate_axis
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("bubble-access-concatenate-through-access-transpose";
@@ -1495,7 +1598,14 @@ pub fn bubble_access_concatenate_through_access_cartesian_product_not_item_axis_
         left: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let left = match &egraph[subst[self.left]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -1509,9 +1619,9 @@ pub fn bubble_access_concatenate_through_access_cartesian_product_not_item_axis_
                   )",
                 axis + left.shape.ndim()
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("bubble-access-concatenate-through-access-cartesian-product-not-item-axis-right";
@@ -1530,7 +1640,14 @@ pub fn bubble_access_concatenate_through_access_cartesian_product_same_item_axis
         access1: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let a1 = match &egraph[subst[self.access1]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -1546,9 +1663,9 @@ pub fn bubble_access_concatenate_through_access_cartesian_product_same_item_axis
                     {})",
                 new_axis
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("bubble-access-concatenate-through-access-cartesian-product-same-axis";
@@ -1610,7 +1727,14 @@ pub fn bubble_access_concatenate_through_access_slice() -> Rewrite<Language, MyA
         slice_axis: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let a0_shape = match &egraph[subst[self.a0]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -1633,23 +1757,23 @@ pub fn bubble_access_concatenate_through_access_slice() -> Rewrite<Language, MyA
                   ?concatenate-axis
                  )
                 "
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, matched_id, subst)
+                .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
             } else if low < a0_dim_value && high <= a0_dim_value {
                 // only in a0
                 "(access-slice ?a0 ?slice-axis ?low ?high)"
-                    .parse::<Pattern<_>>()
+                    .parse::<Pattern<Language>>()
                     .unwrap()
-                    .apply_one(egraph, matched_id, subst)
+                    .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
             } else if low >= a0_dim_value && high >= a0_dim_value {
                 // only in a1
                 // Adjust low/high indices
                 let (low, high) = (low - a0_dim_value, high - a0_dim_value);
                 format!("(access-slice ?a1 ?slice-axis {} {})", low, high)
-                    .parse::<Pattern<_>>()
+                    .parse::<Pattern<Language>>()
                     .unwrap()
-                    .apply_one(egraph, matched_id, subst)
+                    .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
             } else if low < a0_dim_value && high >= a0_dim_value {
                 // split between a0 and a1
                 // Adjust slice indices
@@ -1666,9 +1790,9 @@ pub fn bubble_access_concatenate_through_access_slice() -> Rewrite<Language, MyA
                 ",
                     a0_low, a0_high, a1_low, a1_high
                 )
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, matched_id, subst)
+                .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
             } else {
                 unreachable!()
             }
@@ -1693,7 +1817,14 @@ pub fn collapse_nested_transposes() -> Rewrite<Language, MyAnalysis> {
         outer_list: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let inner_list = match &egraph[subst[self.inner_list]].data {
                 MyAnalysisData::List(l) => l,
                 _ => panic!(),
@@ -1714,9 +1845,9 @@ pub fn collapse_nested_transposes() -> Rewrite<Language, MyAnalysis> {
                 "(access-transpose ?a (list {}))",
                 itertools::join(new_list.iter().map(|v| v.to_string()), " ")
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("collapse-nested-transposes";
@@ -1784,7 +1915,9 @@ pub fn pad_slice_accesses(
             &self,
             egraph: &mut EG,
             id: egg::Id,
-            _subst: &egg::Subst,
+            _subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> std::vec::Vec<egg::Id> {
             let access = match &egraph[id].data {
                 MyAnalysisData::AccessPattern(a) => a,
@@ -1821,9 +1954,9 @@ pub fn pad_slice_accesses(
                  )",
                 self.pad_type, self.axis, pad_before, pad_after, self.axis, low, high
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, id, _subst)
+            .apply_one(egraph, id, _subst, _searcher_ast, _rule_name)
         }
     }
     struct PadToMultiplesOfApplier {
@@ -1837,10 +1970,12 @@ pub fn pad_slice_accesses(
         fn apply_one(
             &self,
             egraph: &mut EG,
-            id: egg::Id,
-            _subst: &egg::Subst,
+            eclass: egg::Id,
+            _subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> std::vec::Vec<egg::Id> {
-            let access = match &egraph[id].data {
+            let access = match &egraph[eclass].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
             };
@@ -1871,7 +2006,7 @@ pub fn pad_slice_accesses(
                 let pad_type_id = egraph.add(Language::PadType(self.pad_type));
 
                 let access_pad_id = egraph.add(Language::AccessPad([
-                    id,
+                    eclass,
                     pad_type_id,
                     axis_id,
                     pad_before_id,
@@ -1889,6 +2024,9 @@ pub fn pad_slice_accesses(
                 pad_to += self.multiples_of;
             }
 
+            for id in &ids {
+                egraph.union(eclass, *id);
+            }
             ids
         }
     }
@@ -2011,7 +2149,14 @@ pub fn bubble_access_slice_through_access_cartesian_product_not_item_axis_right(
         left: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, eclass: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let left = match &egraph[subst[self.left]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -2026,9 +2171,9 @@ pub fn bubble_access_slice_through_access_cartesian_product_not_item_axis_right(
                  )",
                 axis + left.shape.ndim()
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, eclass, subst)
+            .apply_one(egraph, eclass, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("bubble-access-slice-through-access-cartesian-product-not-item-axis-right";
@@ -2047,7 +2192,14 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
         access1: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let a1 = match &egraph[subst[self.access1]].data {
                 MyAnalysisData::AccessPattern(a) => a,
                 _ => panic!(),
@@ -2062,9 +2214,9 @@ pub fn bubble_access_slice_through_access_cartesian_product_same_item_axis(
                     {} ?low ?high)",
                 new_axis
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite! {"bubble-access-slice-through-access-cartesian-product-same-item-axis";
@@ -2162,7 +2314,14 @@ pub fn bubble_access_transpose_through_access_pad() -> Rewrite<Language, MyAnaly
         pad_axis: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let list = match &egraph[subst[self.list]].data {
                 MyAnalysisData::List(l) => l.clone(),
                 _ => panic!(),
@@ -2173,9 +2332,9 @@ pub fn bubble_access_transpose_through_access_pad() -> Rewrite<Language, MyAnaly
                 "(access-transpose (access-pad ?a ?pad-type {} ?pad-before ?pad-after) ?list)",
                 list[pad_axis]
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
 
@@ -2200,13 +2359,20 @@ pub fn systolic_array_conv2d_nchw_oihw_with_blocking(
         cols: usize,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             format!("(systolic-array-conv2d-nchw-oihw-with-blocking {rows} {cols} ?weights ?data ?kh ?kw ?stride-h ?stride-w)",
                         rows = self.rows,
                         cols = self.cols)
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, matched_id, subst)
+                .apply_one(egraph,matched_id, subst,_searcher_ast,_rule_name)
         }
     }
     rewrite!(format!("systolic-array-conv2d-nchw-oihw-with-blocking-{}-{}", rows, cols);
@@ -2253,13 +2419,20 @@ pub fn systolic_array_conv2d_nhwc_hwio_with_blocking(
         cols: usize,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             format!("(systolic-array-conv2d-nhwc-hwio-with-blocking {rows} {cols} ?weights ?data ?kh ?kw ?stride-h ?stride-w)",
                         rows = self.rows,
                         cols = self.cols)
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, matched_id, subst)
+                .apply_one(egraph,matched_id, subst,_searcher_ast,_rule_name)
         }
     }
     rewrite!(format!("systolic-array-conv2d-nhwc-hwio-with-blocking-{}-{}", rows, cols);
@@ -2302,13 +2475,20 @@ pub fn systolic_array_conv2d_im2col_nchw_oihw_with_blocking(
         cols: usize,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             format!("(systolic-array-conv2d-im2col-nchw-oihw-with-blocking {rows} {cols} ?weights ?data ?kh ?kw ?stride-h ?stride-w)",
                         rows = self.rows,
                         cols = self.cols)
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, matched_id, subst)
+                .apply_one(egraph,matched_id, subst,_searcher_ast,_rule_name)
         }
     }
     rewrite!(format!("systolic-array-conv2d-im2col-nchw-oihw-with-blocking-{}-{}", rows, cols);
@@ -2354,13 +2534,20 @@ pub fn systolic_array_conv2d_im2col_nhwc_hwio_with_blocking(
         cols: usize,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             format!("(systolic-array-conv2d-im2col-nhwc-hwio-with-blocking {rows} {cols} ?weights ?data ?kh ?kw ?stride-h ?stride-w)",
                         rows = self.rows,
                         cols = self.cols)
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, matched_id, subst)
+                .apply_one(egraph,matched_id, subst,_searcher_ast,_rule_name)
         }
     }
     rewrite!(format!("systolic-array-conv2d-im2col-nhwc-hwio-with-blocking-{}-{}", rows, cols);
@@ -2427,7 +2614,7 @@ pub fn flexasr_maxpool() -> Rewrite<Language, MyAnalysis> {
        (accelerator-call flex-maxpool
         (access (access-transpose ?a (list 1 0)) 0) (shape 0))
        (list 1 0))
-      1)"
+      2)"
     if constrain_access("?a".parse().unwrap(), move |a| {
        // Hidden states divisible by 16.
        a.shape.ndim() == 1 && a.shape[0] % 16 == 0
@@ -2450,7 +2637,14 @@ pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
         strides: usize,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             // The dimension to re-access at, after we compute the new reduce-max.
             let reaccess_dim = match &egraph[subst[self.a]].data {
                 MyAnalysisData::AccessPattern(a) => a.shape.ndim(),
@@ -2469,9 +2663,9 @@ pub fn reassociate_max(window_len: usize, strides: usize) -> RW {
                 strides = self.strides,
                 reaccess_dim = reaccess_dim
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
 
@@ -2496,7 +2690,14 @@ pub fn bubble_access_reshape_through_compute_reduce_max() -> RW {
         shape: Var,
     }
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let shape = match &egraph[subst[self.shape]].data {
                 MyAnalysisData::AccessPattern(a) => a.shape.slice(),
                 _ => panic!(),
@@ -2507,9 +2708,9 @@ pub fn bubble_access_reshape_through_compute_reduce_max() -> RW {
                   (access-shape (shape {shape}) (shape)))",
                 shape = shape.iter().map(usize::to_string).join(" ")
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("bubble-access-reshape-through-compute-reduce-max";
@@ -2554,7 +2755,14 @@ pub fn bubble_access_through_access_transpose() -> RW {
 pub fn simplify_reduce_max() -> RW {
     struct ApplierImpl(Var);
     impl Applier<Language, MyAnalysis> for ApplierImpl {
-        fn apply_one(&self, egraph: &mut EG, matched_id: Id, subst: &Subst) -> Vec<Id> {
+        fn apply_one(
+            &self,
+            egraph: &mut EG,
+            matched_id: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
             let shape = match &egraph[subst[self.0]].data {
                 MyAnalysisData::AccessPattern(a) => a.shape.slice(),
                 _ => panic!(),
@@ -2565,9 +2773,9 @@ pub fn simplify_reduce_max() -> RW {
                   (access-shape (shape {shape}) (shape)))",
                 shape = shape.iter().map(usize::to_string).join(" ")
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, matched_id, subst)
+            .apply_one(egraph, matched_id, subst, _searcher_ast, _rule_name)
         }
     }
     rewrite!("simplify-reduce-max";
@@ -2603,8 +2811,10 @@ pub fn conv2d_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            _eclass: Id,
+            eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let (
                 data,
@@ -2690,7 +2900,9 @@ pub fn conv2d_relay_to_glenside() -> RW {
                     .collect::<Vec<_>>(),
             );
 
-            vec![egraph.add_instantiation(&pattern_ast, subst)]
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+            egraph.union(eclass, out_id);
+            vec![out_id]
         }
     }
     rewrite!("conv2d-relay-to-glenside";
@@ -2729,8 +2941,10 @@ pub fn conv1d_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            _eclass: Id,
+            eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let (data, weights, strides, padding) = match vec![
                 self.data,
@@ -2781,7 +2995,9 @@ pub fn conv1d_relay_to_glenside() -> RW {
                     .collect::<Vec<_>>(),
             );
 
-            vec![egraph.add_instantiation(&pattern_ast, subst)]
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+            egraph.union(eclass, out_id);
+            vec![out_id]
         }
     }
     let i = Impl {
@@ -2793,7 +3009,7 @@ pub fn conv1d_relay_to_glenside() -> RW {
     rewrite!("conv1d-relay-to-glenside";
         { format!("(relay-operator-call relay-conv1d {} {} {} {})",
                     i.data, i.weights, i.strides, i.padding)
-            .parse::<Pattern<_>>().unwrap() } => { i })
+            .parse::<Pattern<Language>>().unwrap() } => { i })
 }
 
 pub fn softmax_relay_to_glenside() -> RW {
@@ -2807,6 +3023,8 @@ pub fn softmax_relay_to_glenside() -> RW {
             egraph: &mut EGraph<Language, MyAnalysis>,
             _eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let data = match &egraph[subst[self.data]].data {
                 MyAnalysisData::AccessPattern(data) => data,
@@ -2830,9 +3048,9 @@ pub fn softmax_relay_to_glenside() -> RW {
             assert!(axis >= 0 && axis < data.as_vec().len() as i64);
 
             format!("(compute softmax (access {} {}))", self.data, axis)
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
-                .apply_one(egraph, _eclass, subst)
+                .apply_one(egraph, _eclass, subst, _searcher_ast, _rule_name)
         }
     }
     let i = Impl {
@@ -2842,7 +3060,7 @@ pub fn softmax_relay_to_glenside() -> RW {
     rewrite!("softmax-relay-to-glenside";
         { format!("(relay-operator-call relay-softmax {} {})",
                     i.data, i.axis)
-            .parse::<Pattern<_>>().unwrap() } => { i })
+            .parse::<Pattern<Language>>().unwrap() } => { i })
 }
 
 pub fn max_pool2d_relay_to_glenside_nchw() -> RW {
@@ -2931,6 +3149,8 @@ pub fn expand_dims_relay_to_glenside() -> RW {
             egraph: &mut EGraph<Language, MyAnalysis>,
             _eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let num_newaxis: i64 = match &egraph[subst[self.num_newaxis]].data {
                 MyAnalysisData::Num(u) => *u as i64,
@@ -2941,9 +3161,9 @@ pub fn expand_dims_relay_to_glenside() -> RW {
                 "(relay-operator-call relay-expand-dims (access-insert-axis ?data ?axis) ?axis {})",
                 num_newaxis - 1
             )
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
-            .apply_one(egraph, _eclass, subst)
+            .apply_one(egraph, _eclass, subst, _searcher_ast, _rule_name)
         }
     }
     let i = Impl {
@@ -2952,7 +3172,7 @@ pub fn expand_dims_relay_to_glenside() -> RW {
     rewrite!("expand-dims-relay-to-glenside";
     { format!("(relay-operator-call relay-expand-dims ?data ?axis {})",
                 i.num_newaxis)
-        .parse::<Pattern<_>>().unwrap() } => { i.clone() }
+        .parse::<Pattern<Language>>().unwrap() } => { i.clone() }
     if move |egraph: &mut EGraph<Language, MyAnalysis>, _, subst: &Subst| match &egraph[subst[i.num_newaxis]].data {
         MyAnalysisData::Num(v) => v > &0,
         _ => panic!(),
@@ -2974,8 +3194,10 @@ pub fn pad_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            _eclass: Id,
+            eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let pad_widths = match &egraph[subst[self.pad_widths]].data {
                 MyAnalysisData::Shape(ShapeData { shape, .. }) => shape.clone(),
@@ -3005,6 +3227,7 @@ pub fn pad_relay_to_glenside() -> RW {
                 ]));
             }
 
+            egraph.union(eclass, id);
             vec![id]
         }
     }
@@ -3015,7 +3238,7 @@ pub fn pad_relay_to_glenside() -> RW {
     rewrite!("pad-relay-to-glenside";
     { format!("(relay-operator-call relay-pad {} {})",
                 i.data, i.pad_widths)
-        .parse::<Pattern<_>>().unwrap() } => { i.clone() })
+        .parse::<Pattern<Language>>().unwrap() } => { i.clone() })
 }
 
 pub fn dense_relay_to_glenside() -> RW {
@@ -3033,8 +3256,10 @@ impl Applier<Language, MyAnalysis> for BroadcastedRelayOpApplier {
     fn apply_one(
         &self,
         egraph: &mut EGraph<Language, MyAnalysis>,
-        _eclass: Id,
+        eclass: Id,
         subst: &Subst,
+        _searcher_ast: Option<&PatternAst<Language>>,
+        _rule_name: Symbol,
     ) -> Vec<Id> {
         let a_id = subst[self.a];
         let b_id = subst[self.b];
@@ -3098,6 +3323,8 @@ impl Applier<Language, MyAnalysis> for BroadcastedRelayOpApplier {
 
         let out_id = egraph.add_instantiation(&pattern_ast, subst);
 
+        let out_id = out_id;
+        egraph.union(eclass, out_id);
         vec![out_id]
     }
 }
@@ -3154,8 +3381,10 @@ pub fn bias_add_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            _eclass: Id,
+            eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let axis = match &egraph[subst[self.axis_var]].data {
                 MyAnalysisData::Num(v) => *v,
@@ -3210,6 +3439,8 @@ pub fn bias_add_relay_to_glenside() -> RW {
 
             let out_id = egraph.add_instantiation(&pattern_ast, subst);
 
+            let out_id = out_id;
+            egraph.union(eclass, out_id);
             vec![out_id]
         }
     }
@@ -3227,8 +3458,10 @@ pub fn concatenate_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            _eclass: Id,
+            eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let tuple_len = match &egraph[subst[self.tuple_var]].data {
                 MyAnalysisData::Tuple(t) => t.len(),
@@ -3273,6 +3506,8 @@ pub fn concatenate_relay_to_glenside() -> RW {
 
             let out_id = egraph.add_instantiation(&pattern_ast, subst);
 
+            let out_id = out_id;
+            egraph.union(eclass, out_id);
             vec![out_id]
         }
     }
@@ -3288,7 +3523,7 @@ pub fn simplify_tuple_get_item() -> RW {
             &self,
             egraph: &EGraph<Language, MyAnalysis>,
             eclass: Id,
-        ) -> Option<egg::SearchMatches> {
+        ) -> Option<egg::SearchMatches<Language>> {
             let substs: Vec<Subst> = egraph[eclass]
                 .nodes
                 .iter()
@@ -3314,7 +3549,11 @@ pub fn simplify_tuple_get_item() -> RW {
             if substs.is_empty() {
                 None
             } else {
-                Some(SearchMatches { eclass, substs })
+                Some(SearchMatches {
+                    eclass,
+                    substs,
+                    ast: None,
+                })
             }
         }
 
@@ -3346,8 +3585,10 @@ pub fn squeeze_relay_to_glenside() -> RW {
         fn apply_one(
             &self,
             egraph: &mut EGraph<Language, MyAnalysis>,
-            _eclass: Id,
+            eclass: Id,
             subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
         ) -> Vec<Id> {
             let mut axes = match &egraph[subst[self.axis_var]].data {
                 MyAnalysisData::List(v) => v.clone(),
@@ -3378,6 +3619,8 @@ pub fn squeeze_relay_to_glenside() -> RW {
 
             let out_id = egraph.add_instantiation(&pattern_ast, subst);
 
+            let out_id = out_id;
+            egraph.union(eclass, out_id);
             vec![out_id]
         }
     }
@@ -3430,6 +3673,7 @@ mod tests {
     use std::io::Write;
     use std::process::Command;
     use std::str::FromStr;
+    use test_logger::test;
 
     #[test]
     fn flexasr_maxpool() {
@@ -3445,6 +3689,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::flexasr_maxpool()];
 
@@ -3456,7 +3701,7 @@ mod tests {
             _ => panic!(),
         };
 
-        let matches = "
+        let test_pattern = "
             (access
              (access-transpose
               (accelerator-call flex-maxpool
@@ -3466,11 +3711,10 @@ mod tests {
                  (list 1 0))
                  0) ?shape)
               (list 1 0))
-             1)"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+             2)"
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3491,6 +3735,7 @@ mod tests {
         let rws = vec![super::flatten_unflatten_any_access()];
         let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
+        egraph.rebuild();
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
@@ -3511,7 +3756,7 @@ mod tests {
              )
             )
             "
-            .parse::<Pattern<_>>()
+            .parse::<Pattern<Language>>()
             .unwrap()
             .search(&runner.egraph)
             .len(),
@@ -3544,11 +3789,12 @@ mod tests {
         ];
         let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (access-reshape
              (access-cartesian-product
               (access-flatten
@@ -3568,10 +3814,9 @@ mod tests {
              ?shape
             )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         // ?shape should be what we expect. This is kind of over-testing, in the
@@ -3602,11 +3847,12 @@ mod tests {
         let rws = vec![super::bubble_reshape_through_compute_dot_product()];
         let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (access-reshape
              (compute dot-product
               (access (access-tensor t-1024-2-256) 1)
@@ -3614,10 +3860,9 @@ mod tests {
              ?shape
             )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         match &runner.egraph[matches.substs[0]["?shape".parse().unwrap()]].data {
@@ -3666,6 +3911,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![
             super::flatten_unflatten_any_access(),
@@ -3678,7 +3924,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
         (access-transpose
          (access-reshape
           (systolic-array ?rows ?cols
@@ -3690,10 +3936,9 @@ mod tests {
          ?transpose-list
         )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3718,6 +3963,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![
             super::flatten_unflatten_any_access(),
@@ -3730,7 +3976,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (access-reshape
              (systolic-array 27 900
               (access-flatten (access (access-tensor t-8-3-3-3) 1))
@@ -3754,10 +4000,9 @@ mod tests {
              ?shape
             )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3781,6 +4026,7 @@ mod tests {
 
         let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
+        egraph.rebuild();
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
@@ -3789,7 +4035,7 @@ mod tests {
             for dim1 in &[0, 8, 16, 24] {
                 assert_eq!(
                     format!("(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 {} {}) 0 {} {})", dim1, dim1+8, dim0, dim0+8)
-                        .parse::<Pattern<_>>()
+                        .parse::<Pattern<Language>>()
                         .unwrap()
                         .search(&runner.egraph)
                         .len(),
@@ -3825,13 +4071,14 @@ mod tests {
 
         let mut egraph = EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         egraph.add_expr(&program);
+        egraph.rebuild();
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
         assert_eq!(
             "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 0 16) 0 0 16)"
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
                 .search(&runner.egraph)
                 .len(),
@@ -3840,7 +4087,7 @@ mod tests {
 
         assert_eq!(
             "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 16 32) 0 0 16)"
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
                 .search(&runner.egraph)
                 .len(),
@@ -3849,7 +4096,7 @@ mod tests {
 
         assert_eq!(
             "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 0 16) 0 16 32)"
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
                 .search(&runner.egraph)
                 .len(),
@@ -3858,7 +4105,7 @@ mod tests {
 
         assert_eq!(
             "(access-slice (access-slice (access (access-tensor t-32-32) 1) 1 16 32) 0 16 32)"
-                .parse::<Pattern<_>>()
+                .parse::<Pattern<Language>>()
                 .unwrap()
                 .search(&runner.egraph)
                 .len(),
@@ -3881,12 +4128,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-slice
   (access (access-tensor t-3-32-32) 1)
@@ -3894,10 +4142,9 @@ mod tests {
  )
  (list 2 0 1)
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3916,12 +4163,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-slice
   (access (access-tensor t-3-32-32) 1)
@@ -3929,10 +4177,9 @@ mod tests {
  )
  (list 2 0 1)
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3951,20 +4198,20 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-slice (access (access-tensor t-3-32-32) 1) 2 0 16)
  (list 1 0 2)
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -3982,20 +4229,20 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::access_slice_access_transpose_composition_commutative()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-slice (access (access-tensor t-3-32-32) 1) 0 0 2)
  (list 1 0 2)
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4014,21 +4261,21 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-concatenate
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
  2
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4047,21 +4294,21 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-concatenate
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 2 0))
  0
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4080,21 +4327,21 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-concatenate
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 0 2))
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 1 0 2))
  2
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4113,21 +4360,21 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_transpose()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
 (access-concatenate
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 2 0 1))
  (access-transpose (access (access-tensor t-3-32-32) 1) (list 2 0 1))
  2
 )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4142,6 +4389,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_left(),
         ];
@@ -4149,7 +4397,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-concatenate
               (access-cartesian-product
                (access (access-tensor t-3-32-32) 1)
@@ -4161,10 +4409,9 @@ mod tests {
               )
               0
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4179,6 +4426,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_not_item_axis_right(),
         ];
@@ -4186,7 +4434,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-concatenate
               (access-cartesian-product
                (access-concatenate (access (access-tensor t-3-32-32) 1) (access (access-tensor t-3-32-32) 1) 0)
@@ -4198,10 +4446,9 @@ mod tests {
               )
               1
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4216,6 +4463,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
         ];
@@ -4223,7 +4471,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-concatenate
               (access-cartesian-product
                (access (access-tensor t-3-32-32) 1)
@@ -4235,10 +4483,9 @@ mod tests {
               )
               3
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4253,6 +4500,7 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![
             super::bubble_access_concatenate_through_access_cartesian_product_same_item_axis(),
         ];
@@ -4260,7 +4508,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-concatenate
               (access-cartesian-product
                (access (access-tensor t-3-32-32) 0)
@@ -4272,10 +4520,9 @@ mod tests {
               )
               3
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4293,23 +4540,23 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws =
             vec![super::bubble_access_concatenate_through_compute_dot_product_not_item_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-concatenate
               (compute dot-product (access (access-tensor t-3-32-32) 1))
               (compute dot-product (access (access-tensor t-3-32-32) 1))
               0
              )
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4327,12 +4574,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_compute_dot_product_item_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (compute reduce-sum
               (access-pair
                (compute dot-product (access (access-tensor t-3-32-32) 1))
@@ -4340,10 +4588,9 @@ mod tests {
               )
              )
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4361,12 +4608,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_compute_dot_product_item_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (compute reduce-sum
               (access-pair
                (compute dot-product (access (access-tensor t-3-32-32) 1))
@@ -4374,10 +4622,9 @@ mod tests {
               )
              )
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4396,12 +4643,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-concatenate
               (access
                (access (access-tensor t-3-32-32) 1)
@@ -4414,10 +4662,9 @@ mod tests {
               2
              )
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4436,16 +4683,16 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_slice()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "(access-slice (access (access-tensor t-32-32) 1) 1 0 16)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+        let test_pattern = "(access-slice (access (access-tensor t-32-32) 1) 1 0 16)"
+            .parse::<Pattern<Language>>()
             .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4464,16 +4711,16 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_slice()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "(access-slice (access (access-tensor t-32-64) 1) 1 16 32)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+        let test_pattern = "(access-slice (access (access-tensor t-32-64) 1) 1 16 32)"
+            .parse::<Pattern<Language>>()
             .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4492,12 +4739,13 @@ mod tests {
         .unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_concatenate_through_access_slice()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (access-concatenate
              (access-slice
               (access (access-tensor t-32-32) 1)
@@ -4509,10 +4757,9 @@ mod tests {
              )
              1
             )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4521,6 +4768,7 @@ mod tests {
         let program = "(access-tensor t-32-32)".parse().unwrap();
         let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis::default());
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![
             super::slice_concatenate_tensor_accesses(0, 1),
             super::slice_concatenate_tensor_accesses(1, 1),
@@ -4529,7 +4777,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (access-concatenate
              (access-slice
               (access-tensor t-32-32)
@@ -4541,13 +4789,12 @@ mod tests {
              )
              0
             )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
             (access-concatenate
              (access-slice
               (access-tensor t-32-32)
@@ -4559,13 +4806,12 @@ mod tests {
              )
              1
             )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
             (access-concatenate
              (access-slice
               (access-concatenate
@@ -4587,10 +4833,9 @@ mod tests {
              )
              0
             )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4613,14 +4858,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::collapse_nested_transposes()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
-        let matches = "(access-transpose (access (access-tensor t) 1) (list 0 2 3 1))"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+        let test_pattern = "(access-transpose (access (access-tensor t) 1) (list 0 2 3 1))"
+            .parse::<Pattern<Language>>()
             .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4641,14 +4886,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::remove_trivial_transpose()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
-        let matches = "(access (access-tensor t) 1)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+        let test_pattern = "(access (access-tensor t) 1)"
+            .parse::<Pattern<Language>>()
             .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4662,14 +4907,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::collapse_nested_accesses()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
-        let matches = "(access (access-tensor t) 1)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+        let test_pattern = "(access (access-tensor t) 1)"
+            .parse::<Pattern<Language>>()
             .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4683,6 +4928,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::pad_slice_accesses(
             0,
             PadSliceStrategy::PadToMultiplesOf {
@@ -4695,7 +4941,7 @@ mod tests {
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
         for dim_val in &[4, 8, 12, 16] {
-            let matches = format!(
+            let pattern = format!(
                 "(access-slice
                   (access-pad
                    (access (access-tensor t) 0)
@@ -4706,10 +4952,9 @@ mod tests {
                  )",
                 dim_val - 1
             )
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+            .parse::<Pattern<Language>>()
             .unwrap();
+            let matches = pattern.search_eclass(&runner.egraph, id).unwrap();
             assert_eq!(matches.substs.len(), 1);
         }
     }
@@ -4755,6 +5000,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
+        egraph.rebuild();
 
         let rws = vec![
             super::flatten_unflatten_any_access(),
@@ -4768,7 +5014,7 @@ mod tests {
             .run(&rws);
 
         // Expected original program.
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-transpose
   (compute dot-product
@@ -4806,14 +5052,13 @@ mod tests {
  (list 0 2 3 1)
 )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         // Find the version with flattened and reshaped weight/image arguments
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-transpose
   (compute dot-product
@@ -4861,13 +5106,12 @@ mod tests {
  (list 0 2 3 1)
 )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
 (access-transpose
  (access-transpose
   (access-reshape
@@ -4916,10 +5160,9 @@ mod tests {
  (list 0 2 3 1)
 )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4943,10 +5186,11 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_slice_through_access_pad_inequal_axes()];
         let runner = Runner::<_, _, ()>::default().with_egraph(egraph).run(&rws);
 
-        let matches = "
+        let test_pattern = "
               (access-slice
                (access-pad
                 (access-tensor t)
@@ -4955,10 +5199,9 @@ mod tests {
                0 0 8
               )
 "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -4972,6 +5215,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![
             super::pad_slice_accesses(
                 0,
@@ -5024,7 +5268,7 @@ mod tests {
 
         runner.print_report();
 
-        let matches = "
+        let test_pattern = "
                  (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
@@ -5033,13 +5277,12 @@ mod tests {
                   )
                   0 0 1
                  )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
                  (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
@@ -5048,13 +5291,12 @@ mod tests {
                   )
                   1 0 2
                  )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
                  (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
@@ -5063,12 +5305,12 @@ mod tests {
                   )
                   2 0 3
                  )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id);
+        .parse::<Pattern<Language>>()
+        .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
 
-        let matches = "
+        let test_pattern = "
                  (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
@@ -5077,15 +5319,14 @@ mod tests {
                   )
                   3 0 4
                  )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         // Shouldn't pad up to the next highest multiple. I.e. length 1
         // shouldn't go to 6, just to 3.
-        let matches = "
+        let test_pattern = "
                  (access-slice
                   (access-pad
                    (access (access-tensor t) 0)
@@ -5094,9 +5335,9 @@ mod tests {
                   )
                   0 0 1
                  )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id);
+        .parse::<Pattern<Language>>()
+        .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
     }
 
@@ -5117,13 +5358,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws =
             vec![super::bubble_access_slice_through_access_cartesian_product_not_item_axis_left()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-slice
               (access-cartesian-product
                (access (access-tensor a) 1)
@@ -5131,10 +5373,9 @@ mod tests {
               )
               0 0 2
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5155,13 +5396,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws =
             vec![super::bubble_access_slice_through_access_cartesian_product_not_item_axis_right()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-slice
               (access-cartesian-product
                (access (access-tensor b) 1)
@@ -5169,10 +5411,9 @@ mod tests {
               )
               1 0 2
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5193,13 +5434,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws =
             vec![super::bubble_access_slice_through_access_cartesian_product_same_item_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-slice
               (access-cartesian-product
                (access (access-tensor a) 2)
@@ -5207,10 +5449,9 @@ mod tests {
               )
               5 1 2
              )"
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5232,21 +5473,21 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws = vec![super::bubble_access_slice_through_compute_dot_product_not_item_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
              (access-slice
               (compute dot-product (access (access-tensor a) 1))
               0 2 3
              )
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5272,13 +5513,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
         let rws =
             vec![super::bubble_access_slice_through_compute_dot_product_item_axis_not_tuple_axis()];
         let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
               (compute dot-product
                (access-pad
                 (access (access-tensor a) 1)
@@ -5287,10 +5529,9 @@ mod tests {
                )
               )
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5314,6 +5555,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![
             super::systolic_array_with_blocking(64, 32),
@@ -5333,75 +5575,70 @@ mod tests {
             _ => panic!(),
         };
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-with-blocking 64 32
            (access (access-tensor a) 1)
            (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-with-blocking 32 32
            (access (access-tensor a) 1)
            (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-with-blocking 16 32
            (access (access-tensor a) 1)
            (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-with-blocking 32 16
            (access (access-tensor a) 1)
            (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-with-blocking 2 2
            (access (access-tensor a) 1)
            (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-with-blocking 32 3
            (access (access-tensor a) 1)
            (access (access-transpose  (access (access-tensor b) 1) (list 1 0)) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id);
+        .parse::<Pattern<Language>>()
+        .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
     }
 
@@ -5443,6 +5680,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
+        egraph.rebuild();
 
         let rws = vec![
             // This rewrite enables im2col to be found.
@@ -5462,16 +5700,15 @@ mod tests {
             _ => panic!(),
         };
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-im2col-fc-with-blocking 32 32
            (access (access-tensor data) 1)
            (access (access-tensor kernel) 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5513,6 +5750,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
+        egraph.rebuild();
 
         let rws = vec![
             super::systolic_array_conv2d_nchw_oihw_with_blocking(64, 32),
@@ -5529,7 +5767,7 @@ mod tests {
             _ => panic!(),
         };
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-nchw-oihw-with-blocking
            64 32
            (access-tensor kernel)
@@ -5538,10 +5776,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         let _matches = "
@@ -5553,10 +5790,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5569,14 +5805,13 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-nchw-oihw-with-blocking
           3 2
            (access-tensor kernel)
@@ -5585,9 +5820,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id);
+        .parse::<Pattern<Language>>()
+        .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
     }
 
@@ -5629,6 +5864,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
+        egraph.rebuild();
 
         let rws = vec![
             // This rewrite is needed to move the padding further "out" and the
@@ -5654,7 +5890,7 @@ mod tests {
             _ => panic!(),
         };
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-nhwc-hwio-with-blocking
            64 32
            (access-tensor kernel)
@@ -5663,10 +5899,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         let _matches = "
@@ -5678,10 +5913,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5694,14 +5928,13 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-nhwc-hwio-with-blocking
           3 2
            (access-tensor kernel)
@@ -5710,9 +5943,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id);
+        .parse::<Pattern<Language>>()
+        .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id);
         assert!(matches.is_none());
     }
 
@@ -5737,6 +5970,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::bubble_access_transpose_through_access_pad()];
 
@@ -5748,7 +5982,7 @@ mod tests {
             _ => panic!(),
         };
 
-        let matches = "
+        let test_pattern = "
           (access-transpose
            (access-pad
             (access (access-tensor a) 1)
@@ -5758,10 +5992,9 @@ mod tests {
            (list 3 1 2 0)
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -5802,6 +6035,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
+        egraph.rebuild();
 
         let rws = vec![
             // These are needed to find the im2col convolution
@@ -5818,7 +6052,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-im2col-nchw-oihw-with-blocking
            64 32
            (access-tensor kernel)
@@ -5827,10 +6061,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         let _matches = "
@@ -5842,10 +6075,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5858,10 +6090,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5874,10 +6105,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
     }
@@ -5919,6 +6149,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
+        egraph.rebuild();
 
         let rws = vec![
             // These are needed to find the im2col convolution
@@ -5947,7 +6178,7 @@ mod tests {
             .run(&rws);
         runner.print_report();
 
-        let matches = "
+        let test_pattern = "
           (systolic-array-conv2d-im2col-nhwc-hwio-with-blocking
            64 32
            (access-tensor kernel)
@@ -5956,10 +6187,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
 
         let _matches = "
@@ -5971,10 +6201,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5987,10 +6216,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -6003,10 +6231,9 @@ mod tests {
            1 1
           )
             "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
     }
@@ -6025,6 +6252,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::reassociate_max(2, 2)];
 
@@ -6032,7 +6260,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (compute reduce-max
              (access
               (compute reduce-max
@@ -6042,10 +6270,9 @@ mod tests {
                 (shape 2)))
               1))
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -6066,6 +6293,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::reassociate_max(2, 2)];
 
@@ -6073,7 +6301,7 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
             (compute reduce-max
              (access
               (compute reduce-max
@@ -6085,10 +6313,9 @@ mod tests {
                 (shape 2)))
               2))
              "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -6126,6 +6353,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         // Define our rewrites. These rewrites are what map the max pool to
         // FlexASR.
@@ -6182,7 +6410,7 @@ mod tests {
         // Note that operators like access-reshape, access-flatten, and access
         // are operators which exist purely to keep the types in check in
         // Glenside. They do not involve actual data movement.
-        let matches = "
+        let test_pattern = "
          (access-reshape
           (access
            (access-transpose
@@ -6203,10 +6431,9 @@ mod tests {
            1)
           (access-shape (shape 3 16 2 2) (shape)))
         "
-        .parse::<Pattern<_>>()
-        .unwrap()
-        .search_eclass(&runner.egraph, id)
+        .parse::<Pattern<Language>>()
         .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -6228,6 +6455,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::bubble_access_reshape_through_compute_reduce_max()];
 
@@ -6235,20 +6463,21 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        let matches = "
+        let test_pattern = "
          (access-reshape
           (compute reduce-max 
            (access (access-tensor data) 1))
           (access-shape (shape 4 4) (shape)))"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
+            .parse::<Pattern<Language>>()
             .unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
     #[test]
     fn simplify_multiple_transposes_0() {
+        test_logger::ensure_env_logger_initialized();
+
         let mut map = HashMap::default();
         map.insert("data".to_string(), vec![2, 3, 4, 5]);
 
@@ -6263,18 +6492,14 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::simplify_multiple_transposes()];
 
-        let runner = Runner::<_, _, ()>::new(MyAnalysis::default())
-            .with_egraph(egraph)
-            .run(&rws);
+        let runner = Runner::default().with_egraph(egraph).run(&rws);
 
-        let matches = "(access-tensor data)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .unwrap();
+        let test_pattern = "(access-tensor data)".parse::<Pattern<Language>>().unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         assert_eq!(matches.substs.len(), 1);
     }
 
@@ -6294,6 +6519,7 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&program);
+        egraph.rebuild();
 
         let rws = vec![super::simplify_multiple_transposes()];
 
@@ -6301,11 +6527,10 @@ mod tests {
             .with_egraph(egraph)
             .run(&rws);
 
-        assert!("(access-tensor data)"
-            .parse::<Pattern<_>>()
-            .unwrap()
-            .search_eclass(&runner.egraph, id)
-            .is_none());
+        let test_pattern = "(access-tensor data)".parse::<Pattern<Language>>().unwrap();
+        let matches = test_pattern.search_eclass(&runner.egraph, id);
+
+        assert!(matches.is_none());
     }
 
     /// Creates a Relay-to-Glenside test
@@ -6396,7 +6621,7 @@ mod tests {
                     name_to_shape: env.clone(),
                     name_to_dtype: dtypes_vec.into_iter().collect(),
                 });
-                let id = egraph.add_expr(&expr);
+                let id = egraph.add_expr(&expr);egraph.rebuild();
 
                 let pattern = $glenside_str.parse::<Pattern<Language>>().unwrap();
                 // The program should not be found at first.
