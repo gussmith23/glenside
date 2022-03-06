@@ -3969,8 +3969,27 @@ impl egg::Analysis<Language> for MyAnalysis {
                         }
                         HashMap::default()
                     },
-                    shape: IxDyn(&[a.shape.as_array_view().iter().product()]),
-                    item_shape: IxDyn(&[a.item_shape.as_array_view().iter().product()]),
+                    shape: IxDyn(&{
+                        // This helps us avoid magically inventing a dimension, e.g.
+                        // flatten ((), (256, 2)) should not become ((1), (512)).
+                        if a.shape.ndim() == 0 {
+                            vec![]
+                        } else {
+                            let flattened_shape = a.shape.as_array_view().iter().product();
+                            vec![flattened_shape]
+                        }
+                    }),
+                    item_shape: IxDyn(&{
+                        // This helps us avoid magically inventing a dimension, e.g.
+                        // flatten ((256, 2), ()) should not become ((512), (1)).
+                        if a.item_shape.ndim() == 0 {
+                            vec![]
+                        } else {
+                            let flattened_item_shape =
+                                a.item_shape.as_array_view().iter().product();
+                            vec![flattened_item_shape]
+                        }
+                    }),
                     access_pattern_shape_settled: all_children_are_settled(egraph, enode),
                     contains_accelerator_calls: a.contains_accelerator_calls,
                 })
