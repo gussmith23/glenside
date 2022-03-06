@@ -1,9 +1,8 @@
 #![cfg(feature = "tvm")]
 use egg::{EGraph, Extractor, Runner};
 use glenside::extraction::AcceleratorCostFunction;
-use glenside::language::{serialize_analysis_data, MyAnalysis};
+use glenside::language::MyAnalysis;
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 #[test]
 fn test_conv1d_flexmatch() {
