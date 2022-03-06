@@ -720,7 +720,7 @@ pub fn dot_product_with_vta() -> RW {
     }
     rewrite!("dot-product-on-vta";
         "(compute dot-product (access-cartesian-product ?x ?w))"
-        => "(accelerator-call vta-dense ?x ?w (shape 0))"
+        => "(accelerator-call vta-dense ?x ?w)"
             if dim_supported("?x".parse().unwrap())
             if dim_supported("?w".parse().unwrap()))
 }
