@@ -1535,30 +1535,43 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 let (mut a_merged, mut b_merged) = (false, false);
 
+                let num_els_a: usize = vec![to_shape.slice(), to_item_shape.slice()]
+                    .concat()
+                    .iter()
+                    .cloned()
+                    .product();
+                let num_els_b: usize = b_ap.as_vec().iter().product();
+                // Previously, I was comparing the underlying tensor shapes, e.g.:
+                //
+                // assert_eq!(
+                //     // Underlying tensor shape of a/to. Sorry this is
+                //     // ugly, can't use as_vec b/c can't capture a_ap
+                //     // mutably and also capture its fields mutably.
+                //     vec![to_shape.slice(), to_item_shape.slice()].concat(),
+                //     // Underlying tensor shape of b/from.
+                //     b_ap.as_vec()
+                // );
+                //
+                // But I'm not sure that's actually right; different Glenside
+                // operators can change the number of dimensions, and change the
+                // number of dimensions differently based on where the access
+                // pattern is accessed (e.g. flatten). So we had to make the
+                // check weaker. Maybe there's a stronger check than this,
+                // though? Again, this all goes away if we get rid of the
+                // problem of "unsettled" shapes.
+                assert_eq!(
+                    num_els_a, num_els_b,
+                    "The two underlying tensors should have the same number of elements."
+                );
+
                 match (
                     *to_access_pattern_shape_settled,
                     *from_access_pattern_shape_settled,
                 ) {
                     (false, false) => {
-                        // Both underlying tensor shapes should match.
-                        assert_eq!(
-                            // Underlying tensor shape of a/to. Sorry this is
-                            // ugly, can't use as_vec b/c can't capture a_ap
-                            // mutably and also capture its fields mutably.
-                            vec![to_shape.slice(), to_item_shape.slice()].concat(),
-                            // Underlying tensor shape of b/from.
-                            b_ap.as_vec()
-                        );
-
-                        // Do nothing, though. Neither one is more correct.
+                        // Do nothing. Neither one is more correct.
                     }
                     (false, true) => {
-                        // Both underlying tensor shapes should match.
-                        assert_eq!(
-                            vec![to_shape.slice(), to_item_shape.slice()].concat(),
-                            b_ap.as_vec()
-                        );
-
                         // Take the shape of b/from and put it into a/to. b/from is settled, and thus correct.
                         let (a_shape_old, a_item_shape_old) =
                             (to_shape.clone(), to_item_shape.clone());
@@ -1568,12 +1581,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                             (a_shape_old != *to_shape) | (a_item_shape_old != *to_item_shape);
                     }
                     (true, false) => {
-                        // Both underlying tensor shapes should match.
-                        assert_eq!(
-                            vec![to_shape.slice(), to_item_shape.slice()].concat(),
-                            b_ap.as_vec()
-                        );
-
                         // Take the shape of a/to and put it into b/from. Though
                         // we don't actually edit b/from, because it's being
                         // merged into a. But we do calculate whether b changed,
