@@ -1283,7 +1283,7 @@ impl AccessPatternData {
     ///         shape: ndarray::IxDyn(&[1, 2, 3]),
     ///         item_shape: ndarray::IxDyn(&[4, 5]),
     ///         zero_regions: std::collections::HashMap::default(),
-    ///         contains_only_relay_nodes:false,
+    ///         access_pattern_shape_settled: false,
     ///         contains_accelerator_calls: false,
     ///     }
     ///     .as_vec(),
