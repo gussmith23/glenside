@@ -7198,7 +7198,7 @@ def @main(%x: Tensor[(3, 5), float32]) {
     }
     "#,
         r#"
-    (access-reshape (access-tensor x) (access-shape (shape 1 3 85 52 52) (shape )))
+    (access-reshape (access-tensor x) (access-shape (shape) (shape 1 3 85 52 52)))
     "#,
         &vec![super::reshape_relay_to_glenside(),],
         &vec![RelayOperator::RelayReshape]
