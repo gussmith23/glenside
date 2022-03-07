@@ -30,12 +30,7 @@ fn lstm_relay_to_glenside() {
     let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         false,
-        &vec![
-            glenside::language::RelayOperator::RelaySigmoid,
-            glenside::language::RelayOperator::RelayTanh,
-            glenside::language::RelayOperator::RelayLogSoftmax,
-            glenside::language::RelayOperator::RelayAdd,
-        ],
+        &glenside::language::RELAY_OPS.into(),
     );
 
     let mut egraph = EGraph::new(MyAnalysis {
