@@ -720,13 +720,7 @@ pub fn lstm_to_flexasr() -> RW {
         let (orig_pattern, _, _) = crate::language::from_relay::from_relay(
             &module,
             false,
-            // Has to stay the same as the list above...
-            &vec![
-                crate::language::RelayOperator::RelaySigmoid,
-                crate::language::RelayOperator::RelayTanh,
-                crate::language::RelayOperator::RelayLogSoftmax,
-                crate::language::RelayOperator::RelayAdd,
-            ],
+            &crate::language::RELAY_OPS.into(),
         );
 
         let pattern_ast = egg::RecExpr::from(
