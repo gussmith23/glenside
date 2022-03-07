@@ -3957,7 +3957,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                 //     new_shape.shape.as_array_view().iter().product::<usize>(),
                 // );
 
-                new_shape.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+                //new_shape.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+                // TODO(@gussmith23) DO NOT SUBMIT this is a hack b/c reshapes
+                // cause a lot of trouble w/ shapes settling
+                new_shape.access_pattern_shape_settled = false;
 
                 MyAnalysisData::AccessPattern(new_shape)
             }
