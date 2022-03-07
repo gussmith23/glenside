@@ -3521,7 +3521,7 @@ pub fn transpose_relay_to_glenside() -> RW {
 
 pub fn reshape_relay_to_glenside() -> RW {
     rewrite!("reshape-relay-to-glenside";
-                "(relay-operator-call relay-reshape ?data ?shape)" => "(access-reshape ?data (access-shape ?shape (shape)))")
+                "(relay-operator-call relay-reshape ?data ?shape)" => "(access-reshape ?data (access-shape (shape) ?shape))")
 }
 
 pub fn squeeze_relay_to_glenside() -> RW {
