@@ -3698,9 +3698,12 @@ mod tests {
                (shape 1 1 2)
               )
              )
-             (access-shape
-              (shape 1 30 15)
-              (shape 3 3 3)
+             (get-access-shape
+              (access-windows
+               (access (access-tensor t-3-32-32) 0)
+               (shape 3 3 3)
+               (shape 1 1 2)
+              )
              )
             )
             "
@@ -5018,7 +5021,7 @@ mod tests {
        1
       )
      )
-     (access-shape (shape 8) (shape 3 3 3))
+     ?shape1
     )
     (access-reshape
      (access-flatten
@@ -5045,7 +5048,7 @@ mod tests {
        3
       )
      )
-     (access-shape (shape 1 32 32) (shape 3 3 3))
+     ?shape0
     )
    )
   )
