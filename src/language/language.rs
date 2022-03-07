@@ -1439,55 +1439,36 @@ impl egg::Analysis<Language> for MyAnalysis {
 
     fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
         match (to, &from) {
-            (
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: to_shape,
-                    item_shape: to_item_shape,
-                    access_pattern_shape_settled: to_access_pattern_shape_settled,
-                    contains_accelerator_calls: to_contains_accel_calls,
-                    ..
-                }),
-                MyAnalysisData::AccessPattern(
-                    b_ap
-                    @
-                    AccessPatternData {
-                        shape: from_shape,
-                        item_shape: from_item_shape,
-                        access_pattern_shape_settled: from_access_pattern_shape_settled,
-                        contains_accelerator_calls: from_contains_accel_calls,
-                        ..
-                    },
-                ),
-            ) => {
+            (MyAnalysisData::AccessPattern(a), MyAnalysisData::AccessPattern(b)) => {
                 // Merge zero regions.
                 // TODO(@gussmith23) Make sure merge returns `true` infrequently
                 // Returning `true` more often forces more rebuilds, which kills
                 // performance!
                 // let mut changed = false;
-                // for (axis_index, from_range_set) in from_zero_regions.iter() {
+                // for (axis_index, b.range_set) in b.zero_regions.iter() {
                 //     // Skip if `from` doesn't contain any interesting data.
-                //     if !from_range_set.iter().any(|v| *v) {
+                //     if !b.range_set.iter().any(|v| *v) {
                 //         continue;
                 //     }
 
-                //     if let Some(to_range_set) = to_zero_regions.get_mut(&axis_index) {
-                //         // We first check whether `from_zero_regions` contains
+                //     if let Some(a.range_set) = a.zero_regions.get_mut(&axis_index) {
+                //         // We first check whether `b.zero_regions` contains
                 //         // any information not already known in
-                //         // `to_zero_regions`. This is done by checking them
+                //         // `a.zero_regions`. This is done by checking them
                 //         // element-by-element. If it is ever true that
-                //         // `from_zero_regions` contains a `true` where
-                //         // `to_zero_regions` contains a `false` or does not have
+                //         // `b.zero_regions` contains a `true` where
+                //         // `a.zero_regions` contains a `false` or does not have
                 //         // data (because they may be different lengths), then
                 //         // they're different and must be merged.
 
                 //         // TODO(@gussmith23) Delete these
-                //         //println!("to: {:?}", to_range_set.len());
-                //         //println!("from: {:?}", from_range_set.len());
+                //         //println!("to: {:?}", a.range_set.len());
+                //         //println!("from: {:?}", b.range_set.len());
 
                 //         // Check.
-                //         let needs_merge = to_range_set
+                //         let needs_merge = a.range_set
                 //             .iter()
-                //             .zip_longest(from_range_set.iter())
+                //             .zip_longest(b.range_set.iter())
                 //             .map(|v| {
                 //                 match v {
                 //                     // `*from` being true implies `*to` must be true.
@@ -1509,9 +1490,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                 //             .any(|v| v);
 
                 //         if needs_merge {
-                //             *to_range_set = to_range_set
+                //             *a.range_set = a.range_set
                 //                 .iter()
-                //                 .zip_longest(from_range_set.iter())
+                //                 .zip_longest(b.range_set.iter())
                 //                 .map(|v| match v {
                 //                     Both(to, from) => *to || *from,
                 //                     Left(to) => *to,
@@ -1521,13 +1502,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                 //             // changed = true;
                 //         }
                 //     } else {
-                //         // If no info exists for this axis in `to_zero_regions`,
+                //         // If no info exists for this axis in `a.zero_regions`,
                 //         // then we insert the information from
-                //         // `from_zero_regions`, but only if there's actual
+                //         // `b.zero_regions`, but only if there's actual
                 //         // useful information there (i.e. at least one `true`
                 //         // value).
-                //         if from_range_set.iter().any(|v| *v) {
-                //             to_zero_regions.insert(*axis_index, from_range_set.clone());
+                //         if b.range_set.iter().any(|v| *v) {
+                //             a.zero_regions.insert(*axis_index, b.range_set.clone());
                 //             // changed = true;
                 //         }
                 //     }
@@ -1535,19 +1516,15 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 let (mut a_merged, mut b_merged) = (false, false);
 
-                let num_els_a: usize = vec![to_shape.slice(), to_item_shape.slice()]
-                    .concat()
-                    .iter()
-                    .cloned()
-                    .product();
-                let num_els_b: usize = b_ap.as_vec().iter().product();
+                let num_els_a: usize = a.as_vec().iter().product();
+                let num_els_b: usize = b.as_vec().iter().product();
                 // Previously, I was comparing the underlying tensor shapes, e.g.:
                 //
                 // assert_eq!(
                 //     // Underlying tensor shape of a/to. Sorry this is
                 //     // ugly, can't use as_vec b/c can't capture a_ap
                 //     // mutably and also capture its fields mutably.
-                //     vec![to_shape.slice(), to_item_shape.slice()].concat(),
+                //     vec![a.shape.slice(), a.item_shape.slice()].concat(),
                 //     // Underlying tensor shape of b/from.
                 //     b_ap.as_vec()
                 // );
@@ -1565,8 +1542,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                 );
 
                 match (
-                    *to_access_pattern_shape_settled,
-                    *from_access_pattern_shape_settled,
+                    a.access_pattern_shape_settled,
+                    b.access_pattern_shape_settled,
                 ) {
                     (false, false) => {
                         // Do nothing. Neither one is more correct.
@@ -1574,11 +1551,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     (false, true) => {
                         // Take the shape of b/from and put it into a/to. b/from is settled, and thus correct.
                         let (a_shape_old, a_item_shape_old) =
-                            (to_shape.clone(), to_item_shape.clone());
-                        *to_shape = from_shape.clone();
-                        *to_item_shape = from_item_shape.clone();
-                        a_merged |=
-                            (a_shape_old != *to_shape) | (a_item_shape_old != *to_item_shape);
+                            (a.shape.clone(), a.item_shape.clone());
+                        a.shape = b.shape.clone();
+                        a.item_shape = b.item_shape.clone();
+                        a_merged |= (a_shape_old != a.shape) | (a_item_shape_old != a.item_shape);
                     }
                     (true, false) => {
                         // Take the shape of a/to and put it into b/from. Though
@@ -1586,32 +1562,38 @@ impl egg::Analysis<Language> for MyAnalysis {
                         // merged into a. But we do calculate whether b changed,
                         // so that we can trigger updates on the enodes that
                         // point to b.
-                        b_merged |=
-                            (*from_shape != *to_shape) | (*from_item_shape != *to_item_shape);
+                        b_merged |= (b.shape != a.shape) | (b.item_shape != a.item_shape);
                     }
                     (true, true) => {
                         // If both are settled, then they must match.
-                        assert_eq!(to_shape, from_shape);
-                        assert_eq!(to_item_shape, from_item_shape);
+                        assert_eq!(a.shape, b.shape);
+                        assert_eq!(a.item_shape, b.item_shape);
                     }
                 }
 
-                a_merged |= !*to_contains_accel_calls && *from_contains_accel_calls;
-                b_merged |= *to_contains_accel_calls && !*from_contains_accel_calls;
-                *to_contains_accel_calls |= *from_contains_accel_calls;
+                a_merged |= !a.contains_accelerator_calls && b.contains_accelerator_calls;
+                b_merged |= a.contains_accelerator_calls && !b.contains_accelerator_calls;
+                a.contains_accelerator_calls |= b.contains_accelerator_calls;
 
-                let to_access_pattern_shape_settled_old = *to_access_pattern_shape_settled;
-                *to_access_pattern_shape_settled |= *from_access_pattern_shape_settled;
-                a_merged |= to_access_pattern_shape_settled_old != *to_access_pattern_shape_settled;
-                b_merged |= *from_access_pattern_shape_settled != *to_access_pattern_shape_settled;
+                let a_access_pattern_shape_settled_old = a.access_pattern_shape_settled;
+                a.access_pattern_shape_settled |= b.access_pattern_shape_settled;
+                a_merged |= a_access_pattern_shape_settled_old != a.access_pattern_shape_settled;
+                b_merged |= b.access_pattern_shape_settled != a.access_pattern_shape_settled;
 
                 DidMerge(a_merged, b_merged)
             }
-            // (MyAnalysisData::AccessPattern(_), _) => {
-            //     warn!("TODO(@gussmith23) need to refine this return value");
-            //     //return Some(Ordering::Greater);
-            //     return DidMerge(true, true);
-            // }
+            (MyAnalysisData::Tuple(t0), MyAnalysisData::Tuple(t1)) => {
+                assert_eq!(t0.len(), t1.len());
+                let (mut a_merged, mut b_merged) = (false, false);
+
+                for (v0, v1) in t0.iter_mut().zip(t1.iter().cloned()) {
+                    let did_merge = self.merge(v0, v1);
+                    a_merged |= did_merge.0;
+                    b_merged |= did_merge.1;
+                }
+
+                DidMerge(a_merged, b_merged)
+            }
             (to @ _, _) => {
                 assert_eq!(*to, from);
                 merge_if_different(to, from);
