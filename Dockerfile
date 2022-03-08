@@ -26,8 +26,6 @@ RUN sudo ./llvm.sh 10
 ENV LLVM_CONFIG_PATH=/usr/lib/llvm-10/bin/llvm-config
 
 # Build TVM with Rust bindings
-# TODO(@gussmith23) Switch this to TVM mainline
-# once https://github.com/apache/incubator-tvm/pull/6563 is merged
 RUN cd /root && git clone https://github.com/apache/tvm tvm --recursive
 WORKDIR /root/tvm
 RUN git fetch
