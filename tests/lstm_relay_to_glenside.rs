@@ -1,10 +1,9 @@
 #![cfg(feature = "tvm")]
 
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf};
 
 use egg::{
-    rewrite, CostFunction, EGraph, ENodeOrVar, Extractor, Id, Language as LanguageTrait, Pattern,
-    RecExpr, Runner, Searcher, Var,
+    CostFunction, EGraph, Extractor, Id, Language as LanguageTrait, Pattern, Runner, Searcher,
 };
 use glenside::language::{Language, MyAnalysis, MyAnalysisData};
 

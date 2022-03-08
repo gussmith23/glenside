@@ -5743,7 +5743,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5758,7 +5758,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5866,7 +5866,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -5881,7 +5881,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -6028,7 +6028,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -6043,7 +6043,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -6058,7 +6058,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
     }
@@ -6154,7 +6154,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -6169,7 +6169,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
 
@@ -6184,7 +6184,7 @@ mod tests {
             "
         .parse::<Pattern<Language>>()
         .unwrap();
-        let matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
+        let _matches = test_pattern.search_eclass(&runner.egraph, id).unwrap();
         // I don't think this check makes sense.
         //assert_eq!(matches.substs.len(), 1);
     }
