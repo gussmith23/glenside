@@ -34,6 +34,7 @@ pub fn access_transpose(expr: &mut RecExpr<Language>, data_id: Id, transpose_lis
 
     expr.add(Language::AccessTranspose([data_id, transpose_list_id]))
 }
+
 pub fn conv1d(
     expr: &mut RecExpr<Language>,
     data_id: Id,
@@ -57,45 +58,13 @@ pub fn conv1d(
 
     assert!(&["NCW"].contains(&data_layout));
     assert!(&["OIW"].contains(&kernel_layout));
-    // check if alternative layouts are correct
     assert_eq!(dilation, [1]);
     assert_eq!(out_layout, "");
-    /*VISHAL: not sure what this is; are we saying that we always want the output
-    layout to be the same as data_layout */
-
-    //TODO: Make syre data layout is corect (look at Conv2d shuffling for inspiration, or ask Mike which data layout
-    // we need for the minimum and just only assert for that :)
-
-    // let (data_id, data_shape) = match data_layout {
-    //     "NCHW" => (data_id, Vec::from(data_shape)),
-    //     "NHWC" => (
-    //         access_transpose(expr, data_id, &[0, 3, 1, 2]),
-    //         vec![data_shape[0], data_shape[3], data_shape[1], data_shape[2]],
-    //     ),
-    //     _ => unreachable!(),
-    // };
-
-    // // Transpose to OIHW
-    // let (weights_id, weights_shape) = match kernel_layout {
-    //     "OIHW" => (weights_id, Vec::from(weights_shape)),
-    //     "HWIO" => (
-    //         access_transpose(expr, weights_id, &[3, 2, 0, 1]),
-    //         vec![
-    //             weights_shape[3],
-    //             weights_shape[2],
-    //             weights_shape[0],
-    //             weights_shape[1],
-    //         ],
-    //     ),
-    //     _ => unreachable!(),
-    // };
 
     let pad_axis_id = expr.add(Language::Num(2));
-    // let access_dim_id = expr.add(Language::Num(1));
     let pad_before_id = expr.add(Language::Num(padding[0].try_into().unwrap()));
     let pad_after_id = expr.add(Language::Num(padding[1].try_into().unwrap()));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
-    // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessPad([
         data_id,
         zero_padding_id,
@@ -103,13 +72,7 @@ pub fn conv1d(
         pad_before_id,
         pad_after_id,
     ]));
-    //gets the inner access-pad (or in the case of conv1d, the singular access-pad)
 
-    //SKIP SECOND ACCESS-PAD (Conv1d is simpler)
-
-    // SKIP ACCESS (Conv1d is easier; double check if we can do this)
-
-    //TODO: Figure out how stride_list changes
     let mut stride_list = Vec::default();
     stride_list.push(expr.add(Language::Num(1)));
     stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
@@ -120,14 +83,12 @@ pub fn conv1d(
     let usize_kw_id = expr.add(Language::Num(weights_shape[2].try_into().unwrap()));
     let weights_shape_id = expr.add(Language::Shape(Box::new([usize_c_id, usize_kw_id])));
     let data_id = access(expr, data_id, 1);
-    // let data_id = expr.add(Language::Access([data_id, access_dim_id]));
     let data_id = expr.add(Language::AccessWindows([
         data_id,
         weights_shape_id,
         stride_shape_id,
     ]));
     let dim_id_1 = expr.add(Language::Num(1));
-    // data_id = cartProd (data_id, (access weights 1))
     let weights_id = access(expr, weights_id, 1);
     let data_id = expr.add(Language::AccessSqueeze([data_id, dim_id_1]));
     let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
