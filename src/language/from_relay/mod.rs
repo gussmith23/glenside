@@ -282,17 +282,12 @@ pub fn conv2d(
             let _data_id = access(expr, data_id, 0);
 
             let mut stride_list = Vec::default();
-            stride_list.push(expr.add(Language::Num(1)));
-            stride_list.push(expr.add(Language::Num(1)));
             stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
             stride_list.push(expr.add(Language::Num(strides[1].try_into().unwrap())));
             let stride_shape_id =
                 expr.add(Language::Shape(Box::from(stride_list.clone().as_slice())));
             let operator_call_stride_id = expr.add(Language::Shape(
-                stride_list[1..]
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
+                stride_list
                     .into_boxed_slice(),
             ));
 
@@ -304,15 +299,13 @@ pub fn conv2d(
             // groups=in_channels.
             // TODO(@gussmith23) Layout assumption.
             let mut list = Vec::default();
-            list.push(expr.add(Language::Num(1)));
-            list.push(expr.add(Language::Num(1)));
             for v in weights_shape[2..].iter() {
                 list.push(expr.add(Language::Num((*v as usize).try_into().unwrap())));
             }
             let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
             let o_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
             let relay_operator_weight_shape_id = expr.add(Language::Shape(
-                vec![o_id, list[2], list[3]].into_boxed_slice(),
+                vec![o_id, list[0], list[1]].into_boxed_slice(),
             ));
 
             let operator_call_id = expr.add(Language::RelayOperatorCall(
@@ -3179,26 +3172,6 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32]) -> Tensor[(1, 3, 17, 12), floa
 )
 "#
     );
-
-    // DO NOT MERGE THIS CHANGE
-    // TODO(@gussmith23) We disabled grouped convs for PLDI, and so this test
-    // doesn't work. We can't ignore tests in this macro yet, so I'm commenting it
-    // out. DO NOT MERGE THIS INTO MAIN!
-    //    // The first part of a separable convolution, as seen in Mobilenet.
-    //    test!(
-    //        conv2d_depthwise_separable_stage1,
-    //        1e-6,
-    //        r#"
-    //#[version = "0.0.5"]
-    //def @main(%data: Tensor[(1, 3, 32, 32), float32], %weight: Tensor[(3, 1, 3, 3), float32]) -> Tensor[(1, 3, 38, 20), float32] {
-    //  nn.conv2d(%data, %weight, strides=[1, 2], padding=[3, 4, 5, 6], groups=3)
-    //}
-    //"#,
-    //        // TODO(@gussmith23) I'm being lazy here
-    //        r#"
-    //(access-concatenate ?a ?b ?c)
-    //"#
-    //    );
 
     // TODO(@gussmith23) Relay/TVM doesn't seem to like nhwc w/o hwoi
     // So we can't run a test like this til we support hwoi!
