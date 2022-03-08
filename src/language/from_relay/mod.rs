@@ -716,41 +716,24 @@ pub fn from_relay(
     create_worklist(func.body.clone(), &mut worklist, &mut visited);
     let mut map = HashMap::new();
     for expr in worklist {
-        let glenside_id = compile_expression(
+        map.insert(
             expr.clone(),
-            &mut glenside_expr,
-            |expr| {
-                *map.get(&expr).unwrap_or_else(|| {
-                    panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
-                })
-            },
-            simplify_batch_norm_for_inference_hack,
-            use_opaque_operators_for,
+            compile_expression(
+                expr.clone(),
+                &mut glenside_expr,
+                |expr| {
+                    *map.get(&expr).unwrap_or_else(|| {
+                        panic!("Not found:\n{}", tvm::ir::expr::as_text(expr.clone()))
+                    })
+                },
+                simplify_batch_norm_for_inference_hack,
+                use_opaque_operators_for,
+            ),
         );
-        map.insert(expr.clone(), glenside_id);
     }
 
     (glenside_expr, names_and_shapes, names_to_dtype)
 }
-
-// fn to_opaque_relay_call(expr: Expr) -> Option<RecExpr<Language>> {
-//     if let Ok(call) = expr.clone().downcast::<tvm::ir::relay::Call>() {
-//         if let Ok(primitive_op) = call
-//             .op
-//             .clone()
-//             .upcast::<tvm::ir::expr::BaseExpr>()
-//             .downcast::<tvm::ir::op::Op>()
-//         {
-//             match primitive_op.name.as_str().unwrap() {
-//                 "nn.dense" => {
-//                     RelayOperatorCall()
-//                 }
-//             }
-//         }
-//     } else {
-//         None
-//     }
-// }
 
 /// Generates an ordered list of Relay expressions to compile.
 ///
@@ -1545,18 +1528,6 @@ fn compile_expression(
                                 ],
                             );
 
-                            // let data_shape_n_id = glenside_expr.add(Language::Num(data_shape[0]));
-                            // let data_shape_c_id = glenside_expr.add(Language::Num(data_shape[0]));
-                            // let data_shape_h_id = glenside_expr.add(Language::Num(data_shape[0]));
-                            // let data_shape_w_id = glenside_expr.add(Language::Num(data_shape[0]));
-
-                            // let data_shape_id = glenside_expr.add(Language::Shape(Box::new([
-                            //     data_shape_n_id,
-                            //     data_shape_c_id,
-                            //     data_shape_h_id,
-                            //     data_shape_w_id,
-                            // ])));
-
                             let data_id = glenside_expr.add(Language::AccessWindows([
                                 data_id,
                                 pool_window_shape_id,
@@ -1720,18 +1691,7 @@ fn compile_expression(
                     data_id
                 }
                 "nn.dense" => {
-                    // let attrs = call
-                    //     .attrs
-                    //     .clone()
-                    //     .downcast::<tvm::ir::relay::attrs::nn::DenseAttrs>()
-                    //     .unwrap();
                     assert_eq!(call.args.len(), 2);
-                    // assert_eq!(
-                    //     attrs.out_dtype,
-                    //     // This datatype seems to indicate "null"?
-                    //     DataType::new(3, 0, 0),
-                    //     "Changing out_dtype not yet supported"
-                    // );
                     assert_eq!(
                         call.args
                             .get(0)
@@ -2321,15 +2281,6 @@ fn compile_expression(
                         todo!()
                     }
                 }
-                // "nn.conv1d" => {
-                //     let op_id = glenside_expr.add(Language::RelayOperator(crate::language::RelayOperator::RelayConv1D));
-                //     let data_id = get_compiled_expression(call.args.get(0).unwrap());
-                //     let weight_id = get_compiled_expression(call.args.get(1).unwrap());
-                //     let conv1d_opcall = glenside_expr.add(Language::RelayOperatorCall(
-                //         vec![op_id, data_id, weight_id].into_boxed_slice()
-                //     ));
-                //     conv1d_opcall
-                // }
                 "erf" => {
                     let op_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayErf,
@@ -2530,6 +2481,7 @@ fn compile_expression(
                     glenside_expr.add(Language::AccessReshape([data_id, new_shape_id]))
                 }
                 "split" => {
+                    assert!(use_opaque_operators_for.contains(&RelaySplit));
                     assert_eq!(call.args.len(), 1);
                     let attrs = call
                         .attrs
@@ -2544,34 +2496,6 @@ fn compile_expression(
                     let relay_operator_id =
                         glenside_expr.add(Language::RelayOperator(RelayOperator::RelaySplit));
 
-                    // if let Ok(indices_or_sections) = &attrs
-                    //     .indices_or_sections
-                    //     .clone()
-                    //     .downcast::<tvm::runtime::array::Array<
-                    //     tvm::runtime::object::ObjectRef,
-                    // >>() {
-                    //     println!("Array case");
-                    //     let mut indices_or_sections_ids = Vec::default();
-                    //     for i in 0..indices_or_sections.len() {
-                    //         indices_or_sections_ids.push(
-                    //             glenside_expr.add(Language::Num(
-                    //                 indices_or_sections
-                    //                     .get(i as isize)
-                    //                     .unwrap()
-                    //                     .downcast::<tvm::ir::tir::IntImm>()
-                    //                     .unwrap()
-                    //                     .value as usize,
-                    //             )),
-                    //         );
-                    //     }
-                    //     let indices_or_sections_id = glenside_expr
-                    //         .add(Language::List(indices_or_sections_ids.into_boxed_slice()));
-                    //     let operator_call = glenside_expr.add(Language::RelayOperatorCall(
-                    //         vec![relay_operator_id, indices_or_sections_id, axis_id]
-                    //             .into_boxed_slice(),
-                    //     ));
-                    //     operator_call
-                    // } else {
                     let indices_or_sections = &attrs
                         .indices_or_sections
                         .clone()
@@ -2584,11 +2508,12 @@ fn compile_expression(
                         vec![relay_operator_id, data_id, indices_or_sections_id, axis_id]
                             .into_boxed_slice(),
                     ));
-                    operator_call
-                    // }
 
+                    operator_call
+
+                    /*
                     // assume for yolov3
-                    /*assert_eq!(indices_or_sections.len(), 2);
+                    assert_eq!(indices_or_sections.len(), 2);
 
                     let shape = shape_from_type(call.args.get(0).unwrap().checked_type.clone());
 
@@ -2648,10 +2573,7 @@ fn compile_expression(
                         last_id,
                     ])));
 
-                    (
-                        glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice()))),
-                        None,
-                    )*/
+                        glenside_expr.add(Language::ConstructTuple(Box::from(ids.as_slice())))*/
                 }
                 "sigmoid" => {
                     assert_eq!(call.args.len(), 1);
