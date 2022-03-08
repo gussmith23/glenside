@@ -286,7 +286,7 @@ pub fn conv2d(
             stride_list.push(expr.add(Language::Num(1)));
             stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
             stride_list.push(expr.add(Language::Num(strides[1].try_into().unwrap())));
-            let _stride_shape_id =
+            let stride_shape_id =
                 expr.add(Language::Shape(Box::from(stride_list.clone().as_slice())));
             let operator_call_stride_id = expr.add(Language::Shape(
                 stride_list[1..]
@@ -309,7 +309,7 @@ pub fn conv2d(
             for v in weights_shape[2..].iter() {
                 list.push(expr.add(Language::Num((*v as usize).try_into().unwrap())));
             }
-            let _weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
+            let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
             let o_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
             let relay_operator_weight_shape_id = expr.add(Language::Shape(
                 vec![o_id, list[2], list[3]].into_boxed_slice(),
@@ -331,63 +331,60 @@ pub fn conv2d(
                 .into_boxed_slice(),
             ));
 
-            assert!(
-                use_opaque_operators,
-                "We currently don't generate glenside code for this case."
-            );
+            if use_opaque_operators {
+                return operator_call_id;
+            }
 
-            operator_call_id
-            // mike: we comment out these code for flexible matching
-            // it will blow up the size of egraph, which prevent
-            // im2col rewrite rules from being fired
-            // let mut to_be_concatted = Vec::default();
+            let mut to_be_concatted = Vec::default();
 
-            // for channel_idx in 0..in_channels {
-            //     // Get this group's input channel
-            //     // TODO(@gussmith23) layout assumption
-            //     let data_id = access_slice(
-            //         expr,
-            //         data_id,
-            //         1,
-            //         channel_idx.try_into().unwrap(),
-            //         (channel_idx + 1).try_into().unwrap(),
-            //     );
-            //     let data_id = expr.add(Language::AccessWindows([
-            //         data_id,
-            //         weights_shape_id,
-            //         stride_shape_id,
-            //     ]));
-            //     let data_id = access(expr, data_id, 4);
-            //     // Result should be
-            //     // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
+            for channel_idx in 0..in_channels {
+                // Get this group's input channel
+                // TODO(@gussmith23) layout assumption
+                let data_id = access_slice(
+                    expr,
+                    data_id,
+                    1,
+                    channel_idx.try_into().unwrap(),
+                    (channel_idx + 1).try_into().unwrap(),
+                );
+                let data_id = expr.add(Language::AccessWindows([
+                    data_id,
+                    weights_shape_id,
+                    stride_shape_id,
+                ]));
+                let data_id = access(expr, data_id, 4);
+                // Result should be
+                // [1 1 new_H new_W] [1 1 kernel_H kernel_W]
 
-            //     // Get this group's kernel
-            //     // TODO(@gussmith23) layout assumption
-            //     let weights_id = access_slice(
-            //         expr,
-            //         weights_id,
-            //         0,
-            //         channel_idx.try_into().unwrap(),
-            //         (channel_idx + 1).try_into().unwrap(),
-            //     );
-            //     let weights_id = access(expr, weights_id, 0);
+                // Get this group's kernel
+                // TODO(@gussmith23) layout assumption
+                let weights_id = access_slice(
+                    expr,
+                    weights_id,
+                    0,
+                    channel_idx.try_into().unwrap(),
+                    (channel_idx + 1).try_into().unwrap(),
+                );
+                let weights_id = access(expr, weights_id, 0);
 
-            //     let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
-            //     // Results should be
-            //     // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
+                let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+                // Results should be
+                // [1 1 new_H new_W] [2 1 1 kernel_H kernel_W]
 
-            //     let data_id = compute(expr, ComputeType::DotProduct, data_id);
-            //     // Results should be
-            //     // [1 1 new_H new_W]
+                let data_id = compute(expr, ComputeType::DotProduct, data_id);
+                // Results should be
+                // [1 1 new_H new_W]
 
-            //     to_be_concatted.push(data_id);
-            // }
+                to_be_concatted.push(data_id);
+            }
 
-            // let mut concatted_id = to_be_concatted[0];
-            // for to_be_concatted_id in to_be_concatted[1..].iter() {
-            //     // TODO(@gussmith23) Layout assumption
-            //     concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
-            // }
+            let mut concatted_id = to_be_concatted[0];
+            for to_be_concatted_id in to_be_concatted[1..].iter() {
+                // TODO(@gussmith23) Layout assumption
+                concatted_id = access_concatenate(expr, concatted_id, *to_be_concatted_id, 1);
+            }
+
+            concatted_id
         }
         _ => panic!("Groups not implemented for groups={}", groups),
     };
