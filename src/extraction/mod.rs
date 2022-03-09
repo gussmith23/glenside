@@ -100,6 +100,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             // way to handle them.
             // TODO(@gussmith23) We shouldn't have to extract ANY computes!
             | Language::Compute(_)
+            | Language::GetAccessShape(_)
             | Language::AccessTranspose(_) => 1,
             | Language::AcceleratorCall(_) => 0,
             | Language::AcceleratorFunc(_) => 0,
@@ -125,12 +126,13 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             Language::SystolicArrayConv2dIm2colNhwcHwioWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNchwOihwWithBlocking(_) => todo!(),
             Language::SystolicArrayConv2dNhwcHwioWithBlocking(_) => todo!(),
-            Language::RelayOperatorCall(_) => todo!(),
-            Language::RelayOperator(_) => todo!(),
             Language::DataType(_) => todo!(),
-            Language::RelayActivationLayout(_) => todo!(),
-            Language::RelayKernelLayout(_) => todo!(),
-            Language::GetAccessShape(_) => todo!(),
+
+            // Don't extract relay nodes.
+            Language::RelayOperatorCall(_) 
+            | Language::RelayOperator(_)
+            | Language::RelayActivationLayout(_)
+            | Language::RelayKernelLayout(_) => Self::INFINITY_VALUE,
         };
 
         enode.fold(base_cost, |sum, id| sum + costs(id))
