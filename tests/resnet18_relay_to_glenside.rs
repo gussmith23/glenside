@@ -288,8 +288,11 @@ def @main(%data: Tensor[(1, 3, 224, 224), float32], %bn_data_gamma: Tensor[(3), 
 
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec) =
-        glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
+        &module,
+        false,
+        &vec![glenside::language::RelayOperator::RelayConv2D],
+    );
 
     let mut env = HashMap::default();
     for (k, v) in &shapes_vec {
