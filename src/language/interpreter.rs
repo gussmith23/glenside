@@ -252,7 +252,7 @@ where
                 _ => panic!(),
             };
 
-            let shape = if access.access_axis <= 0 || access.access_axis >= access.tensor.ndim() {
+            let shape = if access.access_axis >= access.tensor.ndim() {
                 vec![access.tensor.shape().iter().product::<usize>()]
             } else {
                 vec![
