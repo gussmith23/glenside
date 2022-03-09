@@ -12,5 +12,5 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: docker build --tag glenside .
-      - run: docker run --privileged glenside /bin/bash -c "cargo install cargo-tarpaulin && cargo tarpaulin --no-default-features --features tvm"
+      - run: docker run --privileged glenside /bin/bash -c "cargo install cargo-tarpaulin && cargo tarpaulin --no-default-features --features tvm --timeout 180"
       # TODO(acheung8) Next steps -- fail if tarpaulin coverage dips below certain amount
