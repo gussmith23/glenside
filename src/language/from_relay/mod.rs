@@ -2063,6 +2063,7 @@ fn compile_expression(
                     conv1d_opcall
                 }
                 "nn.conv2d" => {
+                    assert!(use_opaque_operators_for.contains(&RelayConv2D));
                     assert_eq!(call.args.len(), 2);
                     let attrs = call
                         .attrs
