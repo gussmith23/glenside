@@ -279,17 +279,14 @@ pub fn conv2d(
             // TODO(@gussmith23) Make grouped conv take advantage of new
             // access-windows semantics
 
-            let _data_id = access(expr, data_id, 0);
-
             let mut stride_list = Vec::default();
+            stride_list.push(expr.add(Language::Num(1)));
+            stride_list.push(expr.add(Language::Num(1)));
             stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
             stride_list.push(expr.add(Language::Num(strides[1].try_into().unwrap())));
             let stride_shape_id =
                 expr.add(Language::Shape(Box::from(stride_list.clone().as_slice())));
-            let operator_call_stride_id = expr.add(Language::Shape(
-                stride_list
-                    .into_boxed_slice(),
-            ));
+            let operator_call_stride_id = expr.add(Language::Shape(stride_list[2..].into()));
 
             // Kernel size is the same for each group. Each
             // kernel's shape is (1,1,kH,kW) where the first 1
@@ -299,13 +296,15 @@ pub fn conv2d(
             // groups=in_channels.
             // TODO(@gussmith23) Layout assumption.
             let mut list = Vec::default();
+            list.push(expr.add(Language::Num(1)));
+            list.push(expr.add(Language::Num(1)));
             for v in weights_shape[2..].iter() {
                 list.push(expr.add(Language::Num((*v as usize).try_into().unwrap())));
             }
             let weights_shape_id = expr.add(Language::Shape(Box::from(list.as_slice())));
             let o_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
             let relay_operator_weight_shape_id = expr.add(Language::Shape(
-                vec![o_id, list[0], list[1]].into_boxed_slice(),
+                vec![o_id, list[2], list[3]].into_boxed_slice(),
             ));
 
             let operator_call_id = expr.add(Language::RelayOperatorCall(
@@ -330,6 +329,7 @@ pub fn conv2d(
 
             let mut to_be_concatted = Vec::default();
 
+            let data_id = access(expr, data_id, 0);
             for channel_idx in 0..in_channels {
                 // Get this group's input channel
                 // TODO(@gussmith23) layout assumption
