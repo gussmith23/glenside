@@ -752,10 +752,14 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>, visited: &mut Has
         visited.insert(relay_expr.clone());
     }
 
-    // We currently don't do anything in these cases.
-    // if let Ok(_var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
-    // } else if let Ok(_constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
-    if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
+    if relay_expr.clone().downcast::<tvm::ir::relay::Var>().is_ok()
+        || relay_expr
+            .clone()
+            .downcast::<tvm::ir::relay::Constant>()
+            .is_ok()
+    {
+        // We don't currently have to do anything for these cases.
+    } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         for i in 0..call.args.len() {
             // Recursively add children (and their dependencies) to the worklist
             create_worklist(
