@@ -1895,7 +1895,7 @@ fn compile_expression(
 
                     data_id
                 }
-                _ => todo!(),
+                _ => todo!("{}", primitive_op.name.as_str().unwrap()),
             }
         } else {
             todo!()
