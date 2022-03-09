@@ -1,7 +1,7 @@
 use crate::language::RelayOperator::*;
 use egg::{define_language, DidMerge, EGraph, Id, Language as LanguageTrait};
 use itertools::{any, multizip};
-use log::{debug, warn};
+use log::debug;
 use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
@@ -13,15 +13,6 @@ use std::convert::TryInto;
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::str::FromStr;
-
-pub fn merge_if_different<D: PartialEq>(to: &mut D, new: D) -> bool {
-    if *to == new {
-        false
-    } else {
-        *to = new;
-        true
-    }
-}
 
 define_language! {
     pub enum Language {
@@ -1596,9 +1587,6 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             (to @ _, _) => {
                 assert_eq!(*to, from);
-                merge_if_different(to, from);
-                warn!("TODO(@gussmith23) need to refine this return value");
-                //return Some(Ordering::Greater);
                 return DidMerge(false, false);
             }
         }
