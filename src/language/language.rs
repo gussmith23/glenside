@@ -3958,9 +3958,6 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
             &Compute([compute_type_id, access_id]) => {
-                // if (compute_type_id == Id::from(61) && access_id == Id::from(60)) || (compute_type_id == Id::from(53) && access_id == Id::from(50)) {
-                //     println!("compute_type: {:?}", egraph[compute_type_id].nodes[0]);
-                // }
                 let compute_type = match &egraph[compute_type_id].data {
                     MyAnalysisData::ComputeType(t) => t,
                     _ => panic!("Argument 0 of {:?} should be a ComputeType", enode),
@@ -4029,7 +4026,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     | self::ComputeType::ElementwiseMul
                     | self::ComputeType::ElementwiseDiv => {
                         assert!(a0.item_shape.ndim() >= 1);
-                        // println!("Add shape {:?} {:?}", a0.shape, a0.item_shape);
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             // TODO(@gussmith23) Implement zero regions
                             // It's harmless (I think) if `zero_regions` defaults to
