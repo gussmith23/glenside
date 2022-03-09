@@ -2000,6 +2000,7 @@ fn compile_expression(
                     data_id
                 }
                 "nn.conv1d" => {
+                    assert!(use_opaque_operators_for.contains(&RelayConv1D));
                     assert_eq!(call.args.len(), 2);
                     let attrs = call
                         .attrs
