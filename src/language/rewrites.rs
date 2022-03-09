@@ -597,10 +597,6 @@ pub fn bubble_reshape_through_cartesian_product() -> RW {
                                          "?right-access".parse().unwrap()))
 }
 
-/// More general rewrite
-/// because it's using the properties of Glenside expressions
-///
-
 pub fn bubble_reshape_through_compute_dot_product() -> RW {
     fn is_dot_product(op: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, _, subst| match &egraph[subst[op]].data {
