@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 #[test]
-#[ignore = "Taking a long time during 3la PLDI push; might be related to Mike's changes?"]
+#[ignore = "Test broken, extraction taking forever. Might be because zero-regions is no longer updated/used."]
 fn conv2d_im2col_tensorize_to_smaller_array_with_padding_and_slicing() {
     test_logger::ensure_env_logger_initialized();
 
