@@ -129,7 +129,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             Language::DataType(_) => todo!(),
 
             // Don't extract relay nodes.
-            Language::RelayOperatorCall(_) 
+            Language::RelayOperatorCall(_)
             | Language::RelayOperator(_)
             | Language::RelayActivationLayout(_)
             | Language::RelayKernelLayout(_) => Self::INFINITY_VALUE,
