@@ -2263,17 +2263,24 @@ impl egg::Analysis<Language> for MyAnalysis {
                         std::line!()
                     );
                 }
+                // Apparently, we used to require that the item shape/shape kept
+                // the same number of elements each. This seems overly
+                // restrictive.
+                // assert_eq!(
+                //     a.shape.as_array_view().iter().product::<usize>(),
+                //     new_shape.shape.as_array_view().iter().product::<usize>(),
+                // );
+                // assert_eq!(
+                //     a.item_shape.as_array_view().iter().product::<usize>(),
+                //     new_shape
+                //         .item_shape
+                //         .as_array_view()
+                //         .iter()
+                //         .product::<usize>(),
+                // );
                 assert_eq!(
-                    a.shape.as_array_view().iter().product::<usize>(),
-                    new_shape.shape.as_array_view().iter().product::<usize>(),
-                );
-                assert_eq!(
-                    a.item_shape.as_array_view().iter().product::<usize>(),
-                    new_shape
-                        .item_shape
-                        .as_array_view()
-                        .iter()
-                        .product::<usize>(),
+                    a.as_vec().iter().product::<usize>(),
+                    new_shape.as_vec().iter().product::<usize>()
                 );
                 MyAnalysisData::AccessPattern(new_shape)
             }
