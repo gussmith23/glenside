@@ -5,7 +5,6 @@ use log::debug;
 use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
-use serde_json::json;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -1384,45 +1383,6 @@ impl MyAnalysis {
             _ => panic!(),
         }
     }
-}
-
-pub fn serialize_analysis_data(
-    egraph: &EGraph<Language, MyAnalysis>,
-    id_map: &HashMap<Id, Id>,
-) -> serde_json::Value {
-    let analysis_data = id_map
-        .into_iter()
-        .map(|(expr_id, eid)| {
-            let shape_dict: HashMap<String, Vec<usize>> = match &egraph[egraph.find(eid.clone())]
-                .data
-            {
-                MyAnalysisData::AccessPattern(access) => {
-                    let mut analysis_dict = HashMap::default();
-                    analysis_dict.insert(String::from("relay_shape"), access.as_vec());
-                    analysis_dict.insert(String::from("shape"), access.shape.slice().to_vec());
-                    analysis_dict.insert(
-                        String::from("item_shape"),
-                        access.item_shape.slice().to_vec(),
-                    );
-                    analysis_dict
-                }
-                MyAnalysisData::Shape(shape) => {
-                    let mut analysis_dict = HashMap::default();
-                    analysis_dict.insert(String::from("relay_shape"), shape.shape.slice().to_vec());
-                    analysis_dict
-                }
-                MyAnalysisData::Literal(lit) => {
-                    let mut analysis_dict = HashMap::default();
-                    analysis_dict.insert(String::from("relay_shape"), lit.shape().to_vec());
-                    analysis_dict
-                }
-                // MyAnalysisData::List(l) => vec![l.len()],
-                _ => HashMap::default(),
-            };
-            (usize::from(expr_id.clone()), shape_dict)
-        })
-        .collect::<HashMap<_, _>>();
-    json!(analysis_data)
 }
 
 impl egg::Analysis<Language> for MyAnalysis {
