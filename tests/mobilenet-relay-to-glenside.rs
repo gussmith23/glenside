@@ -25,8 +25,11 @@ fn parse_mobilenet_simplified_for_inference() {
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec, dtypes_vec) =
-        glenside::language::from_relay::from_relay(&module, false, &vec![]);
+    let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
+        &module,
+        false,
+        &vec![glenside::language::RelayOperator::RelayConv2D],
+    );
 
     let mut env = HashMap::default();
     for (k, v) in &shapes_vec {
@@ -66,7 +69,10 @@ fn parse_mobilenet() {
     let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![glenside::language::RelayOperator::RelayBatchNormInference],
+        &vec![
+            glenside::language::RelayOperator::RelayBatchNormInference,
+            glenside::language::RelayOperator::RelayConv2D,
+        ],
     );
 
     let mut env = HashMap::default();

@@ -6714,7 +6714,8 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
  (list 1 0 2 3)
 )
 "#,
-        &vec![super::conv2d_relay_to_glenside()]
+        &vec![super::conv2d_relay_to_glenside()],
+        &vec![RelayOperator::RelayConv2D]
     );
 
     test!(
@@ -6751,7 +6752,8 @@ def @main(%data: Tensor[(1, 3, 32, 32), float32], %weights: Tensor[(8, 3, 3, 3),
  (list 1 0 2)
 )
 "#,
-        &vec![super::conv1d_relay_to_glenside()]
+        &vec![super::conv1d_relay_to_glenside()],
+        &vec![RelayOperator::RelayConv1D]
     );
 
     test!(
