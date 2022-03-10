@@ -752,8 +752,13 @@ fn create_worklist(relay_expr: Expr, worklist: &mut Vec<Expr>, visited: &mut Has
         visited.insert(relay_expr.clone());
     }
 
-    if let Ok(_var) = relay_expr.clone().downcast::<tvm::ir::relay::Var>() {
-    } else if let Ok(_constant) = relay_expr.clone().downcast::<tvm::ir::relay::Constant>() {
+    if relay_expr.clone().downcast::<tvm::ir::relay::Var>().is_ok()
+        || relay_expr
+            .clone()
+            .downcast::<tvm::ir::relay::Constant>()
+            .is_ok()
+    {
+        // We don't currently have to do anything for these cases.
     } else if let Ok(call) = relay_expr.clone().downcast::<tvm::ir::relay::Call>() {
         for i in 0..call.args.len() {
             // Recursively add children (and their dependencies) to the worklist
@@ -952,7 +957,7 @@ fn compile_expression(
 
                     // Assumptions for now.
                     assert_eq!(attrs.axis, -1);
-                    assert_eq!(attrs.epsilon, 1e-5);
+                    assert!((attrs.epsilon - 1e-5).abs() < std::f64::EPSILON);
                     assert_eq!(attrs.center, true);
                     assert_eq!(attrs.scale, true);
 
