@@ -421,7 +421,7 @@ pub enum RelayOperator {
 
     /// (relay-operator-call relay-squeeze <data: access> <axes: list of num>)
     RelaySqueeze,
-    RelayCopy
+    RelayCopy,
 }
 
 /// All variants of [`RelayOperator`].
@@ -472,7 +472,7 @@ pub static RELAY_OPS: &[RelayOperator] = &[
     RelayConcatenate,
     RelayTranspose,
     RelaySqueeze,
-    RelayCopy
+    RelayCopy,
 ];
 
 impl FromStr for RelayOperator {
@@ -576,7 +576,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayExpandDims => "relay-expand-dims",
                 RelayOperator::RelayPad => "relay-pad",
                 RelayOperator::RelayDivide => "relay-divide",
-                RelayOperator::RelayCopy => "relay-copy"
+                RelayOperator::RelayCopy => "relay-copy",
             }
         )
     }
@@ -3890,7 +3890,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     match &egraph[access_id].nodes[0] {
                         Language::Compute([op_id, _]) => &egraph[*op_id],
                         _ => panic!(),
-                    } });
+                    }
+                });
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     MyAnalysisData::Shape(s) => AccessPatternData {
