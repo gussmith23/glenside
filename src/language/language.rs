@@ -472,6 +472,7 @@ pub static RELAY_OPS: &[RelayOperator] = &[
     RelayConcatenate,
     RelayTranspose,
     RelaySqueeze,
+    RelayCopy
 ];
 
 impl FromStr for RelayOperator {

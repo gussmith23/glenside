@@ -36,10 +36,10 @@ fn parse_ssd_r34() {
     let relay = std::fs::read_to_string(&filename).unwrap();
     let module = tvm::ir::module::IRModule::parse("", relay).unwrap();
 
-    let (expr, shapes_vec) = glenside::language::from_relay::from_relay(
+    let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![glenside::language::RelayOperator::RelayCopy],
+        &glenside::language::RELAY_OPS.into(),
     );
 
     let mut env = HashMap::default();
@@ -53,6 +53,7 @@ fn parse_ssd_r34() {
     // from_relay.py. It can be simpler (e.g. collapsing accesses).
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
+        name_to_dtype: dtypes_vec.into_iter().collect(),
     });
     egraph.add_expr(&expr);
 }
