@@ -3883,15 +3883,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                 dtype: crate::language::DataType::Uint(64),
             }),
             &AccessReshape([access_id, access_shape_id]) => {
-                println!("{:#?}", egraph[access_id]);
-                println!("{:#?}", egraph[access_shape_id]);
-                println!("{:#?}", {
-                    assert_eq!(egraph[access_id].nodes.len(), 1);
-                    match &egraph[access_id].nodes[0] {
-                        Language::Compute([op_id, _]) => &egraph[*op_id],
-                        _ => panic!(),
-                    }
-                });
                 let a = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     MyAnalysisData::Shape(s) => AccessPatternData {
