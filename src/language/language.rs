@@ -2021,11 +2021,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                     crate::language::RelayOperator::RelayCopy => {
                         let mut out = match &egraph[params[1]].data {
                             MyAnalysisData::AccessPattern(a) => a.clone(),
-                            _ => panic!()
+                            _ => panic!(),
                         };
                         out.access_pattern_shape_settled = false;
                         MyAnalysisData::AccessPattern(out)
-
                     }
                     crate::language::RelayOperator::RelayTranspose => {
                         assert_eq!(params.len(), 3);
