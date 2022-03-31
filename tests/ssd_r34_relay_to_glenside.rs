@@ -30,19 +30,14 @@ fn parse_ssd_r34() {
     });
     let id = egraph.add_expr(&expr);
     assert_eq!(
-        vec![
-            vec![1, 4, 15130],
-            vec![1, 81, 15130]
-        ],
+        vec![vec![1, 4, 15130], vec![1, 81, 15130]],
         match &egraph[id].data {
             MyAnalysisData::Tuple(a) => match a.as_slice() {
-                [
-                    MyAnalysisData::AccessPattern(t1),
-                    MyAnalysisData::AccessPattern(t2)
-                ] => vec![t1.as_vec(), t2.as_vec()],
-                _ => panic!()
-            }
-            _ => panic!()
+                [MyAnalysisData::AccessPattern(t1), MyAnalysisData::AccessPattern(t2)] =>
+                    vec![t1.as_vec(), t2.as_vec()],
+                _ => panic!(),
+            },
+            _ => panic!(),
         }
     );
 }
