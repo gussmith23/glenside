@@ -1,7 +1,7 @@
 #![cfg(feature = "tvm")]
 
 use egg::EGraph;
-use glenside::language::MyAnalysis;
+use glenside::language::{MyAnalysis, MyAnalysisData};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -24,10 +24,25 @@ fn parse_ssd_r34() {
     for (k, v) in &shapes_vec {
         env.insert(k.clone(), v.clone());
     }
-
     let mut egraph = EGraph::new(MyAnalysis {
         name_to_shape: env.clone(),
         name_to_dtype: dtypes_vec.into_iter().collect(),
     });
-    egraph.add_expr(&expr);
+    let id = egraph.add_expr(&expr);
+    assert_eq!(
+        vec![
+            vec![1, 4, 15130],
+            vec![1, 81, 15130]
+        ],
+        match &egraph[id].data {
+            MyAnalysisData::Tuple(a) => match a.as_slice() {
+                [
+                    MyAnalysisData::AccessPattern(t1),
+                    MyAnalysisData::AccessPattern(t2)
+                ] => vec![t1.as_vec(), t2.as_vec()],
+                _ => panic!()
+            }
+            _ => panic!()
+        }
+    );
 }
