@@ -982,6 +982,7 @@ where
         &Language::SystolicArray(_)
         | &Language::SystolicArrayWithBlocking(_)
         | &Language::AccessShiftRight(_) => todo!("{:?}", &expr.as_ref()[index]),
+        other @ _ => todo!("{:?}", other),
     }
 }
 

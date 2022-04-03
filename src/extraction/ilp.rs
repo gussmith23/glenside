@@ -92,6 +92,8 @@ pub fn filter_by_enode_type(enode: &Language, _eclass_id: Id, _egraph: &EGraph) 
                     | Language::AccessPair(_)
                     | Language::AccessShiftRight(_) => false,
 
+
+                    other @ _ => todo!("{:?}", other),
             }
         == false
     {
@@ -161,6 +163,7 @@ pub fn filter_obviously_less_preferable_nodes(
             | Language::AccessPair(_)
             | Language::ConstantTensor(_)
             | Language::AccessShiftRight(_) => false,
+            other @ _ => todo!("{:?}", other),
         }
     }
 

@@ -378,6 +378,8 @@ pub fn find_vars(expr: &Expr, id: Id) -> Vec<String> {
             | &Language::AccessCartesianProduct(_)
             | &Language::SliceShape(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
+
+            other @ _ => todo!("{:?}", other),
         }
     }
 
@@ -485,6 +487,8 @@ pub fn generate_worklist_for_codegen(expr: &Expr, id: Id) -> Vec<Id> {
             | &Language::AccessCartesianProduct(_)
             | &Language::SliceShape(_)
             | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
+
+            other @ _ => todo!("{:?}", other),
         }
 
         add_to_worklist(id, worklist);
@@ -1811,6 +1815,8 @@ if (i{i} < {dim_len}) {{
         | &Language::SliceShape(_)
         | &Language::AccessLiteral(_)
         | &Language::AccessShiftRight(_) => panic!("{:#?} not implemented", expr[id].nodes[0]),
+
+        other @ _ => todo!("{:?}", other),
     }
 }
 

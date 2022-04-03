@@ -4457,6 +4457,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                 shape: Self::get_shape(tensor_id, egraph).clone(),
                 dtype: Self::get_dtype(tensor_id, egraph).clone(),
             }),
+            other @ _ => todo!("{:?}", other),
         }
     }
 }
