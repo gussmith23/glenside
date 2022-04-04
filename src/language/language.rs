@@ -1,7 +1,7 @@
 use crate::language::RelayOperator::*;
 use egg::{define_language, DidMerge, EGraph, Id, Language as LanguageTrait};
 use itertools::{any, multizip};
-use log::debug;
+use log::{debug, warn};
 use ndarray::Ix0;
 use ndarray::{s, Dimension, Ix, IxDyn};
 use ordered_float::NotNan;
@@ -245,6 +245,37 @@ define_language! {
 
         // (constant-tensor <value> <shape>)
         "constant-tensor" = ConstantTensor([Id; 2]),
+
+        // New syntax for applying an access operator:
+        // (access' <access-op> <access-pattern>...)
+        "access'" = AccessNew(Box<[Id]>),
+        // (compute' <compute-op> <access-pattern>)
+        "compute'" = ComputeNew([Id;2]),
+        // New fused compute-access.
+        // (fused <ast> <access-pattern>...)
+        "fused" = Fused(Box<[Id]>),
+        // (ast <ast, made of ast nodes and placeholders> <canonical args>)
+        "ast" = AST([Id;2]),
+        // Used to construct AST.
+        "ast-node" = ASTNode(Box<[Id]>),
+        "placeholder" = Placeholder,
+
+        // New access operators.
+        //
+        // (access' (at <dim idx>) <access pattern>)
+        "at" = At([Id; 1]),
+        "cartesian-product" = CartesianProduct,
+        "tensor" = Tensor,
+        "pair"= Pair,
+        // (access' (broadcast <access shape>) <access pattern>)
+        "broadcast" = Broadcast([Id; 1]),
+        // (access' (insert-axis <dim idx>) <access pattern>)
+        "insert-axis" = InsertAxis([Id; 1]),
+
+        // New compute operators.
+        "dot-product'" = DotProduct,
+        "elementwise-add'" = ElementwiseAdd,
+
 
         Num(i64),
 
@@ -812,6 +843,28 @@ pub enum MyAnalysisData {
     RelayActivationLayout(RelayActivationLayout),
     RelayKernelLayout(RelayKernelLayout),
     AcceleratorFunc(AcceleratorFuncData),
+
+    // Access operators
+    At(i64),
+    CartesianProduct,
+    Tensor,
+    Pair,
+    Broadcast(AccessPatternData),
+    InsertAxis(i64),
+
+    // New compute operators.
+    DotProduct,
+    ElementwiseAdd,
+
+    Placeholder,
+
+    // The operator this node represents (one of the access or compute operator
+    // variants above) and a list of the children nodes (either ASTNodes or
+    // Placeholders).
+    ASTNode(Box<MyAnalysisData>, Vec<MyAnalysisData>),
+
+    // ASTNode, canonical args
+    AST(Box<MyAnalysisData>, Vec<usize>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Copy)]
@@ -1340,6 +1393,353 @@ pub fn access_windows_resulting_shape(
     .collect()
 }
 
+fn all_children_are_settled(egraph: &EGraph<Language, MyAnalysis>, enode: &Language) -> bool {
+    enode
+        .children()
+        .iter()
+        .filter_map(|id| match &egraph[*id].data {
+            MyAnalysisData::AccessPattern(AccessPatternData {
+                access_pattern_shape_settled,
+                ..
+            }) => Some(*access_pattern_shape_settled),
+            _ => None,
+        })
+        .all(std::convert::identity)
+}
+fn make_access_cartesian_product(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    a0: &AccessPatternData,
+    a1: &AccessPatternData,
+) -> MyAnalysisData {
+    assert_eq!(
+        a0.item_shape, a1.item_shape,
+        "Cartesian product argument shapes must match"
+    );
+
+    let new_shape = IxDyn(
+        a0.shape
+            .as_array_view()
+            .iter()
+            .cloned()
+            .chain(a1.shape.as_array_view().iter().cloned())
+            .collect::<Vec<usize>>()
+            .as_slice(),
+    );
+    let new_item_shape = IxDyn(
+        std::iter::once(2)
+            .chain(a0.item_shape.as_array_view().iter().cloned())
+            .collect::<Vec<usize>>()
+            .as_slice(),
+    );
+
+    assert_eq!(
+        new_shape.as_array_view().iter().product::<usize>()
+            * new_item_shape.as_array_view().iter().product::<usize>(),
+        a0.shape.as_array_view().iter().product::<usize>()
+            * a1.shape.as_array_view().iter().product::<usize>()
+            * 2
+            * a0.item_shape.as_array_view().iter().product::<usize>()
+    );
+
+    MyAnalysisData::AccessPattern(AccessPatternData {
+        zero_regions: {
+            // TODO(@gussmith23) We only implement zero regions for
+            // item dimensions.
+            // That's all we need for now w/r/t cart prods.
+
+            let mut zero_regions = HashMap::new();
+            for item_dim in 0..a0.item_shape.ndim() {
+                if let (Some(range_set_0), Some(range_set_1)) = (
+                    a0.zero_regions.get(&(a0.shape.ndim() + item_dim)),
+                    a1.zero_regions.get(&(a1.shape.ndim() + item_dim)),
+                ) {
+                    // Basically, we know a range [:, :, :, :, x] is
+                    // filled with zeros if its original ranges [:,
+                    // :, x] and [:, :, x] are zeros.
+                    let new_range_set: BoolVecRangeSet = range_set_0
+                        .iter()
+                        .zip(range_set_1.iter())
+                        .map(|(v0, v1): (&bool, &bool)| *v0 && *v1)
+                        .collect();
+                    if new_range_set.iter().any(|v| *v) {
+                        zero_regions.insert(
+                            a0.shape.ndim() + a1.shape.ndim() + 1 + item_dim,
+                            new_range_set,
+                        );
+                    }
+                }
+            }
+
+            zero_regions
+        },
+        shape: new_shape.clone(),
+        item_shape: new_item_shape.clone(),
+        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+        contains_accelerator_calls: a0.contains_accelerator_calls || a1.contains_accelerator_calls,
+    })
+}
+
+fn make_access_at(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    access: &AccessPatternData,
+    dim: usize,
+) -> MyAnalysisData {
+    let shape = access
+        .shape
+        .as_array_view()
+        .iter()
+        .chain(access.item_shape.as_array_view().iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    MyAnalysisData::AccessPattern(AccessPatternData {
+        // TODO(@gussmith23) Implement zero regions
+        // It's harmless (I think) if `zero_regions` defaults to
+        // empty, but for it to be useful, we need to implement it
+        // for each operator.
+        zero_regions: {
+            if !access.zero_regions.is_empty() {
+                debug!(
+                    "Throwing away zero region analysis data on line {}",
+                    std::line!()
+                );
+            }
+            HashMap::default()
+        },
+        shape: IxDyn(&shape[..dim]),
+        item_shape: IxDyn(&shape[dim..]),
+        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+        contains_accelerator_calls: access.contains_accelerator_calls,
+    })
+}
+
+fn make_compute_dot_product(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    a0: &AccessPatternData,
+) -> MyAnalysisData {
+    // If it's =1, that's just a "dot product" of scalars,
+    // which is just a sum.
+    //
+    // Honestly, it could also be 0. It doesn't make much
+    // sense but it's not wrong. Can remove this later if we
+    // want those semantics.
+    assert!(a0.item_shape.ndim() >= 1);
+
+    // MyAnalysisData::Tensor(TensorData {
+    //     shape: a0.shape.clone(),
+    // })
+    MyAnalysisData::AccessPattern(AccessPatternData {
+        // TODO(@gussmith23) Implement zero regions
+        // It's harmless (I think) if `zero_regions` defaults to
+        // empty, but for it to be useful, we need to implement it
+        // for each operator.
+        zero_regions: {
+            if !a0.zero_regions.is_empty() {
+                debug!(
+                    "Throwing away zero region analysis data on line {}",
+                    std::line!()
+                );
+            }
+            HashMap::default()
+        },
+        shape: a0.shape.clone(),
+        item_shape: IxDyn(&[]),
+        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+        contains_accelerator_calls: a0.contains_accelerator_calls,
+    })
+}
+
+fn make_access_insert_axis(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    access: &AccessPatternData,
+    axis: i64,
+) -> MyAnalysisData {
+    let mut access = access.clone();
+    // TODO(@gussmith23) Implement zero_regions
+    if !access.zero_regions.is_empty() {
+        debug!(
+            "Throwing away zero region analysis data on line {}",
+            std::line!()
+        );
+        access.zero_regions = HashMap::default();
+    }
+
+    assert!(usize::try_from(axis).unwrap() <= access.shape.ndim() + access.item_shape.ndim());
+
+    if usize::try_from(axis).unwrap() <= access.shape.ndim() {
+        access.shape = IxDyn(
+            access.shape.slice()[..axis.try_into().unwrap()]
+                .iter()
+                .cloned()
+                .chain(std::iter::once(1))
+                .chain(
+                    access.shape.slice()[axis.try_into().unwrap()..]
+                        .iter()
+                        .cloned(),
+                )
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+    } else {
+        let n = access.shape.ndim();
+        access.item_shape = IxDyn(
+            access.item_shape.slice()[..usize::try_from(axis).unwrap() - n]
+                .iter()
+                .cloned()
+                .chain(std::iter::once(1))
+                .chain(
+                    access.item_shape.slice()[usize::try_from(axis).unwrap() - n..]
+                        .iter()
+                        .cloned(),
+                )
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+    }
+
+    access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
+
+    MyAnalysisData::AccessPattern(access)
+}
+
+fn make_access_broadcast(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    access: &AccessPatternData,
+    shape: &AccessPatternData,
+) -> MyAnalysisData {
+    assert_eq!(
+                    access.shape.ndim() + access.item_shape.ndim(),
+                    shape.shape.ndim() + shape.item_shape.ndim(),
+                    "Shape we're broadcasting to should have the same number of dimensions as the shape we're broadcasting from"
+                );
+
+    let new_shape = access
+        .shape
+        .slice()
+        .iter()
+        .chain(access.item_shape.slice().iter())
+        .zip(
+            shape
+                .shape
+                .slice()
+                .iter()
+                .chain(shape.item_shape.slice().iter()),
+        )
+        .map(|(broadcast_from_dim, broadcast_to_dim): (&usize, &usize)| {
+            assert!(
+                *broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim,
+                "Expected broadcast_from_dim to be 1 or {}, got {}",
+                *broadcast_to_dim,
+                *broadcast_from_dim
+            );
+            *broadcast_to_dim
+        })
+        .collect::<Vec<_>>();
+
+    if !access.zero_regions.is_empty() {
+        debug!(
+            "Throwing away zero region analysis data on line {}",
+            std::line!()
+        );
+    }
+
+    assert_eq!(
+        new_shape.len(),
+        access.shape.ndim() + access.item_shape.ndim()
+    );
+
+    MyAnalysisData::AccessPattern(AccessPatternData {
+        shape: IxDyn(&new_shape[..access.shape.ndim()]),
+        item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
+        // TODO(@gussmith23) Implement zero regions
+        // It's harmless (I think) if `zero_regions` defaults to
+        // empty, but for it to be useful, we need to implement it
+        // for each operator.
+        zero_regions: {
+            if !access.zero_regions.is_empty() {
+                debug!(
+                    "Throwing away zero region analysis data on line {}",
+                    std::line!()
+                );
+            }
+            HashMap::default()
+        },
+        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+        contains_accelerator_calls: access.contains_accelerator_calls,
+    })
+}
+
+fn make_access_pair(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    a0: &AccessPatternData,
+    a1: &AccessPatternData,
+) -> MyAnalysisData {
+    // assert_eq!(a0.shape, a1.shape);
+    // assert_eq!(a0.item_shape, a1.item_shape);
+
+    MyAnalysisData::AccessPattern(AccessPatternData {
+        // TODO(@gussmith23) Implement zero regions
+        // It's harmless (I think) if `zero_regions` defaults to
+        // empty, but for it to be useful, we need to implement it
+        // for each operator.
+        zero_regions: {
+            if !a0.zero_regions.is_empty() {
+                debug!(
+                    "Throwing away zero region analysis data on line {}",
+                    std::line!()
+                );
+            }
+            if !a1.zero_regions.is_empty() {
+                debug!(
+                    "Throwing away zero region analysis data on line {}",
+                    std::line!()
+                );
+            }
+            HashMap::default()
+        },
+        shape: a0.shape.clone(),
+        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+        item_shape: IxDyn(
+            std::iter::once(2)
+                .chain(a0.item_shape.as_array_view().iter().cloned())
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
+        contains_accelerator_calls: a0.contains_accelerator_calls || a1.contains_accelerator_calls,
+    })
+}
+fn make_compute_elementwise(
+    egraph: &EGraph<Language, MyAnalysis>,
+    enode: &Language,
+    a0: &AccessPatternData,
+) -> MyAnalysisData {
+    assert!(a0.item_shape.ndim() >= 1);
+    MyAnalysisData::AccessPattern(AccessPatternData {
+        // TODO(@gussmith23) Implement zero regions
+        // It's harmless (I think) if `zero_regions` defaults to
+        // empty, but for it to be useful, we need to implement it
+        // for each operator.
+        zero_regions: {
+            if !a0.zero_regions.is_empty() {
+                debug!(
+                    "Throwing away zero region analysis data on line {}",
+                    std::line!()
+                );
+            }
+            HashMap::default()
+        },
+        shape: a0.shape.clone(),
+        item_shape: IxDyn(&a0.item_shape.slice()[1..]),
+        access_pattern_shape_settled: all_children_are_settled(egraph, enode),
+        contains_accelerator_calls: a0.contains_accelerator_calls,
+    })
+}
+
 // #[derive(Debug, Clone, PartialEq)]
 // pub struct TensorData {
 //     shape: IxDyn,
@@ -1553,23 +1953,6 @@ impl egg::Analysis<Language> for MyAnalysis {
     }
 
     fn make(egraph: &EGraph<Language, Self>, enode: &Language) -> Self::Data {
-        fn all_children_are_settled(
-            egraph: &EGraph<Language, MyAnalysis>,
-            enode: &Language,
-        ) -> bool {
-            enode
-                .children()
-                .iter()
-                .filter_map(|id| match &egraph[*id].data {
-                    MyAnalysisData::AccessPattern(AccessPatternData {
-                        access_pattern_shape_settled,
-                        ..
-                    }) => Some(*access_pattern_shape_settled),
-                    _ => None,
-                })
-                .all(std::convert::identity)
-        }
-
         use Language::*;
         match enode {
             &GetAccessShape([id]) => match egraph[id].data.clone() {
@@ -3435,124 +3818,19 @@ impl egg::Analysis<Language> for MyAnalysis {
                     ),
                 };
 
-                assert_eq!(
-                    access.shape.ndim() + access.item_shape.ndim(),
-                    shape.shape.ndim() + shape.item_shape.ndim(),
-                    "Shape we're broadcasting to should have the same number of dimensions as the shape we're broadcasting from"
-                );
-
-                let new_shape = access
-                    .shape
-                    .slice()
-                    .iter()
-                    .chain(access.item_shape.slice().iter())
-                    .zip(
-                        shape
-                            .shape
-                            .slice()
-                            .iter()
-                            .chain(shape.item_shape.slice().iter()),
-                    )
-                    .map(|(broadcast_from_dim, broadcast_to_dim): (&usize, &usize)| {
-                        assert!(
-                            *broadcast_from_dim == 1 || broadcast_from_dim == broadcast_to_dim,
-                            "Expected broadcast_from_dim to be 1 or {}, got {}",
-                            *broadcast_to_dim,
-                            *broadcast_from_dim
-                        );
-                        *broadcast_to_dim
-                    })
-                    .collect::<Vec<_>>();
-
-                if !access.zero_regions.is_empty() {
-                    debug!(
-                        "Throwing away zero region analysis data on line {}",
-                        std::line!()
-                    );
-                }
-
-                assert_eq!(
-                    new_shape.len(),
-                    access.shape.ndim() + access.item_shape.ndim()
-                );
-
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    shape: IxDyn(&new_shape[..access.shape.ndim()]),
-                    item_shape: IxDyn(&new_shape[access.shape.ndim()..]),
-                    // TODO(@gussmith23) Implement zero regions
-                    // It's harmless (I think) if `zero_regions` defaults to
-                    // empty, but for it to be useful, we need to implement it
-                    // for each operator.
-                    zero_regions: {
-                        if !access.zero_regions.is_empty() {
-                            debug!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
-                        }
-                        HashMap::default()
-                    },
-                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                    contains_accelerator_calls: access.contains_accelerator_calls,
-                })
+                make_access_broadcast(egraph, enode, access, shape)
             }
             &AccessInsertAxis([access_id, axis_id]) => {
-                let mut access = match &egraph[access_id].data {
+                let access = match &egraph[access_id].data {
                     MyAnalysisData::AccessPattern(a) => a.clone(),
                     _ => panic!(),
                 };
-                // TODO(@gussmith23) Implement zero_regions
-                if !access.zero_regions.is_empty() {
-                    debug!(
-                        "Throwing away zero region analysis data on line {}",
-                        std::line!()
-                    );
-                    access.zero_regions = HashMap::default();
-                }
                 let axis = match egraph[axis_id].data {
                     MyAnalysisData::Num(v) => v,
                     _ => panic!(),
                 };
 
-                assert!(
-                    usize::try_from(axis).unwrap()
-                        <= access.shape.ndim() + access.item_shape.ndim()
-                );
-
-                if usize::try_from(axis).unwrap() <= access.shape.ndim() {
-                    access.shape = IxDyn(
-                        access.shape.slice()[..axis.try_into().unwrap()]
-                            .iter()
-                            .cloned()
-                            .chain(std::iter::once(1))
-                            .chain(
-                                access.shape.slice()[axis.try_into().unwrap()..]
-                                    .iter()
-                                    .cloned(),
-                            )
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    );
-                } else {
-                    let n = access.shape.ndim();
-                    access.item_shape = IxDyn(
-                        access.item_shape.slice()[..usize::try_from(axis).unwrap() - n]
-                            .iter()
-                            .cloned()
-                            .chain(std::iter::once(1))
-                            .chain(
-                                access.item_shape.slice()[usize::try_from(axis).unwrap() - n..]
-                                    .iter()
-                                    .cloned(),
-                            )
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    );
-                }
-
-                access.access_pattern_shape_settled = all_children_are_settled(egraph, enode);
-
-                MyAnalysisData::AccessPattern(access)
+                make_access_insert_axis(egraph, enode, &access, axis)
             }
             &AccessSqueeze([access_id, axis_id]) => {
                 let mut access = match &egraph[access_id].data {
@@ -3725,40 +4003,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                     _ => panic!(),
                 };
 
-                // assert_eq!(a0.shape, a1.shape);
-                // assert_eq!(a0.item_shape, a1.item_shape);
-
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    // TODO(@gussmith23) Implement zero regions
-                    // It's harmless (I think) if `zero_regions` defaults to
-                    // empty, but for it to be useful, we need to implement it
-                    // for each operator.
-                    zero_regions: {
-                        if !a0.zero_regions.is_empty() {
-                            debug!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
-                        }
-                        if !a1.zero_regions.is_empty() {
-                            debug!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
-                        }
-                        HashMap::default()
-                    },
-                    shape: a0.shape.clone(),
-                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                    item_shape: IxDyn(
-                        std::iter::once(2)
-                            .chain(a0.item_shape.as_array_view().iter().cloned())
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    ),
-                    contains_accelerator_calls: a0.contains_accelerator_calls
-                        || a1.contains_accelerator_calls,
-                })
+                make_access_pair(egraph, enode, a0, a1)
             }
             &AccessSlice([access_id, axis_id, low_id, high_id]) => {
                 let mut new_access = match &egraph[access_id].data {
@@ -4025,59 +4270,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                     self::ComputeType::ElementwiseAdd
                     | self::ComputeType::ElementwiseMul
                     | self::ComputeType::ElementwiseDiv => {
-                        assert!(a0.item_shape.ndim() >= 1);
-                        MyAnalysisData::AccessPattern(AccessPatternData {
-                            // TODO(@gussmith23) Implement zero regions
-                            // It's harmless (I think) if `zero_regions` defaults to
-                            // empty, but for it to be useful, we need to implement it
-                            // for each operator.
-                            zero_regions: {
-                                if !a0.zero_regions.is_empty() {
-                                    debug!(
-                                        "Throwing away zero region analysis data on line {}",
-                                        std::line!()
-                                    );
-                                }
-                                HashMap::default()
-                            },
-                            shape: a0.shape.clone(),
-                            item_shape: IxDyn(&a0.item_shape.slice()[1..]),
-                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                            contains_accelerator_calls: a0.contains_accelerator_calls,
-                        })
+                        make_compute_elementwise(egraph, enode, a0)
                     }
-                    self::ComputeType::DotProduct => {
-                        // If it's =1, that's just a "dot product" of scalars,
-                        // which is just a sum.
-                        //
-                        // Honestly, it could also be 0. It doesn't make much
-                        // sense but it's not wrong. Can remove this later if we
-                        // want those semantics.
-                        assert!(a0.item_shape.ndim() >= 1);
-
-                        // MyAnalysisData::Tensor(TensorData {
-                        //     shape: a0.shape.clone(),
-                        // })
-                        MyAnalysisData::AccessPattern(AccessPatternData {
-                            // TODO(@gussmith23) Implement zero regions
-                            // It's harmless (I think) if `zero_regions` defaults to
-                            // empty, but for it to be useful, we need to implement it
-                            // for each operator.
-                            zero_regions: {
-                                if !a0.zero_regions.is_empty() {
-                                    debug!(
-                                        "Throwing away zero region analysis data on line {}",
-                                        std::line!()
-                                    );
-                                }
-                                HashMap::default()
-                            },
-                            shape: a0.shape.clone(),
-                            item_shape: IxDyn(&[]),
-                            access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                            contains_accelerator_calls: a0.contains_accelerator_calls,
-                        })
-                    }
+                    self::ComputeType::DotProduct => make_compute_dot_product(egraph, enode, a0),
                     self::ComputeType::ReduceSum | self::ComputeType::ReduceMax => {
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             // TODO(@gussmith23) Implement zero regions
@@ -4124,73 +4319,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     }
                     _ => panic!(),
                 };
-                assert_eq!(
-                    a0.item_shape, a1.item_shape,
-                    "Cartesian product argument shapes must match"
-                );
 
-                let new_shape = IxDyn(
-                    a0.shape
-                        .as_array_view()
-                        .iter()
-                        .cloned()
-                        .chain(a1.shape.as_array_view().iter().cloned())
-                        .collect::<Vec<usize>>()
-                        .as_slice(),
-                );
-                let new_item_shape = IxDyn(
-                    std::iter::once(2)
-                        .chain(a0.item_shape.as_array_view().iter().cloned())
-                        .collect::<Vec<usize>>()
-                        .as_slice(),
-                );
-
-                assert_eq!(
-                    new_shape.as_array_view().iter().product::<usize>()
-                        * new_item_shape.as_array_view().iter().product::<usize>(),
-                    a0.shape.as_array_view().iter().product::<usize>()
-                        * a1.shape.as_array_view().iter().product::<usize>()
-                        * 2
-                        * a0.item_shape.as_array_view().iter().product::<usize>()
-                );
-
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    zero_regions: {
-                        // TODO(@gussmith23) We only implement zero regions for
-                        // item dimensions.
-                        // That's all we need for now w/r/t cart prods.
-
-                        let mut zero_regions = HashMap::new();
-                        for item_dim in 0..a0.item_shape.ndim() {
-                            if let (Some(range_set_0), Some(range_set_1)) = (
-                                a0.zero_regions.get(&(a0.shape.ndim() + item_dim)),
-                                a1.zero_regions.get(&(a1.shape.ndim() + item_dim)),
-                            ) {
-                                // Basically, we know a range [:, :, :, :, x] is
-                                // filled with zeros if its original ranges [:,
-                                // :, x] and [:, :, x] are zeros.
-                                let new_range_set: BoolVecRangeSet = range_set_0
-                                    .iter()
-                                    .zip(range_set_1.iter())
-                                    .map(|(v0, v1): (&bool, &bool)| *v0 && *v1)
-                                    .collect();
-                                if new_range_set.iter().any(|v| *v) {
-                                    zero_regions.insert(
-                                        a0.shape.ndim() + a1.shape.ndim() + 1 + item_dim,
-                                        new_range_set,
-                                    );
-                                }
-                            }
-                        }
-
-                        zero_regions
-                    },
-                    shape: new_shape.clone(),
-                    item_shape: new_item_shape.clone(),
-                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                    contains_accelerator_calls: a0.contains_accelerator_calls
-                        || a1.contains_accelerator_calls,
-                })
+                make_access_cartesian_product(egraph, enode, a0, a1)
             }
             &SliceShape([shape_id, dim_id]) => {
                 let shape = match &egraph[shape_id].data {
@@ -4254,32 +4384,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                     MyAnalysisData::AccessPattern(a) => a,
                     _ => panic!(),
                 };
-                let shape = access
-                    .shape
-                    .as_array_view()
-                    .iter()
-                    .chain(access.item_shape.as_array_view().iter())
-                    .cloned()
-                    .collect::<Vec<_>>();
-                MyAnalysisData::AccessPattern(AccessPatternData {
-                    // TODO(@gussmith23) Implement zero regions
-                    // It's harmless (I think) if `zero_regions` defaults to
-                    // empty, but for it to be useful, we need to implement it
-                    // for each operator.
-                    zero_regions: {
-                        if !access.zero_regions.is_empty() {
-                            debug!(
-                                "Throwing away zero region analysis data on line {}",
-                                std::line!()
-                            );
-                        }
-                        HashMap::default()
-                    },
-                    shape: IxDyn(&shape[..dim]),
-                    item_shape: IxDyn(&shape[dim..]),
-                    access_pattern_shape_settled: all_children_are_settled(egraph, enode),
-                    contains_accelerator_calls: access.contains_accelerator_calls,
-                })
+
+                make_access_at(egraph, enode, access, dim)
             }
             &SystolicArray([rows_id, cols_id, a0_id, a1_id])
             | &SystolicArrayWithBlocking([rows_id, cols_id, a0_id, a1_id]) => {
@@ -4457,7 +4563,232 @@ impl egg::Analysis<Language> for MyAnalysis {
                 shape: Self::get_shape(tensor_id, egraph).clone(),
                 dtype: Self::get_dtype(tensor_id, egraph).clone(),
             }),
-            other @ _ => todo!("{:?}", other),
+            ElementwiseAdd => MyAnalysisData::ElementwiseAdd,
+            Pair => MyAnalysisData::Pair,
+            DotProduct => MyAnalysisData::DotProduct,
+            CartesianProduct => MyAnalysisData::CartesianProduct,
+            At([dim_idx_id]) => MyAnalysisData::At(match &egraph[*dim_idx_id].data {
+                MyAnalysisData::Num(v) => *v,
+                _ => panic!(),
+            }),
+            Tensor => MyAnalysisData::Tensor,
+            &Broadcast([access_shape_id]) => {
+                MyAnalysisData::Broadcast(match &egraph[access_shape_id].data {
+                    MyAnalysisData::AccessPattern(a) => a.clone(),
+                    _ => panic!(),
+                })
+            }
+            &InsertAxis([dim_idx_id]) => {
+                MyAnalysisData::InsertAxis(match &egraph[dim_idx_id].data {
+                    MyAnalysisData::Num(v) => *v,
+                    _ => panic!(),
+                })
+            }
+            AccessNew(ids) => {
+                assert!(ids.len() >= 2);
+                let access_patterns: Vec<_> = ids[1..]
+                    .iter()
+                    .map(|id| match &egraph[*id].data {
+                        MyAnalysisData::AccessPattern(a) => a,
+                        _ => panic!(),
+                    })
+                    .collect();
+
+                match &egraph[ids[0]].data {
+                    &MyAnalysisData::At(idx) => {
+                        assert_eq!(access_patterns.len(), 1);
+                        make_access_at(egraph, enode, access_patterns[0], idx.try_into().unwrap())
+                    }
+                    &MyAnalysisData::CartesianProduct => {
+                        assert_eq!(access_patterns.len(), 2);
+                        make_access_cartesian_product(
+                            egraph,
+                            enode,
+                            access_patterns[0],
+                            access_patterns[1],
+                        )
+                    }
+                    &MyAnalysisData::InsertAxis(idx) => {
+                        assert_eq!(access_patterns.len(), 1);
+                        make_access_insert_axis(
+                            egraph,
+                            enode,
+                            access_patterns[0],
+                            idx.try_into().unwrap(),
+                        )
+                    }
+                    MyAnalysisData::Broadcast(access_shape) => {
+                        assert_eq!(access_patterns.len(), 1);
+                        make_access_broadcast(egraph, enode, access_patterns[0], access_shape)
+                    }
+                    MyAnalysisData::Pair => {
+                        assert_eq!(access_patterns.len(), 2);
+                        make_access_pair(egraph, enode, access_patterns[0], access_patterns[1])
+                    }
+                    other @ _ => todo!("{:?}", other),
+                }
+            }
+            &ComputeNew([compute_id, access_id]) => {
+                let access_pattern = match &egraph[access_id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+
+                match &egraph[compute_id].data {
+                    MyAnalysisData::DotProduct => {
+                        make_compute_dot_product(egraph, enode, access_pattern)
+                    }
+                    MyAnalysisData::ElementwiseAdd => {
+                        make_compute_elementwise(egraph, enode, access_pattern)
+                    }
+                    other @ _ => todo!("{:?}", other),
+                }
+            }
+            Placeholder => MyAnalysisData::Placeholder,
+            ASTNode(ids) => {
+                assert!(ids.len() >= 2);
+                let op: &MyAnalysisData  = match &egraph[ids[0]].data {
+                    v @ crate::language::MyAnalysisData::CartesianProduct
+                    | v@ crate::language::MyAnalysisData::DotProduct
+                    | v@ crate::language::MyAnalysisData::ElementwiseAdd
+                    | v@ crate::language::MyAnalysisData::Pair => v,
+                    v@ _ => panic!("Not a compute or access op: {:?}. Do you need to add it to the match statement?", v),
+                };
+                let asts: Vec<_> = ids[1..]
+                    .iter()
+                    .map(|id| match &egraph[*id].data {
+                        v @ MyAnalysisData::ASTNode(_, _) | v @ MyAnalysisData::Placeholder => {
+                            v.clone()
+                        }
+                        _ => panic!(),
+                    })
+                    .collect();
+                MyAnalysisData::ASTNode(Box::new(op.clone()), asts)
+            }
+            &AST([astnode_id, list_id]) => MyAnalysisData::AST(
+                match &egraph[astnode_id].data {
+                    v @ MyAnalysisData::ASTNode(..) => Box::new(v.clone()),
+                    _ => panic!(),
+                },
+                match &egraph[list_id].data {
+                    MyAnalysisData::List(l) => l.clone(),
+                    _ => panic!(),
+                },
+            ),
+            Fused(ids) => {
+                assert!(ids.len() > 1);
+                let (ast, args) = match &egraph[ids[0]].data {
+                    MyAnalysisData::AST(ast, l) => (ast, l),
+                    _ => panic!(),
+                };
+
+                let access_patterns: Vec<_> = ids[1..]
+                    .iter()
+                    .map(|id| match &egraph[*id].data {
+                        MyAnalysisData::AccessPattern(a) => a.clone(),
+                        _ => panic!(),
+                    })
+                    .collect();
+
+                // This is a key constraint of fused operators: all of the
+                // inputs must share the same outer loops (i.e. the same access
+                // dimensions.)
+                for access_pattern in &access_patterns {
+                    assert_eq!(
+                        access_pattern.shape, access_patterns[0].shape,
+                        "Invalid fusion: outer loops don't match"
+                    );
+                }
+
+                fn recursive_helper(
+                    egraph: &mut EGraph<Language, MyAnalysis>,
+                    node_data: &MyAnalysisData,
+                    args: &mut Vec<usize>,
+                    access_patterns: &Vec<AccessPatternData>,
+                ) -> Id {
+                    match node_data {
+                        MyAnalysisData::Placeholder => {
+                            // Construct (access' (at <correct-dim>) (access-tensor t<arg_id>)).
+                            assert!(!args.is_empty());
+                            let arg_id = args.remove(0);
+                            let id = egraph.add(Symbol(format!("t{}", arg_id).to_string()));
+                            let id = egraph.add(AccessTensor(id));
+                            let dim_id = egraph.add(Num(access_patterns[arg_id]
+                                .shape
+                                .ndim()
+                                .try_into()
+                                .unwrap()));
+                            let access_id = egraph.add(At([dim_id]));
+                            egraph.add(AccessNew(vec![access_id, id].into_boxed_slice()))
+                        }
+                        MyAnalysisData::ASTNode(op, children) => {
+                            let ids: Vec<_> = children
+                                .iter()
+                                .map(|data| recursive_helper(egraph, data, args, access_patterns))
+                                .collect();
+                            match &*(op.as_ref()) {
+                                MyAnalysisData::At(_idx) => todo!(),
+                                MyAnalysisData::CartesianProduct => {
+                                    assert_eq!(ids.len(), 2);
+                                    let op_id = egraph.add(Language::CartesianProduct);
+                                    egraph.add(Language::AccessNew(
+                                        vec![op_id, ids[0], ids[1]].into_boxed_slice(),
+                                    ))
+                                }
+                                MyAnalysisData::Tensor => todo!(),
+                                MyAnalysisData::Pair => {
+                                    assert_eq!(ids.len(), 2);
+                                    let op_id = egraph.add(Language::Pair);
+                                    egraph.add(Language::AccessNew(
+                                        vec![op_id, ids[0], ids[1]].into_boxed_slice(),
+                                    ))
+                                }
+                                MyAnalysisData::Broadcast(_) => todo!(),
+                                MyAnalysisData::InsertAxis(_) => todo!(),
+                                MyAnalysisData::DotProduct => {
+                                    assert_eq!(ids.len(), 1);
+                                    let op_id = egraph.add(Language::DotProduct);
+                                    egraph.add(Language::ComputeNew([op_id, ids[0]]))
+                                }
+                                MyAnalysisData::ElementwiseAdd => {
+                                    assert_eq!(ids.len(), 1);
+                                    let op_id = egraph.add(Language::ElementwiseAdd);
+                                    egraph.add(Language::ComputeNew([op_id, ids[0]]))
+                                }
+                                other @ _ => {
+                                    panic!("Not a valid compute or access op: {:?}", other)
+                                }
+                            }
+                        }
+                        _ => panic!(),
+                    }
+                }
+
+                let mut name_to_shape = HashMap::new();
+                let mut name_to_dtype = HashMap::new();
+                for (i, access_pattern) in access_patterns.iter().enumerate() {
+                    let name = format!("t{}", i);
+                    name_to_shape.insert(name.clone(), access_pattern.as_vec());
+                    name_to_dtype.insert(name, crate::language::DataType::Float(32));
+                }
+                let mut egraph = EGraph::new(MyAnalysis {
+                    name_to_shape,
+                    name_to_dtype,
+                });
+                let mut args_mut = args.clone();
+
+                let id = recursive_helper(&mut egraph, &*ast, &mut args_mut, &access_patterns);
+                assert!(args_mut.is_empty(), "Not all args in args list were used!");
+
+                let out_access_pattern_data = match &egraph[id].data {
+                    MyAnalysisData::AccessPattern(a) => a,
+                    _ => panic!(),
+                };
+
+                warn!("Need to modify out_access_pattern_data e.g. with whether shape is settled");
+
+                MyAnalysisData::AccessPattern(out_access_pattern_data.clone())
+            }
         }
     }
 }
@@ -7514,6 +7845,195 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(a) => {
                 assert_eq!(a.shape.slice(), &[5, 6, 7, 3]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn new_linear_layer() {
+        let mut map = HashMap::default();
+        map.insert("x".to_string(), vec![32, 16]);
+        map.insert("w".to_string(), vec![64, 16]);
+        map.insert("b".to_string(), vec![64]);
+        let dtypes = [
+            ("x".into(), crate::language::DataType::Float(32)),
+            ("w".into(), crate::language::DataType::Float(32)),
+            ("b".into(), crate::language::DataType::Float(32)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+(compute' elementwise-add'
+ (access' pair
+  (compute' dot-product'
+   (access' cartesian-product
+    (access' (at 1) (access-tensor x))
+    (access' (at 1) (access-tensor w))
+   )
+  )
+  (access'
+   (broadcast (access-shape (shape 32 64) (shape)))
+   (access' (insert-axis 0) (access-tensor b))
+  )
+ )
+)";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[32, 64]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic = "Invalid fusion: outer loops don't match"]
+    fn new_fused_linear_layer_invalid_0() {
+        let mut map = HashMap::default();
+        map.insert("x".to_string(), vec![32, 16]);
+        map.insert("w".to_string(), vec![64, 16]);
+        map.insert("b".to_string(), vec![64]);
+        let dtypes = [
+            ("x".into(), crate::language::DataType::Float(32)),
+            ("w".into(), crate::language::DataType::Float(32)),
+            ("b".into(), crate::language::DataType::Float(32)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+(fused
+ (ast 
+  (ast-node elementwise-add'
+   (ast-node pair
+    (ast-node dot-product'
+     (ast-node cartesian-product (placeholder) (placeholder))
+    )
+    (placeholder)
+   )
+  )
+  (list 0 1 2)
+ )
+ (access' (at 1) (access-tensor x))
+ (access' (at 1) (access-tensor w))
+ (access'
+  (broadcast (access-shape (shape 32 64) (shape)))
+  (access' (insert-axis 0) (access-tensor b))
+ )
+)";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[32, 64]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic = "Not all args in args list were used!"]
+    fn new_fused_linear_layer_invalid_1() {
+        let mut map = HashMap::default();
+        map.insert("x".to_string(), vec![32, 16]);
+        map.insert("w".to_string(), vec![64, 16]);
+        map.insert("b".to_string(), vec![64]);
+        let dtypes = [
+            ("x".into(), crate::language::DataType::Float(32)),
+            ("w".into(), crate::language::DataType::Float(32)),
+            ("b".into(), crate::language::DataType::Float(32)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+(fused
+ (ast 
+  (ast-node elementwise-add'
+   (ast-node pair
+    (ast-node dot-product' (placeholder))
+    (placeholder)
+   )
+  )
+  (list 0 1 2)
+ )
+ (access' cartesian-product
+  (access' (at 1) (access-tensor x))
+  (access' (at 1) (access-tensor w))
+ )
+ (access'
+  (broadcast (access-shape (shape 32 64) (shape)))
+  (access' (insert-axis 0) (access-tensor b))
+ )
+)";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[32, 64]);
+                assert_eq!(a.item_shape, IxDyn(&[]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn new_fused_linear_layer() {
+        let mut map = HashMap::default();
+        map.insert("x".to_string(), vec![32, 16]);
+        map.insert("w".to_string(), vec![64, 16]);
+        map.insert("b".to_string(), vec![64]);
+        let dtypes = [
+            ("x".into(), crate::language::DataType::Float(32)),
+            ("w".into(), crate::language::DataType::Float(32)),
+            ("b".into(), crate::language::DataType::Float(32)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: dtypes,
+        });
+        let program = "
+(fused
+ (ast 
+  (ast-node elementwise-add'
+   (ast-node pair
+    (ast-node dot-product' (placeholder))
+    (placeholder)
+   )
+  )
+  (list 0 1)
+ )
+ (access' cartesian-product
+  (access' (at 1) (access-tensor x))
+  (access' (at 1) (access-tensor w))
+ )
+ (access'
+  (broadcast (access-shape (shape 32 64) (shape)))
+  (access' (insert-axis 0) (access-tensor b))
+ )
+)";
+        let id = egraph.add_expr(&program.parse().unwrap());
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(a) => {
+                assert_eq!(a.shape.slice(), &[32, 64]);
                 assert_eq!(a.item_shape, IxDyn(&[]));
             }
             _ => panic!(),
