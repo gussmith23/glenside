@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["init","Initialize the `codespan` based diagnostics."]]});

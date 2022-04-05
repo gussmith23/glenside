@@ -1,0 +1,139 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="github crates-io docs-rs"><meta name="keywords" content="rust, rustlang, rust-lang, mashup"><title>mashup - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../dark.css" disabled><link rel="stylesheet" type="text/css" href="../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../storage.js"></script><script src="../crates.js"></script><script defer src="../main.js"></script>
+    <noscript><link rel="stylesheet" href="../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../favicon.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a class="sidebar-logo" href="../mashup/index.html"><div class="logo-container"><img class="rust-logo" src="../rust-logo.png" alt="logo"></div>
+        </a><h2 class="location">Crate mashup</h2><div class="block version"><div class="narrow-helper"></div><p>Version 0.1.13+deprecated</p></div><div class="sidebar-elems"><a id="all-types" href="all.html"><p>See all mashup's items</p></a><div class="block items"><ul><li><a href="#macros">Macros</a></li></ul></div><div id="sidebar-vars" data-name="mashup" data-ty="mod" data-relpath=""></div><script defer src="sidebar-items.js"></script></div></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../mashup/index.html"><img class="rust-logo" src="../rust-logo.png" alt="logo"></a><nav class="sub"><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="18" height="18" alt="Pick another theme!" src="../brush.svg"></button><div id="theme-choices" role="menu"></div></div><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../settings.html" title="settings"><img width="18" height="18" alt="Change settings" src="../wheel.svg"></a></div></form></nav></div><section id="main-content" class="content"><h1 class="fqn"><span class="in-band">Crate <a class="mod" href="#">mashup</a><button id="copy-path" onclick="copy_path(this)" title="Copy item path to clipboard"><img src="../clipboard.svg" width="19" height="18" alt="Copy item path"></button></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../src/mashup/lib.rs.html#1-200" title="goto source code">[src]</a></span></h1><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><a href="https://github.com/dtolnay/mashup"><img src="https://img.shields.io/badge/github-8da0cb?style=for-the-badge&amp;labelColor=555555&amp;logo=github" alt="github" /></a> <a href="https://crates.io/crates/mashup"><img src="https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&amp;labelColor=555555&amp;logo=rust" alt="crates-io" /></a> <a href="https://docs.rs/mashup"><img src="https://img.shields.io/badge/docs.rs-66c2a5?style=for-the-badge&amp;labelColor=555555&amp;logoColor=white&amp;logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" alt="docs-rs" /></a></p>
+<br>
+<table><tr><td><hr>
+<b>Note:</b> <i>If you are targeting Rust 1.31+, please use the <a
+href="https://github.com/dtolnay/paste"><code>paste</code></a> crate instead
+which has an easier interface. Only consider using this one if you care
+about supporting compilers between 1.15 and 1.31.</i>
+<hr></td></tr></table>
+<p>The nightly-only <a href="https://doc.rust-lang.org/std/macro.concat_idents.html"><code>concat_idents!</code></a> macro in the Rust standard library is
+notoriously underpowered in that its concatenated identifiers can only refer to
+existing items, they can never be used to define something new.</p>
+<p>This crate provides a more flexible spin on concatenating idents.</p>
+<div class="example-wrap"><pre class="language-toml"><code>[dependencies]
+mashup = &quot;0.1&quot;</code></pre></div>
+<p>Mashup works with any Rust compiler version &gt;= 1.15.0.</p>
+<h2 id="so-tell-me-about-concatenating-idents" class="section-header"><a href="#so-tell-me-about-concatenating-idents">So tell me about concatenating idents</a></h2>
+<p>This crate provides a <code>mashup!</code> macro-generating macro. You provide mashup a
+mapping of arbitrary key tokens to idents that you want concatenated together,
+and mashup defines for you a substitution macro that substitutes your key tokens
+with the single concatenated ident corresponding to each one.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attribute">#[<span class="ident">macro_use</span>]</span>
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">mashup</span>;
+
+<span class="comment">// Use mashup to generate a substitution macro called m. The substitution macro</span>
+<span class="comment">// will replace all occurrences of the key token &quot;method&quot; in its input with the</span>
+<span class="comment">// single concatenated identifier abc.</span>
+<span class="macro">mashup!</span> {
+    <span class="ident">m</span>[<span class="string">&quot;method&quot;</span>] <span class="op">=</span> <span class="ident">a</span> <span class="ident">b</span> <span class="ident">c</span>;
+}
+
+<span class="kw">struct</span> <span class="ident">Struct</span>;
+
+<span class="macro">m!</span> {
+    <span class="kw">impl</span> <span class="ident">Struct</span> {
+        <span class="kw">fn</span> <span class="string">&quot;method&quot;</span>() {}
+    }
+}
+
+<span class="kw">fn</span> <span class="ident">main</span>() {
+    <span class="comment">// Our struct now has an abc method.</span>
+    <span class="ident">Struct::abc</span>();
+}</code></pre></div>
+<h2 id="glossary" class="section-header"><a href="#glossary">Glossary</a></h2>
+<ul>
+<li>
+<p><strong>Substitution macro:</strong> A macro produced by the <code>mashup!</code> macro. The input to
+<code>mashup!</code> provides a name for one or more substitution macros to be defined.
+The substitution macro in the short example above is called <code>m!</code>.</p>
+</li>
+<li>
+<p><strong>Key tokens:</strong> Arbitrary tokens that are to be replaced by a single
+concatenated ident anywhere in the input of a substitution macro. The token
+<code>&quot;method&quot;</code> is used as a key token above.</p>
+</li>
+<li>
+<p><strong>Ident pieces:</strong> Idents that are concatenated together to form a single
+concatenated ident in the final macro-expanded code. The <code>a</code> <code>b</code> <code>c</code> are ident
+pieces that come together to form the <code>abc</code> method name.</p>
+</li>
+</ul>
+<h2 id="more-elaborate-example" class="section-header"><a href="#more-elaborate-example">More elaborate example</a></h2>
+<p>This example demonstrates some trickier uses of mashup.</p>
+<ul>
+<li>
+<p>You may need to bundle a <code>mashup!</code> invocation inside of a more convenient
+user-facing macro of your own.</p>
+</li>
+<li>
+<p>The <code>mashup!</code> invocation may define multiple substitutions, including via the
+<code>$(...)*</code> repetition available in macro_rules.</p>
+</li>
+<li>
+<p>Key tokens may consist of more than one token.</p>
+</li>
+<li>
+<p>Substitution macros work equally well in item position and expression
+position.</p>
+</li>
+</ul>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attribute">#[<span class="ident">macro_use</span>]</span>
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">mashup</span>;
+
+<span class="kw">const</span> <span class="ident">ROCKET_A</span>: <span class="ident">char</span> <span class="op">=</span> <span class="string">&#39;a&#39;</span>;
+<span class="kw">const</span> <span class="ident">ROCKET_B</span>: <span class="ident">char</span> <span class="op">=</span> <span class="string">&#39;b&#39;</span>;
+
+<span class="macro">macro_rules!</span> <span class="ident">routes</span> {
+    ($(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">route</span>:<span class="ident">ident</span>),<span class="kw-2">*</span>) =&gt; {{
+        <span class="macro">mashup!</span> {
+            $(
+                <span class="ident">m</span>[<span class="string">&quot;rocket-codegen-route&quot;</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">route</span>] <span class="op">=</span> <span class="ident">ROCKET_</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">route</span>;
+            )<span class="op">*</span>
+        }
+
+        <span class="macro">m!</span> {
+            <span class="macro">vec!</span>[$(<span class="string">&quot;rocket-codegen-route&quot;</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">route</span>),<span class="kw-2">*</span>]
+        }
+    }}
+}
+
+<span class="kw">fn</span> <span class="ident">main</span>() {
+    <span class="kw">let</span> <span class="ident">routes</span> <span class="op">=</span> <span class="macro">routes!</span>(<span class="ident">A</span>, <span class="ident">B</span>);
+    <span class="macro">assert_eq!</span>(<span class="ident">routes</span>, <span class="macro">vec!</span>[<span class="string">&#39;a&#39;</span>, <span class="string">&#39;b&#39;</span>]);
+}</code></pre></div>
+<h3 id="attributes" class="section-header"><a href="#attributes">Attributes</a></h3>
+<p>Attributes for the substitution macro, including doc comments, may be provided
+inside of the mashup invocation.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="macro">mashup!</span> {
+    <span class="doccomment">/// Needs better documentation.</span>
+    <span class="attribute">#[<span class="ident">macro_export</span>]</span>
+    <span class="ident">m1</span>[<span class="string">&quot;w&quot;</span>] <span class="op">=</span> <span class="ident">W</span> <span class="ident">w</span>;
+    <span class="ident">m1</span>[<span class="string">&quot;x&quot;</span>] <span class="op">=</span> <span class="ident">X</span> <span class="ident">x</span>;
+
+    <span class="attribute">#[<span class="ident">macro_export</span>]</span>
+    <span class="attribute">#[<span class="ident">doc</span>(<span class="ident">hidden</span>)]</span>
+    <span class="ident">m2</span>[<span class="string">&quot;y&quot;</span>] <span class="op">=</span> <span class="ident">Y</span> <span class="ident">y</span>;
+    <span class="ident">m2</span>[<span class="string">&quot;z&quot;</span>] <span class="op">=</span> <span class="ident">Z</span> <span class="ident">z</span>;
+}</code></pre></div>
+<h2 id="limitations" class="section-header"><a href="#limitations">Limitations</a></h2>
+<ul>
+<li>
+<p>The <code>mashup!</code> macro may be invoked <em>at most once</em> within a lexical scope. To
+provide a way around this, you may use a single mashup invocation to define
+more than one substitution macro by using as many different substitution macro
+names within one invocation as you want (<a href="https://github.com/dtolnay/mashup/issues/5">#5</a>).</p>
+</li>
+<li>
+<p>As a consequence of hygiene, a concatenated identifier may not be used to
+refer to a captured local variable (<a href="https://github.com/dtolnay/mashup/issues/6">#6</a>).</p>
+</li>
+</ul>
+</div></details><h2 id="macros" class="small-section-header"><a href="#macros">Macros</a></h2>
+<div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="macro" href="macro.mashup.html" title="mashup::mashup macro">mashup</a></div><div class="item-right docblock-short"><p>A working stable concat_idents.</p>
+</div></div></div></section><section id="search" class="content hidden"></section></div></main><div id="rustdoc-vars" data-root-path="../" data-current-crate="mashup" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.59.0 (9d1b2106e 2022-02-23)" ></div>
+</body></html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Create a monolithic systolic array hardware design from an expression, where we use just one systolic array. (row, col): the rows&#x2F;cols of the systolic array."><meta name="keywords" content="rust, rustlang, rust-lang, create_hardware_design_monolithic"><title>create_hardware_design_monolithic in glenside::codegen - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script src="../../crates.js"></script><script defer src="../../main.js"></script>
+    <noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc fn"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a class="sidebar-logo" href="../../glenside/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.png" alt="logo"></div>
+        </a><div class="sidebar-elems"><h2 class="location">Other items in<br><a href="../index.html">glenside</a>::<wbr><a href="index.html">codegen</a></h2><div id="sidebar-vars" data-name="create_hardware_design_monolithic" data-ty="fn" data-relpath=""></div><script defer src="sidebar-items.js"></script></div></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../glenside/index.html"><img class="rust-logo" src="../../rust-logo.png" alt="logo"></a><nav class="sub"><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="18" height="18" alt="Pick another theme!" src="../../brush.svg"></button><div id="theme-choices" role="menu"></div></div><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../../settings.html" title="settings"><img width="18" height="18" alt="Change settings" src="../../wheel.svg"></a></div></form></nav></div><section id="main-content" class="content"><h1 class="fqn"><span class="in-band">Function <a href="../index.html">glenside</a>::<wbr><a href="index.html">codegen</a>::<wbr><a class="fn" href="#">create_hardware_design_monolithic</a><button id="copy-path" onclick="copy_path(this)" title="Copy item path to clipboard"><img src="../../clipboard.svg" width="19" height="18" alt="Copy item path"></button></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../../src/glenside/codegen.rs.html#185-242" title="goto source code">[src]</a></span></h1><div class="docblock item-decl"><pre class="rust fn"><code>pub fn create_hardware_design_monolithic(<br>&nbsp;&nbsp;&nbsp;&nbsp;expr: &amp;<a class="struct" href="../../egg/egraph/struct.EGraph.html" title="struct egg::egraph::EGraph">EGraph</a>&lt;<a class="enum" href="../language/enum.Language.html" title="enum glenside::language::Language">Language</a>, <a class="struct" href="../language/struct.MyAnalysis.html" title="struct glenside::language::MyAnalysis">MyAnalysis</a>&gt;, <br>&nbsp;&nbsp;&nbsp;&nbsp;(row, col): <a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.tuple.html">(</a><a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.usize.html">usize</a>, <a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.usize.html">usize</a><a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.tuple.html">)</a><br>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.tuple.html">(</a><a class="struct" href="https://doc.rust-lang.org/1.59.0/std/collections/hash/map/struct.HashMap.html" title="struct std::collections::hash::map::HashMap">HashMap</a>&lt;<a class="struct" href="../../egg/struct.Id.html" title="struct egg::Id">Id</a>, <a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.usize.html">usize</a>&gt;, <a class="struct" href="https://doc.rust-lang.org/1.59.0/alloc/vec/struct.Vec.html" title="struct alloc::vec::Vec">Vec</a>&lt;<a class="struct" href="../hw_design_language/struct.Atom.html" title="struct glenside::hw_design_language::Atom">Atom</a>&gt;<a class="primitive" href="https://doc.rust-lang.org/1.59.0/std/primitive.tuple.html">)</a></code></pre></div><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Create a monolithic systolic array hardware design from an expression, where
+we use just one systolic array.
+(row, col): the rows/cols of the systolic array.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use</span> <span class="ident">glenside::hw_design_language</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">glenside::language</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">glenside::codegen</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">egg</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
+<span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
+
+<span class="kw">let</span> <span class="ident">expr</span> <span class="op">=</span> <span class="ident">RecExpr::from_str</span>(
+    <span class="string">&quot;
+    (systolic-array 32 32
+     (access
+      (systolic-array 32 32
+       (access (access-tensor t0) 1)
+       (access (access-tensor t1) 0)
+      )
+      1
+     )
+     (access
+      (systolic-array 32 32
+       (access (access-tensor t2) 1)
+       (access (access-tensor t3) 0)
+      )
+      0
+     )
+    )&quot;</span>,
+)
+.<span class="ident">unwrap</span>();
+
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">map</span> <span class="op">=</span> <span class="ident">HashMap::default</span>();
+<span class="ident">map</span>.<span class="ident">insert</span>(<span class="string">&quot;t0&quot;</span>.<span class="ident">to_string</span>(), <span class="macro">vec!</span>[<span class="number">32</span>, <span class="number">32</span>]);
+<span class="ident">map</span>.<span class="ident">insert</span>(<span class="string">&quot;t1&quot;</span>.<span class="ident">to_string</span>(), <span class="macro">vec!</span>[<span class="number">32</span>, <span class="number">32</span>]);
+<span class="ident">map</span>.<span class="ident">insert</span>(<span class="string">&quot;t2&quot;</span>.<span class="ident">to_string</span>(), <span class="macro">vec!</span>[<span class="number">32</span>, <span class="number">32</span>]);
+<span class="ident">map</span>.<span class="ident">insert</span>(<span class="string">&quot;t3&quot;</span>.<span class="ident">to_string</span>(), <span class="macro">vec!</span>[<span class="number">32</span>, <span class="number">32</span>]);
+
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">egraph</span> <span class="op">=</span> <span class="ident">EGraph::new</span>(<span class="ident">MyAnalysis</span> { <span class="ident">name_to_shape</span>: <span class="ident">map</span>, <span class="ident">name_to_dtype</span>: <span class="ident">HashMap::default</span>() });
+<span class="ident">egraph</span>.<span class="ident">add_expr</span>(<span class="kw-2">&amp;</span><span class="ident">expr</span>);
+
+<span class="kw">let</span> (<span class="ident">hw_map</span>, <span class="ident">hw_design</span>) <span class="op">=</span> <span class="ident">create_hardware_design_monolithic</span>(<span class="kw-2">&amp;</span><span class="ident">egraph</span>, (<span class="number">32</span>, <span class="number">32</span>));
+
+<span class="macro">assert_eq!</span>(<span class="ident">hw_design</span>.<span class="ident">len</span>(), <span class="number">1</span>);
+<span class="kw">match</span> <span class="kw-2">&amp;</span><span class="ident">hw_design</span>[<span class="number">0</span>] {
+    <span class="ident">Atom</span> {
+        <span class="ident">name</span>,
+        <span class="ident">id</span>: <span class="number">0</span>,
+        <span class="ident">config</span>:
+            <span class="ident">AtomConfig::SystolicArrayWeightStationary</span>(<span class="ident">SystolicArrayWeightStationaryParams</span> {
+                <span class="ident">dtype</span>: <span class="ident">DType::Fp32</span>,
+                <span class="ident">rows</span>: <span class="number">32</span>,
+                <span class="ident">cols</span>: <span class="number">32</span>,
+            }),
+    } =&gt; <span class="macro">assert_eq!</span>(<span class="kw-2">*</span><span class="ident">name</span>, <span class="string">&quot;systolic_array_0&quot;</span>.<span class="ident">to_string</span>()),
+    <span class="kw">_</span> =&gt; <span class="macro">panic!</span>(),
+};
+
+<span class="macro">assert_eq!</span>(<span class="ident">hw_map</span>.<span class="ident">len</span>(), <span class="number">3</span>);
+<span class="kw">for</span> (<span class="ident">_id</span>, <span class="ident">val</span>) <span class="kw">in</span> <span class="ident">hw_map</span>.<span class="ident">iter</span>() {
+    <span class="macro">assert_eq!</span>(<span class="kw-2">*</span><span class="ident">val</span>, <span class="number">0</span>);
+}</code></pre></div>
+</div></details></section><section id="search" class="content hidden"></section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="glenside" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.59.0 (9d1b2106e 2022-02-23)" ></div>
+</body></html>

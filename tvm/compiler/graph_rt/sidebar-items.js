@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error",""]],"fn":[["compile_from_disk","Compile an IRModule on disk and output a runtime module to disk."],["compile_module","Compile a module from a configuration and IRModule."]],"struct":[["CompilerConfig",""]]});

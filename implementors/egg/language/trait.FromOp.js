@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["glenside"] = [{"text":"impl <a class=\"trait\" href=\"egg/language/trait.FromOp.html\" title=\"trait egg::language::FromOp\">FromOp</a> for <a class=\"enum\" href=\"glenside/language/enum.Language.html\" title=\"enum glenside::language::Language\">Language</a>","synthetic":false,"types":["glenside::language::language::Language"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

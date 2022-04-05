@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["SourceName",""],["SourceNameNode","A source file name, contained in a Span."],["Span",""],["SpanNode","Span information for diagnostic purposes."]]});

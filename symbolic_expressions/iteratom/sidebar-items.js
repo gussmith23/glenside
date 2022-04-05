@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["from_sexp","convert from a symbolic-expression to something (dispatcher)"]],"struct":[["IterAtom","Atom iterator wrapper"]],"trait":[["FromSexp","convert an `&Sexp` to something"]]});

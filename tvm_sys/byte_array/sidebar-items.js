@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["ByteArray","A newtype wrapping a raw TVM byte-array."]]});
