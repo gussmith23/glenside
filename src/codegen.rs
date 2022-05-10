@@ -702,6 +702,7 @@ fn codegen_helper(
                 RelayOperator::RelayStridedSlice => todo!(),
                 RelayOperator::RelayConv1D => todo!(),
                 RelayOperator::RelayConv2D => todo!(),
+                RelayOperator::RelayConv3D => todo!(),
                 RelayOperator::RelayErf => todo!(),
                 RelayOperator::RelayCast => todo!(),
                 RelayOperator::RelayMean => todo!(),

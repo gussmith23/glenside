@@ -43,10 +43,10 @@ optional = true
 git = "https://github.com/gussmith23/rplex"
 
 
-[dependencies.tvm]
-rev = "7688db7ac5c4e1a043bf0dddeed75780ec49e70a"
-git = "https://github.com/apache/tvm"
-optional = true
+# [dependencies.tvm]
+# rev = "7688db7ac5c4e1a043bf0dddeed75780ec49e70a"
+# git = "https://github.com/apache/tvm"
+# optional = true
 
 [dependencies.ndarray]
 version = "0.13.0"
@@ -55,3 +55,8 @@ features = ["approx"]
 [dependencies.serde]
 version = "1.0"
 features = ["derive"]
+
+[dependencies.tvm]
+path = "../tvm/rust/tvm"
+optional = true
+# tvm = { path = "../tvm/rust }

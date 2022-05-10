@@ -391,6 +391,200 @@ pub fn conv2d(
     }
 }
 
+pub fn conv3d(
+    expr: &mut RecExpr<Language>,
+    data_id: Id,
+    data_shape: &[usize],
+    weights_id: Id,
+    weights_shape: &[usize],
+    strides: &[usize],
+    padding: &[usize],
+    dilation: &[usize],
+    groups: usize,
+    // We get these from the shapes above. Remove?
+    // _channels: usize,
+    // _kernel_size: [usize; 2],
+    data_layout: &str,
+    kernel_layout: &str,
+    out_layout: &str,
+    use_opaque_operators: bool,
+) -> Id {
+    assert_eq!(data_shape.len(), 5);
+    assert_eq!(weights_shape.len(), 5);
+    assert_eq!(strides.len(), 3);
+    assert_eq!(padding.len(), 6);
+    assert_eq!(dilation.len(), 3);
+
+    assert!(
+        &["NCDHW"].contains(&data_layout),
+        "NCDHW is the only layout supported at the moment"
+    );
+    assert!(
+        ["OIDHW"].contains(&kernel_layout),
+        "OIDHW is the only layout supported at the moment"
+    );
+
+    assert_eq!(dilation, [1, 1, 1]);
+    assert_eq!(out_layout, "");
+
+    // Transpose to NCHW
+    let (data_id, data_shape, activation_layout) = match data_layout {
+        "NCDHW" => (data_id, Vec::from(data_shape), RelayActivationLayout::NCDHW),
+        _ => unreachable!(),
+    };
+
+    // Transpose to OIHW
+    let (weights_id, weights_shape, kernel_layout) = match kernel_layout {
+        "OIDHW" => (
+            weights_id,
+            Vec::from(weights_shape),
+            RelayKernelLayout::OIDHW,
+        ),
+        _ => unreachable!(),
+    };
+
+    let operator_data_id = data_id;
+    let operator_weights_id = weights_id;
+
+    let activation_layout_id = expr.add(Language::RelayActivationLayout(activation_layout));
+    let kernel_layout_id = expr.add(Language::RelayKernelLayout(kernel_layout));
+
+
+    let pad_axis_id = expr.add(Language::Num(2));
+    let pad_front= expr.add(Language::Num(padding[0].try_into().unwrap()));
+    let pad_back= expr.add(Language::Num(padding[3].try_into().unwrap()));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_front,
+        pad_back,
+    ]));
+
+    let groups_id = expr.add(Language::Num(groups.clone().try_into().unwrap()));
+
+    let pad_axis_id = expr.add(Language::Num(3));
+    let pad_top= expr.add(Language::Num(padding[1].try_into().unwrap()));
+    let pad_bottom= expr.add(Language::Num(padding[4].try_into().unwrap()));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_top,
+        pad_bottom,
+    ]));
+
+    let groups_id = expr.add(Language::Num(groups.clone().try_into().unwrap()));
+
+    let pad_axis_id = expr.add(Language::Num(4));
+    let pad_left = expr.add(Language::Num(padding[2].try_into().unwrap()));
+    let pad_right = expr.add(Language::Num(padding[5].try_into().unwrap()));
+    let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
+    let data_id = expr.add(Language::AccessPad([
+        data_id,
+        zero_padding_id,
+        pad_axis_id,
+        pad_left,
+        pad_right,
+    ]));
+
+    let padding_id = expr.add(Language::Shape(Box::new([
+        pad_front, pad_top, pad_left, pad_back, pad_bottom, pad_right,
+    ])));
+
+    let in_channels = data_shape[1];
+
+    let channel_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
+
+    let operator_id = expr.add(Language::RelayOperator(RelayOperator::RelayConv3D));
+
+
+    let data_id = match groups as usize {
+        1 => {
+            let data_id = access(expr, data_id, 1);
+
+            let mut stride_list = Vec::default();
+            stride_list.push(expr.add(Language::Num(1)));
+            stride_list.push(expr.add(Language::Num(strides[0].try_into().unwrap())));
+            stride_list.push(expr.add(Language::Num(strides[1].try_into().unwrap())));
+            stride_list.push(expr.add(Language::Num(strides[2].try_into().unwrap())));
+            let stride_shape_id = expr.add(Language::Shape(Box::from(stride_list.as_slice())));
+
+            // Create the (shape ...) representing the kernel shapes
+            let usize_c_id = expr.add(Language::Num(weights_shape[1].try_into().unwrap()));
+            let usize_kd_id = expr.add(Language::Num(weights_shape[2].try_into().unwrap()));
+            let usize_kh_id = expr.add(Language::Num(weights_shape[3].try_into().unwrap()));
+            let usize_kw_id = expr.add(Language::Num(weights_shape[4].try_into().unwrap()));
+            let weights_shape_id = expr.add(Language::Shape(Box::new([
+                usize_c_id,
+                usize_kd_id,
+                usize_kh_id,
+                usize_kw_id,
+            ])));
+
+            // don't think we need this
+            if use_opaque_operators {
+                let operator_call_id = expr.add(Language::RelayOperatorCall(
+                    vec![
+                        operator_id,
+                        operator_data_id,
+                        operator_weights_id,
+                        stride_shape_id,
+                        padding_id,
+                        groups_id,
+                        channel_id,
+                        weights_shape_id,
+                        activation_layout_id,
+                        kernel_layout_id,
+                    ]
+                    .into_boxed_slice(),
+                ));
+                return operator_call_id;
+            }
+
+
+            let data_id = expr.add(Language::AccessWindows([
+                data_id,
+                weights_shape_id,
+                stride_shape_id,
+            ]));
+
+
+            // Result is [batch 1 new_d new_h new_w] [in_channel kd kw kh]
+
+            // Squeeze extraneous 1st dimension
+            let squeeze_axis_id = expr.add(Language::Num(1));
+            let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
+            let data_id = access(expr, data_id, 4);
+            // Result is [batch new_h new_w] [in_channel kw kh]
+
+
+            let access_axis_id = expr.add(Language::Num(1));
+            let weights_id = expr.add(Language::Access([weights_id, access_axis_id]));
+
+
+            let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
+
+            let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
+            let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
+
+            let data_id = access_transpose(expr, data_id, &[1, 0, 2, 3, 4]);
+            data_id
+        }
+        _ => panic!("Groups not implemented for groups={}", groups),
+    };
+
+    // Transpose from NCHW to original layout
+    assert!(!use_opaque_operators);
+    match data_layout {
+        "NCDHW" => data_id,
+        // "NHWC" => access_transpose(expr, data_id, &[0, 2, 3, 1]),
+        _ => unreachable!(),
+    }
+}
+
 /// Create access shape literal
 ///
 /// ```
@@ -2233,6 +2427,214 @@ fn compile_expression(
                         },
                     ));
 
+                    let operator_call_id = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![
+                            operator_id,
+                            data_id,
+                            weights_id,
+                            stride_shape_id,
+                            padding_id,
+                            groups_id,
+                            channel_id,
+                            weights_shape_id,
+                            activation_layout_id,
+                            kernel_layout_id,
+                        ]
+                        .into_boxed_slice(),
+                    ));
+
+                    operator_call_id
+                }
+                "nn.conv3d" => {
+                    assert!(use_opaque_operators_for.contains(&RelayConv3D));
+                    assert_eq!(call.args.len(), 2);
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::Conv3DAttrs>()
+                        .unwrap();
+
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let data_shape =
+                        shape_from_type(call.args.get(0).unwrap().checked_type.clone());
+                    assert_eq!(data_shape.len(), 5);
+                    let weights_id = get_compiled_expression(call.args.get(1).unwrap());
+                    let weights_shape =
+                        shape_from_type(call.args.get(1).unwrap().checked_type.clone());
+                    
+                    assert_eq!(weights_shape.len(), 5);
+                    assert_eq!(attrs.strides.len(), 3);
+                    assert_eq!(attrs.padding.len(), 6);
+                    assert_eq!(attrs.dilation.len(), 3);
+                    assert_eq!(
+                        attrs
+                            .dilation
+                            .get(0)
+                            .unwrap()
+                            .downcast::<tvm::ir::tir::IntImm>()
+                            .unwrap()
+                            .value,
+                        1
+                    );
+                    assert_eq!(attrs.out_layout, "");
+                    assert_eq!(
+                        attrs.out_dtype,
+                        tvm::DataType::new(3, 0, 0)
+                    );
+                    let operator_id =
+                        glenside_expr.add(Language::RelayOperator(RelayOperator::RelayConv3D));
+
+                    let stride_shape_id = {
+                        let mut stride_list = Vec::default();
+                        stride_list.push(
+                            glenside_expr.add(Language::Num(
+                                attrs
+                                    .strides
+                                    .get(0)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value
+                                    .try_into()
+                                    .unwrap(),
+                            )),
+                        );
+                        stride_list.push(
+                            glenside_expr.add(Language::Num(
+                                attrs
+                                    .strides
+                                    .get(1)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value
+                                    .try_into()
+                                    .unwrap(),
+                            )),
+                        );
+                        stride_list.push(
+                            glenside_expr.add(Language::Num(
+                                attrs
+                                    .strides
+                                    .get(2)
+                                    .unwrap()
+                                    .downcast::<IntImm>()
+                                    .unwrap()
+                                    .value
+                                    .try_into()
+                                    .unwrap(),
+                            )),
+                        );
+                        glenside_expr.add(Language::Shape(Box::from(stride_list.as_slice())))
+                    };
+
+                    // Create the (shape ...) representing the kernel shapes
+                    let weights_shape_id = {
+                        let usize_c_id =
+                            glenside_expr.add(Language::Num(weights_shape[1].try_into().unwrap()));
+                        let usize_kd_id =
+                            glenside_expr.add(Language::Num(weights_shape[2].try_into().unwrap()));
+                        let usize_kh_id =
+                            glenside_expr.add(Language::Num(weights_shape[3].try_into().unwrap()));
+                        let usize_kw_id =
+                            glenside_expr.add(Language::Num(weights_shape[4].try_into().unwrap()));
+                        glenside_expr.add(Language::Shape(Box::new([
+                            usize_c_id,
+                            usize_kd_id,
+                            usize_kh_id,
+                            usize_kw_id,
+                        ])))
+                    };
+                    let padding_id = {
+                        let pad_front = glenside_expr.add(Language::Num(
+                            attrs
+                                .padding
+                                .get(0)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        let pad_top = glenside_expr.add(Language::Num(
+                            attrs
+                                .padding
+                                .get(1)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        let pad_left = glenside_expr.add(Language::Num(
+                            attrs
+                                .padding
+                                .get(2)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        let pad_back = glenside_expr.add(Language::Num(
+                            attrs
+                                .padding
+                                .get(3)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        // pad_down
+                        let pad_bottom = glenside_expr.add(Language::Num(
+                            (attrs
+                                .padding
+                                .get(4)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize)
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        let pad_right = glenside_expr.add(Language::Num(
+                            (attrs
+                                .padding
+                                .get(5)
+                                .unwrap()
+                                .downcast::<IntImm>()
+                                .unwrap()
+                                .value as usize)
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        glenside_expr.add(Language::Shape(Box::new([
+                            pad_front, pad_top, pad_left, pad_back, pad_bottom, pad_right,
+                        ])))
+                    };
+                    let groups_id =
+                        glenside_expr.add(Language::Num(attrs.groups.try_into().unwrap()));
+
+                    // Channels seems to not be set. We will have to calculate output channels ourselves.
+                    let channel_id = glenside_expr.add(Language::Num(0));
+
+                    let activation_layout_id = glenside_expr.add(Language::RelayActivationLayout(
+                        match attrs.data_layout.as_str().unwrap() {
+                            "NCDHW" => RelayActivationLayout::NCDHW,
+                            _ => todo!(),
+                        },
+                    ));
+                    let kernel_layout_id = glenside_expr.add(Language::RelayKernelLayout(
+                        match attrs.kernel_layout.as_str().unwrap() {
+                            "OIDHW" => RelayKernelLayout::OIDHW,
+                            _ => todo!(),
+                        },
+                    ));
                     let operator_call_id = glenside_expr.add(Language::RelayOperatorCall(
                         vec![
                             operator_id,

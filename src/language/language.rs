@@ -421,6 +421,8 @@ pub enum RelayOperator {
 
     /// (relay-operator-call relay-squeeze <data: access> <axes: list of num>)
     RelaySqueeze,
+
+    RelayConv3D,
 }
 
 /// All variants of [`RelayOperator`].
@@ -440,6 +442,7 @@ pub static RELAY_OPS: &[RelayOperator] = &[
     RelayDense,
     RelayReshape,
     RelayConv1D,
+    RelayConv3D,
     RelayErf,
     RelayMean,
     RelayAdd,
@@ -501,6 +504,7 @@ impl FromStr for RelayOperator {
             "relay-mean" => Ok(RelayOperator::RelayMean),
             "relay-multiply" => Ok(RelayOperator::RelayMultiply),
             "relay-conv2d" => Ok(RelayOperator::RelayConv2D),
+            "relay-conv3d" => Ok(RelayOperator::RelayConv3D),
             "relay-split" => Ok(RelayOperator::RelaySplit),
             "relay-cast" => Ok(RelayOperator::RelayCast),
             "relay-clip" => Ok(RelayOperator::RelayClip),
@@ -574,6 +578,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayExpandDims => "relay-expand-dims",
                 RelayOperator::RelayPad => "relay-pad",
                 RelayOperator::RelayDivide => "relay-divide",
+                RelayOperator::RelayConv3D => "relay-conv3d",
             }
         )
     }
@@ -584,6 +589,10 @@ impl Display for RelayOperator {
 pub enum RelayActivationLayout {
     NCHW,
     NHWC,
+    // Conv3D
+    // TODO(acheung8): alternate data layouts besides
+    // the default case of NCDHW?
+    NCDHW,
 }
 impl FromStr for RelayActivationLayout {
     type Err = ();
@@ -603,6 +612,7 @@ impl Display for RelayActivationLayout {
             match self {
                 RelayActivationLayout::NHWC => "relay-activation-layout-nhwc",
                 RelayActivationLayout::NCHW => "relay-activation-layout-nchw",
+                RelayActivationLayout::NCDHW => "relay-activation-layout-ncdhw",
             }
         )
     }
@@ -613,6 +623,9 @@ impl Display for RelayActivationLayout {
 pub enum RelayKernelLayout {
     OIHW,
     HWIO,
+    // Conv3D
+    // TODO(acheung8): alternate kernel layouts?
+    OIDHW
 }
 impl FromStr for RelayKernelLayout {
     type Err = ();
@@ -632,6 +645,7 @@ impl Display for RelayKernelLayout {
             match self {
                 RelayKernelLayout::HWIO => "relay-kernel-layout-hwio",
                 RelayKernelLayout::OIHW => "relay-kernel-layout-oihw",
+                RelayKernelLayout::OIDHW => "relay-kernel-layout-oidhw",
             }
         )
     }
@@ -2778,11 +2792,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         let out_shape = match act_layout {
                                             crate::language::RelayActivationLayout::NCHW => {
                                                 vec![n, o, h, w]
-                                            }
-
+                                            },
                                             crate::language::RelayActivationLayout::NHWC => {
                                                 vec![n, h, w, o]
-                                            }
+                                            },
+                                            _ => panic!()
                                         };
                                         AccessPatternData {
                                             shape: IxDyn(&out_shape),
@@ -2797,11 +2811,13 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     c => {
                                         match act_layout {
                                             crate::language::RelayActivationLayout::NCHW => (),
-                                            crate::language::RelayActivationLayout::NHWC => todo!("Not currently supported, supporting only NCHW for PLDI push.")
+                                            crate::language::RelayActivationLayout::NHWC => todo!("Not currently supported, supporting only NCHW for PLDI push."),
+                                            crate::language::RelayActivationLayout::NCDHW => panic!()
                                         }
                                         match ker_layout {
                                             crate::language::RelayKernelLayout::OIHW => (),
-                                            crate::language::RelayKernelLayout::HWIO => todo!("Not currently supported, supporting only OIHW for PLDI push.")
+                                            crate::language::RelayKernelLayout::HWIO => todo!("Not currently supported, supporting only OIHW for PLDI push."),
+                                            crate::language::RelayKernelLayout::OIDHW => panic!()
                                         }
 
                                         assert_eq!(
@@ -2832,6 +2848,64 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
+                        };
+                        MyAnalysisData::AccessPattern(access)
+                    }
+                    crate::language::RelayOperator::RelayConv3D => {
+                        let access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(_channels), MyAnalysisData::Shape(_kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(ker_layout)] =>
+                            {
+                                let (n, c, d, h, w) = match (act_layout, &data.as_vec()[..]) {
+                                    (
+                                        crate::language::RelayActivationLayout::NCDHW,
+                                        &[n, c, d, h, w],
+                                    ) => (n, c, d, h, w),
+                                    _ => panic!(),
+                                };
+                                let (o, i, kd, kh, kw) = match (ker_layout, &weight.as_vec()[..]) {
+                                    (crate::language::RelayKernelLayout::OIDHW, &[o, i, d, h, w]) => {
+                                        (o, i, d, h, w)
+                                    },
+                                    _ => panic!(),
+                                };
+                                // front, top, left, back, down, right
+                                let d = padding.shape[0] + w + padding.shape[3];
+                                let h = padding.shape[1] + h + padding.shape[4];
+                                let w = padding.shape[2] + w + padding.shape[5];
+                                // Conv2D relay docs - strides=(1, 1, 1)
+                                assert_eq!(strides.shape.ndim(), 3);
+                                match *group {
+                                    // TODO(acheung8) ask about this
+                                    // this used to be 1
+                                    _ => {
+                                        assert_eq!(i, c);
+                                        let access_window_shape = access_windows_resulting_shape(
+                                            &IxDyn(&[d, h, w]),
+                                            &IxDyn(&[kd, kh, kw]),
+                                            &IxDyn(&strides.shape.slice()),
+                                        );
+                                        assert_eq!(access_window_shape.len(), 3);
+                                        let d = access_window_shape[0];
+                                        let h = access_window_shape[1];
+                                        let w = access_window_shape[2];
+
+                                        AccessPatternData {
+                                            shape: IxDyn(&[n, o.try_into().unwrap(), d, h, w]),
+                                            item_shape: IxDyn(&[]),
+                                            access_pattern_shape_settled: false,
+                                            zero_regions: HashMap::default(),
+                                            contains_accelerator_calls: data
+                                                .contains_accelerator_calls
+                                                || weight.contains_accelerator_calls,
+                                        }
+                                    }
+                                }
+                            },
+                            _ => panic!("Cannot parse arguments for Conv3D"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -3036,6 +3110,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 access[1] = 1;
                                 access[2] = 1;
                             }
+                            crate::language::RelayActivationLayout::NCDHW => panic!()
                         }
 
                         access.access_pattern_shape_settled = false;
@@ -3110,6 +3185,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     - 1)
                                     / strides.shape[1];
                             }
+                            crate::language::RelayActivationLayout::NCDHW => panic!()
                         }
 
                         access.access_pattern_shape_settled = false;
@@ -3302,6 +3378,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     - 1)
                                     / strides.shape[1];
                             }
+                            crate::language::RelayActivationLayout::NCDHW => panic!()
                         }
 
                         access.access_pattern_shape_settled = false;
@@ -4463,6 +4540,8 @@ impl egg::Analysis<Language> for MyAnalysis {
 
 #[cfg(test)]
 mod tests {
+    use egg::RecExpr;
+
     use super::*;
     #[test]
     fn access_windows() {
@@ -7515,6 +7594,52 @@ mod tests {
                 assert_eq!(a.shape.slice(), &[5, 6, 7, 3]);
                 assert_eq!(a.item_shape, IxDyn(&[]));
             }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn conv3d() {
+        let data_shape = vec![1, 3, 32, 2, 34];
+        let weights_shape = vec![8, 3, 2, 1, 23];
+        // let data_shape = vec![2, 3, 32, 32];
+        // let weights_shape = vec![1, 3, 5, 5];
+        let mut map = HashMap::default();
+        map.insert("data".to_string(), data_shape.clone());
+        map.insert("weights".to_string(), weights_shape.clone());
+
+        let mut expr = RecExpr::default();
+        let data_id = expr.add(Language::Symbol("data".into()));
+        let data_id = expr.add(Language::AccessTensor(data_id));
+        let weights_id = expr.add(Language::Symbol("weights".into()));
+        let weights_id = expr.add(Language::AccessTensor(weights_id));
+        let result_id = crate::language::from_relay::conv3d(
+            &mut expr,
+            data_id,
+            &data_shape,
+            weights_id,
+            &weights_shape,
+            &[1,2,3],
+            &[1, 2, 3, 4, 5, 6],
+            &[1,1,1],
+            1,
+            "NCDHW",
+            "OIDHW",
+            "",
+            false,
+        );
+        let mut egraph = egg::EGraph::<Language, MyAnalysis>::new(MyAnalysis {
+            name_to_shape: map,
+            name_to_dtype: HashMap::default(),
+        });
+        let id = egraph.add_expr(&expr);
+        println!("{:?}", egraph[id]);
+        match &egraph[id].data {
+            MyAnalysisData::AccessPattern(b) => {
+                assert_eq!(b.as_vec(), vec![1, 8, 36, 5, 7]);
+                // assert_eq!(b.shape, vec![1,2,3,4,5]);
+                // assert_eq!(b.item_shape, vec![1,2,3,4,5]);
+            },
             _ => panic!(),
         }
     }

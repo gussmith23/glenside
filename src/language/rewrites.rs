@@ -2739,6 +2739,143 @@ pub fn simplify_multiple_access_reshapes() -> RW {
      "(access-reshape (access-reshape ?a ?s0) ?s1)" => "(access-reshape ?a ?s1)")
 }
 
+pub fn conv3d_relay_to_glenside() -> RW {
+    struct Impl {
+        data: Var,
+        weights: Var,
+        strides: Var,
+        padding: Var,
+        group: Var,
+        channel: Var,
+        kernel_size: Var,
+        activation_layout: Var,
+        kernel_layout: Var,
+    }
+    impl Applier<Language, MyAnalysis> for Impl {
+        fn apply_one(
+            &self,
+            egraph: &mut EGraph<Language, MyAnalysis>,
+            eclass: Id,
+            subst: &Subst,
+            _searcher_ast: Option<&PatternAst<Language>>,
+            _rule_name: Symbol,
+        ) -> Vec<Id> {
+            let (
+                data,
+                weight,
+                strides,
+                padding,
+                group,
+                _channels,
+                _kernel_size,
+                activation_layout,
+                kernel_layout,
+            ) = match vec![
+                &self.data,
+                &self.weights,
+                &self.strides,
+                &self.padding,
+                &self.group,
+                &self.channel,
+                &self.kernel_size,
+                &self.activation_layout,
+                &self.kernel_layout,
+            ]
+            .drain(..)
+            .map(|v| &egraph[subst[*v]].data)
+            .collect::<Vec<_>>()[..]
+            {
+                [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] => {
+                    (
+                        data,
+                        weight,
+                        strides,
+                        padding,
+                        *group,
+                        channels,
+                        kernel_size,
+                        act_layout,
+                        _ker_layout,
+                    )
+                }
+                _ => todo!(),
+            };
+
+            //assert_eq!(group, 1);
+            assert_eq!(strides.shape.ndim(), 3);
+
+            let mut expr = RecExpr::default();
+            let data_id = expr.add(Language::Symbol("data_PLACEHOLDER".to_string()));
+            let weights_id = expr.add(Language::Symbol("weights_PLACEHOLDER".to_string()));
+            from_relay::conv3d(
+                &mut expr,
+                data_id,
+                data.as_vec().as_slice(),
+                weights_id,
+                weight.as_vec().as_slice(),
+                &strides.shape.slice(),
+                padding.shape.slice(),
+                &[1, 1, 1],
+                group.try_into().unwrap(),
+                match activation_layout {
+                    crate::language::RelayActivationLayout::NCDHW => "NCDHW",
+                    _ => panic!()
+                },
+                match kernel_layout {
+                    crate::language::RelayKernelLayout::OIDHW => "OIDHW",
+                    _ => panic!()
+                },
+                "",
+                false,
+            );
+
+            let pattern_ast = PatternAst::from(
+                expr.as_ref()
+                    .iter()
+                    .map(|n| match n {
+                        Language::Symbol(s) if s == "data_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.data)
+                        }
+                        Language::Symbol(s) if s == "weights_PLACEHOLDER" => {
+                            ENodeOrVar::Var(self.weights)
+                        }
+                        _ => ENodeOrVar::ENode(n.clone()),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let out_id = egraph.add_instantiation(&pattern_ast, subst);
+            println!("{:#?}", egraph[eclass].data);
+            println!("{:#?}", egraph[out_id].data);
+            egraph.union(eclass, out_id);
+            vec![out_id]
+        }
+    }
+    rewrite!("conv3d-relay-to-glenside";
+    "(relay-operator-call relay-conv3d
+       ?data
+       ?weights
+       ?strides
+       ?padding
+       ?group
+       ?channel
+       ?kernel-size
+       ?activation-layout
+       ?kernel-layout)" => {
+          Impl {
+            data: "?data".parse().unwrap(),
+            weights: "?weights".parse().unwrap(),
+            strides: "?strides".parse().unwrap(),
+            padding: "?padding".parse().unwrap(),
+            group: "?group".parse().unwrap(),
+            channel: "?channel".parse().unwrap(),
+            kernel_size: "?kernel-size".parse().unwrap(),
+            activation_layout: "?activation-layout".parse().unwrap(),
+            kernel_layout: "?kernel-layout".parse().unwrap(),
+          }
+      })
+}
+
 pub fn conv2d_relay_to_glenside() -> RW {
     struct Impl {
         data: Var,
@@ -2820,10 +2957,12 @@ pub fn conv2d_relay_to_glenside() -> RW {
                 match activation_layout {
                     crate::language::RelayActivationLayout::NCHW => "NCHW",
                     crate::language::RelayActivationLayout::NHWC => "NHWC",
+                    crate::language::RelayActivationLayout::NCDHW => panic!()
                 },
                 match kernel_layout {
                     crate::language::RelayKernelLayout::OIHW => "OIHW",
                     crate::language::RelayKernelLayout::HWIO => "HWIO",
+                    crate::language::RelayKernelLayout::OIDHW => panic!(),
                 },
                 "",
                 false,
@@ -6577,6 +6716,8 @@ mod tests {
                 // Run compilation rewrites.
                 let runner = Runner::default().with_egraph(egraph).run($rws);
 
+                println!("{:?}", runner.egraph[id]);
+
                 // Program should now be found.
                 assert!(pattern.search_eclass(&runner.egraph, id).is_some());
 
@@ -7397,4 +7538,54 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
         &vec![super::conv2d_relay_to_glenside(),],
         &vec![RelayOperator::RelayConv2D]
     );
+
+    test!(
+        conv3d,
+        1e-5,
+        r#"
+    #[version = "0.0.5"]
+    def @main(%data: Tensor[(1, 3, 32, 32, 32), float32], %weight: Tensor[(8, 3, 3, 3, 3), float32]) -> Tensor[(1, 8, 35, 19, 13), float32] {
+        nn.conv3d(%data, %weight, strides=[1, 2, 3], padding=[1, 2, 3, 4, 5, 6]) /* ty=Tensor[(1, 8, 35, 19, 13), float32] */
+    }
+    "#,
+    r#"
+    (access-transpose
+     (compute dot-product
+      (access-cartesian-product
+       (access (access-tensor weight) 1)
+       (access
+        (access-squeeze
+         (access-windows
+          (access
+           (access-pad
+            (access-pad
+             (access-pad
+              (access-tensor data)
+              zero-padding
+              2 1 4
+              )
+             zero-padding
+             3 2 5
+            )
+            zero-padding
+            4 3 6
+           )
+           1
+          )
+          (shape 3 3 3 3)
+          (shape 1 1 2 3)
+         )
+         1
+        )
+        4
+       )
+      )
+     )
+     (list 1 0 2 3 4)
+    )
+    "#,
+        &vec![super::conv3d_relay_to_glenside(),],
+        &vec![RelayOperator::RelayConv3D]
+    );
 }
+
