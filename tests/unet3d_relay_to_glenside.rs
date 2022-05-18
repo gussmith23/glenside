@@ -1,33 +1,12 @@
 #![cfg(feature = "tvm")]
 
 use egg::EGraph;
-use glenside::language::MyAnalysis;
+use glenside::language::{MyAnalysis, RelayOperator};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-// Mobilenet, simplified for inference (so batch norms are simplified).
-// Generate with:
-// ```python3
-// import tvm
-// from tvm import relay
-// from tvm.relay.testing.mobilenet import get_workload
-//
-// mod, _ = get_workload()
-// mod = relay.transform.SimplifyInference()(mod)
-// print(mod.astext())
-// ```
-
-// Mobilenet
-// Generate with:
-// ```python3
-// import tvm
-// from tvm import relay
-// from tvm.relay.testing.mobilenet import get_workload
-//
-// mod, _ = get_workload()
-// print(mod.astext())
-// ```
 #[test]
+#[should_panic="not yet implemented: nn.conv3d_transpose operator not implemented"]
 fn parse_unet3d() {
     let filename = PathBuf::from(format!(
         "{}/models/unet3d.relay",
@@ -39,7 +18,7 @@ fn parse_unet3d() {
     let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![]
+        &vec![RelayOperator::RelayConv3D]
     );
 
     let mut env = HashMap::default();

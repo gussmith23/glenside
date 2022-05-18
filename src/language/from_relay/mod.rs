@@ -428,7 +428,7 @@ pub fn conv3d(
     assert_eq!(out_layout, "");
 
     // Transpose to NCHW
-    let (data_id, data_shape, activation_layout) = match data_layout {
+    let (data_id, _data_shape, activation_layout) = match data_layout {
         "NCDHW" => (data_id, Vec::from(data_shape), RelayActivationLayout::NCDHW),
         _ => unreachable!(),
     };
@@ -462,7 +462,7 @@ pub fn conv3d(
         pad_back,
     ]));
 
-    let groups_id = expr.add(Language::Num(groups.clone().try_into().unwrap()));
+    let _groups_id = expr.add(Language::Num(groups.clone().try_into().unwrap()));
 
     let pad_axis_id = expr.add(Language::Num(3));
     let pad_top= expr.add(Language::Num(padding[1].try_into().unwrap()));
@@ -494,7 +494,6 @@ pub fn conv3d(
         pad_front, pad_top, pad_left, pad_back, pad_bottom, pad_right,
     ])));
 
-    let in_channels = data_shape[1];
 
     let channel_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
 
@@ -558,8 +557,6 @@ pub fn conv3d(
             let squeeze_axis_id = expr.add(Language::Num(1));
             let data_id = expr.add(Language::AccessSqueeze([data_id, squeeze_axis_id]));
             let data_id = access(expr, data_id, 4);
-            // Result is [batch new_h new_w] [in_channel kw kh]
-
 
             let access_axis_id = expr.add(Language::Num(1));
             let weights_id = expr.add(Language::Access([weights_id, access_axis_id]));
@@ -576,7 +573,7 @@ pub fn conv3d(
         _ => panic!("Groups not implemented for groups={}", groups),
     };
 
-    // Transpose from NCHW to original layout
+    // Transpose from NCDHW to original layout
     assert!(!use_opaque_operators);
     match data_layout {
         "NCDHW" => data_id,

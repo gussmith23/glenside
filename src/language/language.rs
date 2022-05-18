@@ -589,9 +589,6 @@ impl Display for RelayOperator {
 pub enum RelayActivationLayout {
     NCHW,
     NHWC,
-    // Conv3D
-    // TODO(acheung8): alternate data layouts besides
-    // the default case of NCDHW?
     NCDHW,
 }
 impl FromStr for RelayActivationLayout {
@@ -623,8 +620,6 @@ impl Display for RelayActivationLayout {
 pub enum RelayKernelLayout {
     OIHW,
     HWIO,
-    // Conv3D
-    // TODO(acheung8): alternate kernel layouts?
     OIDHW
 }
 impl FromStr for RelayKernelLayout {
@@ -2859,7 +2854,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                         {
                             [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(_channels), MyAnalysisData::Shape(_kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(ker_layout)] =>
                             {
-                                let (n, c, d, h, w) = match (act_layout, &data.as_vec()[..]) {
+                                let (n, c, _d, h, w) = match (act_layout, &data.as_vec()[..]) {
                                     (
                                         crate::language::RelayActivationLayout::NCDHW,
                                         &[n, c, d, h, w],
@@ -2876,11 +2871,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let d = padding.shape[0] + w + padding.shape[3];
                                 let h = padding.shape[1] + h + padding.shape[4];
                                 let w = padding.shape[2] + w + padding.shape[5];
-                                // Conv2D relay docs - strides=(1, 1, 1)
                                 assert_eq!(strides.shape.ndim(), 3);
                                 match *group {
-                                    // TODO(acheung8) ask about this
-                                    // this used to be 1
                                     _ => {
                                         assert_eq!(i, c);
                                         let access_window_shape = access_windows_resulting_shape(
@@ -7602,8 +7594,6 @@ mod tests {
     fn conv3d() {
         let data_shape = vec![1, 3, 32, 2, 34];
         let weights_shape = vec![8, 3, 2, 1, 23];
-        // let data_shape = vec![2, 3, 32, 32];
-        // let weights_shape = vec![1, 3, 5, 5];
         let mut map = HashMap::default();
         map.insert("data".to_string(), data_shape.clone());
         map.insert("weights".to_string(), weights_shape.clone());
@@ -7613,7 +7603,7 @@ mod tests {
         let data_id = expr.add(Language::AccessTensor(data_id));
         let weights_id = expr.add(Language::Symbol("weights".into()));
         let weights_id = expr.add(Language::AccessTensor(weights_id));
-        let result_id = crate::language::from_relay::conv3d(
+        crate::language::from_relay::conv3d(
             &mut expr,
             data_id,
             &data_shape,
@@ -7633,12 +7623,9 @@ mod tests {
             name_to_dtype: HashMap::default(),
         });
         let id = egraph.add_expr(&expr);
-        println!("{:?}", egraph[id]);
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(b) => {
                 assert_eq!(b.as_vec(), vec![1, 8, 36, 5, 7]);
-                // assert_eq!(b.shape, vec![1,2,3,4,5]);
-                // assert_eq!(b.item_shape, vec![1,2,3,4,5]);
             },
             _ => panic!(),
         }
