@@ -7587,5 +7587,57 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
         &vec![super::conv3d_relay_to_glenside(),],
         &vec![RelayOperator::RelayConv3D]
     );
-}
 
+    // One of the conv3d transposes found in U-Net 3D. If we support this one,
+    // we should be able to support the rest of the conv3d_transposes found in
+    // U-Net 3D.
+    test!(
+        #[should_panic = "assertion failed: pattern.search_eclass(&runner.egraph, id).is_some()"]
+        conv3d_transpose_unet3d,
+        1e-5,
+        r#"
+        #[version = "0.0.5"]
+def @main(%data: Tensor[(1, 64, 64, 64, 64), float32], %weight: Tensor[(64, 32, 2, 2, 2), float32]) -> Tensor[(1, 32, 128, 128, 128), float32] {
+  nn.conv3d_transpose(%data, %weight, channels=32, kernel_size=[2, 2, 2], strides=[2, 2, 2], padding=[0, 0, 0, 0, 0, 0]) /* ty=Tensor[(1, 32, 128, 128, 128), float32] */
+}
+    "#,
+        r#"
+    (access-transpose
+     (compute dot-product
+      (access-cartesian-product
+       (access (access-tensor weight) 1)
+       (access
+        (access-squeeze
+         (access-windows
+          (access
+           (access-pad
+            (access-pad
+             (access-pad
+              (access-tensor data)
+              zero-padding
+              0 0 4
+              )
+             zero-padding
+             0 0 5
+            )
+            zero-padding
+            0 0 6
+           )
+           1
+          )
+          (shape 32 2 2 2)
+          (shape 1 1 2 3)
+         )
+         1
+        )
+        4
+       )
+      )
+     )
+     (list 1 0 2 3 4)
+    )
+    "#,
+        &vec![],
+        &vec![]
+    );
+}

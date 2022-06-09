@@ -423,6 +423,8 @@ pub enum RelayOperator {
     RelaySqueeze,
 
     RelayConv3D,
+
+    RelayConv3DTranspose,
 }
 
 /// All variants of [`RelayOperator`].
@@ -474,6 +476,7 @@ pub static RELAY_OPS: &[RelayOperator] = &[
     RelayConcatenate,
     RelayTranspose,
     RelaySqueeze,
+    RelayConv3DTranspose,
 ];
 
 impl FromStr for RelayOperator {
@@ -524,6 +527,7 @@ impl FromStr for RelayOperator {
             "relay-expand-dims" => Ok(RelayOperator::RelayExpandDims),
             "relay-pad" => Ok(RelayOperator::RelayPad),
             "relay-divide" => Ok(RelayOperator::RelayDivide),
+            "relay-conv3d-transpose" => Ok(RelayOperator::RelayConv3DTranspose),
             _ => Err(()),
         }
     }
@@ -579,6 +583,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayPad => "relay-pad",
                 RelayOperator::RelayDivide => "relay-divide",
                 RelayOperator::RelayConv3D => "relay-conv3d",
+                RelayOperator::RelayConv3DTranspose => "relay-conv3d-transpose",
             }
         )
     }
@@ -2846,6 +2851,71 @@ impl egg::Analysis<Language> for MyAnalysis {
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
+                    crate::language::RelayOperator::RelayConv3DTranspose => {
+                        let access = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(_channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(ker_layout)] =>
+                            {
+                                let (n, _c, _d, h, w) = match (act_layout, &data.as_vec()[..]) {
+                                    (
+                                        crate::language::RelayActivationLayout::NCDHW,
+                                        &[n, c, d, h, w],
+                                    ) => (n, c, d, h, w),
+                                    _ => panic!(),
+                                };
+                                let (o, _i, kd, kh, kw) = match (ker_layout, &weight.as_vec()[..]) {
+                                    (
+                                        crate::language::RelayKernelLayout::OIDHW,
+                                        &[o, i, d, h, w],
+                                    ) => (o, i, d, h, w),
+                                    _ => panic!(),
+                                };
+                                assert_eq!(kd, kernel_size.shape[0]);
+                                assert_eq!(kh, kernel_size.shape[1]);
+                                assert_eq!(kw, kernel_size.shape[2]);
+
+                                // front, top, left, back, down, right
+                                let d = padding.shape[0] + w + padding.shape[3];
+                                let h = padding.shape[1] + h + padding.shape[4];
+                                let w = padding.shape[2] + w + padding.shape[5];
+                                assert_eq!(strides.shape.ndim(), 3);
+                                match *group {
+                                    1 => {
+                                        // assert_eq!(i, c);
+                                        // let access_window_shape = access_windows_resulting_shape(
+                                        //     &IxDyn(&[d, h, w]),
+                                        //     &IxDyn(&[kd, kh, kw]),
+                                        //     &IxDyn(&strides.shape.slice()),
+                                        // );
+                                        // assert_eq!(access_window_shape.len(), 3);
+                                        // let d = access_window_shape[0];
+                                        // let h = access_window_shape[1];
+                                        // let w = access_window_shape[2];
+
+                                        let d = d * kernel_size.shape[0];
+                                        let h = h * kernel_size.shape[1];
+                                        let w = w * kernel_size.shape[2];
+
+                                        AccessPatternData {
+                                            shape: IxDyn(&[n, o.try_into().unwrap(), d, h, w]),
+                                            item_shape: IxDyn(&[]),
+                                            access_pattern_shape_settled: false,
+                                            zero_regions: HashMap::default(),
+                                            contains_accelerator_calls: data
+                                                .contains_accelerator_calls
+                                                || weight.contains_accelerator_calls,
+                                        }
+                                    }
+                                    _ => todo!("groups = {}", group),
+                                }
+                            }
+                            _ => panic!("Cannot parse arguments for Conv3DTranspose"),
+                        };
+                        MyAnalysisData::AccessPattern(access)
+                    }
                     crate::language::RelayOperator::RelayConv3D => {
                         let access = match params[1..]
                             .iter()
@@ -2862,9 +2932,10 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     _ => panic!(),
                                 };
                                 let (o, i, kd, kh, kw) = match (ker_layout, &weight.as_vec()[..]) {
-                                    (crate::language::RelayKernelLayout::OIDHW, &[o, i, d, h, w]) => {
-                                        (o, i, d, h, w)
-                                    },
+                                    (
+                                        crate::language::RelayKernelLayout::OIDHW,
+                                        &[o, i, d, h, w],
+                                    ) => (o, i, d, h, w),
                                     _ => panic!(),
                                 };
                                 // front, top, left, back, down, right

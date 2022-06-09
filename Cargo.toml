@@ -44,8 +44,8 @@ git = "https://github.com/gussmith23/rplex"
 
 
 [dependencies.tvm]
-rev = "4f21464b572b0b1281b063375fb711a975be33c1"
-git = "https://github.com/ninehusky/tvm"
+rev = "8e7d23c8fc51d4785929fc0ff39df85558252529"
+git = "https://github.com/gussmith23/tvm"
 optional = true
 
 [dependencies.ndarray]
