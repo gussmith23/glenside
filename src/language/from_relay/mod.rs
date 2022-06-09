@@ -634,7 +634,7 @@ pub fn conv3d_transpose(
     // many channels are output from the op, while the number of output channels
     // determines how many channels should be coming in as input. It's thus
     // easier for us to have things in OIDHW layout.
-    let (weights_id, (i, o, kd, kh, kw)) = match kernel_layout {
+    let (weights_id, (_i, o, kd, kh, kw)) = match kernel_layout {
         "OIDHW" => {
             let transpose_list_id = list(expr, &[1, 0, 2, 3, 4]);
             let (o, i, kd, kh, kw) = match Vec::from(weights_shape)[..] {
@@ -687,7 +687,7 @@ pub fn conv3d_transpose(
         pad_right,
     ]));
 
-    let data_id = match groups as usize {
+    let _data_id = match groups as usize {
         1 => {
             let data_id = access(expr, data_id, 1);
 
@@ -699,7 +699,7 @@ pub fn conv3d_transpose(
             let usize_kd_id = expr.add(Language::Num(kd.try_into().unwrap()));
             let usize_kh_id = expr.add(Language::Num(kh.try_into().unwrap()));
             let usize_kw_id = expr.add(Language::Num(kw.try_into().unwrap()));
-            let weights_shape_id = expr.add(Language::Shape(Box::new([
+            let _weights_shape_id = expr.add(Language::Shape(Box::new([
                 usize_c_id,
                 usize_kd_id,
                 usize_kh_id,
@@ -748,10 +748,9 @@ pub fn conv3d_transpose(
             // Now we just cart prod + dot prod!
             let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
             let compute_type_id = expr.add(Language::ComputeType(ComputeType::DotProduct));
-            let data_id = expr.add(Language::Compute([compute_type_id, data_id]));
+            let _data_id = expr.add(Language::Compute([compute_type_id, data_id]));
 
-            // stopped here
-            todo!();
+            todo!("stopped here");
 
             // Squeeze extraneous 1st dimension
             let squeeze_axis_id = expr.add(Language::Num(1));
