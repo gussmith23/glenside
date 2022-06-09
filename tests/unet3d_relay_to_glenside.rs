@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[test]
-#[should_panic="not yet implemented: nn.conv3d_transpose operator not implemented"]
+#[should_panic = "not yet implemented: nn.conv3d_transpose operator not implemented"]
 fn parse_unet3d() {
     let filename = PathBuf::from(format!(
         "{}/models/unet3d.relay",
@@ -18,7 +18,7 @@ fn parse_unet3d() {
     let (expr, shapes_vec, dtypes_vec) = glenside::language::from_relay::from_relay(
         &module,
         true,
-        &vec![RelayOperator::RelayConv3D]
+        &vec![RelayOperator::RelayConv3D],
     );
 
     let mut env = HashMap::default();

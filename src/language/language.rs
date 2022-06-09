@@ -620,7 +620,7 @@ impl Display for RelayActivationLayout {
 pub enum RelayKernelLayout {
     OIHW,
     HWIO,
-    OIDHW
+    OIDHW,
 }
 impl FromStr for RelayKernelLayout {
     type Err = ();
@@ -2787,11 +2787,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         let out_shape = match act_layout {
                                             crate::language::RelayActivationLayout::NCHW => {
                                                 vec![n, o, h, w]
-                                            },
+                                            }
                                             crate::language::RelayActivationLayout::NHWC => {
                                                 vec![n, h, w, o]
-                                            },
-                                            _ => panic!()
+                                            }
+                                            _ => panic!(),
                                         };
                                         AccessPatternData {
                                             shape: IxDyn(&out_shape),
@@ -2896,7 +2896,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         }
                                     }
                                 }
-                            },
+                            }
                             _ => panic!("Cannot parse arguments for Conv3D"),
                         };
                         MyAnalysisData::AccessPattern(access)
@@ -3102,7 +3102,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 access[1] = 1;
                                 access[2] = 1;
                             }
-                            crate::language::RelayActivationLayout::NCDHW => panic!()
+                            crate::language::RelayActivationLayout::NCDHW => panic!(),
                         }
 
                         access.access_pattern_shape_settled = false;
@@ -3177,7 +3177,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     - 1)
                                     / strides.shape[1];
                             }
-                            crate::language::RelayActivationLayout::NCDHW => panic!()
+                            crate::language::RelayActivationLayout::NCDHW => panic!(),
                         }
 
                         access.access_pattern_shape_settled = false;
@@ -3370,7 +3370,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     - 1)
                                     / strides.shape[1];
                             }
-                            crate::language::RelayActivationLayout::NCDHW => panic!()
+                            crate::language::RelayActivationLayout::NCDHW => panic!(),
                         }
 
                         access.access_pattern_shape_settled = false;
@@ -7609,9 +7609,9 @@ mod tests {
             &data_shape,
             weights_id,
             &weights_shape,
-            &[1,2,3],
+            &[1, 2, 3],
             &[1, 2, 3, 4, 5, 6],
-            &[1,1,1],
+            &[1, 1, 1],
             1,
             "NCDHW",
             "OIDHW",
@@ -7626,7 +7626,7 @@ mod tests {
         match &egraph[id].data {
             MyAnalysisData::AccessPattern(b) => {
                 assert_eq!(b.as_vec(), vec![1, 8, 36, 5, 7]);
-            },
+            }
             _ => panic!(),
         }
     }

@@ -449,10 +449,9 @@ pub fn conv3d(
     let activation_layout_id = expr.add(Language::RelayActivationLayout(activation_layout));
     let kernel_layout_id = expr.add(Language::RelayKernelLayout(kernel_layout));
 
-
     let pad_axis_id = expr.add(Language::Num(2));
-    let pad_front= expr.add(Language::Num(padding[0].try_into().unwrap()));
-    let pad_back= expr.add(Language::Num(padding[3].try_into().unwrap()));
+    let pad_front = expr.add(Language::Num(padding[0].try_into().unwrap()));
+    let pad_back = expr.add(Language::Num(padding[3].try_into().unwrap()));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
@@ -465,8 +464,8 @@ pub fn conv3d(
     let _groups_id = expr.add(Language::Num(groups.clone().try_into().unwrap()));
 
     let pad_axis_id = expr.add(Language::Num(3));
-    let pad_top= expr.add(Language::Num(padding[1].try_into().unwrap()));
-    let pad_bottom= expr.add(Language::Num(padding[4].try_into().unwrap()));
+    let pad_top = expr.add(Language::Num(padding[1].try_into().unwrap()));
+    let pad_bottom = expr.add(Language::Num(padding[4].try_into().unwrap()));
     let zero_padding_id = expr.add(Language::PadType(PadType::ZeroPadding));
     let data_id = expr.add(Language::AccessPad([
         data_id,
@@ -494,11 +493,9 @@ pub fn conv3d(
         pad_front, pad_top, pad_left, pad_back, pad_bottom, pad_right,
     ])));
 
-
     let channel_id = expr.add(Language::Num(weights_shape[0].try_into().unwrap()));
 
     let operator_id = expr.add(Language::RelayOperator(RelayOperator::RelayConv3D));
-
 
     let data_id = match groups as usize {
         1 => {
@@ -543,13 +540,11 @@ pub fn conv3d(
                 return operator_call_id;
             }
 
-
             let data_id = expr.add(Language::AccessWindows([
                 data_id,
                 weights_shape_id,
                 stride_shape_id,
             ]));
-
 
             // Result is [batch 1 new_d new_h new_w] [in_channel kd kw kh]
 
@@ -560,7 +555,6 @@ pub fn conv3d(
 
             let access_axis_id = expr.add(Language::Num(1));
             let weights_id = expr.add(Language::Access([weights_id, access_axis_id]));
-
 
             let data_id = expr.add(Language::AccessCartesianProduct([weights_id, data_id]));
 
@@ -2458,7 +2452,7 @@ fn compile_expression(
                     let weights_id = get_compiled_expression(call.args.get(1).unwrap());
                     let weights_shape =
                         shape_from_type(call.args.get(1).unwrap().checked_type.clone());
-                    
+
                     assert_eq!(weights_shape.len(), 5);
                     assert_eq!(attrs.strides.len(), 3);
                     assert_eq!(attrs.padding.len(), 6);
@@ -2474,10 +2468,7 @@ fn compile_expression(
                         1
                     );
                     assert_eq!(attrs.out_layout, "");
-                    assert_eq!(
-                        attrs.out_dtype,
-                        tvm::DataType::new(3, 0, 0)
-                    );
+                    assert_eq!(attrs.out_dtype, tvm::DataType::new(3, 0, 0));
                     let operator_id =
                         glenside_expr.add(Language::RelayOperator(RelayOperator::RelayConv3D));
 

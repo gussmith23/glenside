@@ -2819,11 +2819,11 @@ pub fn conv3d_relay_to_glenside() -> RW {
                 group.try_into().unwrap(),
                 match activation_layout {
                     crate::language::RelayActivationLayout::NCDHW => "NCDHW",
-                    _ => panic!()
+                    _ => panic!(),
                 },
                 match kernel_layout {
                     crate::language::RelayKernelLayout::OIDHW => "OIDHW",
-                    _ => panic!()
+                    _ => panic!(),
                 },
                 "",
                 false,
@@ -2957,7 +2957,7 @@ pub fn conv2d_relay_to_glenside() -> RW {
                 match activation_layout {
                     crate::language::RelayActivationLayout::NCHW => "NCHW",
                     crate::language::RelayActivationLayout::NHWC => "NHWC",
-                    crate::language::RelayActivationLayout::NCDHW => panic!()
+                    crate::language::RelayActivationLayout::NCDHW => panic!(),
                 },
                 match kernel_layout {
                     crate::language::RelayKernelLayout::OIHW => "OIHW",
@@ -7548,7 +7548,7 @@ def @main(%x: Tensor[(1, 100, 1, 1), float32]) {
         nn.conv3d(%data, %weight, strides=[1, 2, 3], padding=[1, 2, 3, 4, 5, 6]) /* ty=Tensor[(1, 8, 35, 19, 13), float32] */
     }
     "#,
-    r#"
+        r#"
     (access-transpose
      (compute dot-product
       (access-cartesian-product
