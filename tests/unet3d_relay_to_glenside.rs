@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[test]
-#[should_panic = "not yet implemented: nn.conv3d_transpose operator not implemented"]
 fn parse_unet3d() {
     let filename = PathBuf::from(format!(
         "{}/models/unet3d.relay",
@@ -30,5 +29,12 @@ fn parse_unet3d() {
         name_to_shape: env.clone(),
         name_to_dtype: dtypes_vec.into_iter().collect(),
     });
-    egraph.add_expr(&expr);
+    let id = egraph.add_expr(&expr);
+
+    match &egraph[id].data {
+        glenside::language::MyAnalysisData::AccessPattern(a) => {
+            assert_eq!(a.as_vec(), vec![1, 3, 128, 128, 128]);
+        }
+        _ => panic!(),
+    }
 }

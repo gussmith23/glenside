@@ -2859,14 +2859,14 @@ impl egg::Analysis<Language> for MyAnalysis {
                         {
                             [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Num(group), MyAnalysisData::Num(_channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(ker_layout)] =>
                             {
-                                let (n, _c, _d, h, w) = match (act_layout, &data.as_vec()[..]) {
+                                let (n, c, d, h, w) = match (act_layout, &data.as_vec()[..]) {
                                     (
                                         crate::language::RelayActivationLayout::NCDHW,
                                         &[n, c, d, h, w],
                                     ) => (n, c, d, h, w),
                                     _ => panic!(),
                                 };
-                                let (o, _i, kd, kh, kw) = match (ker_layout, &weight.as_vec()[..]) {
+                                let (o, i, kd, kh, kw) = match (ker_layout, &weight.as_vec()[..]) {
                                     (
                                         crate::language::RelayKernelLayout::OIDHW,
                                         &[o, i, d, h, w],
@@ -2876,9 +2876,16 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 assert_eq!(kd, kernel_size.shape[0]);
                                 assert_eq!(kh, kernel_size.shape[1]);
                                 assert_eq!(kw, kernel_size.shape[2]);
+                                assert_eq!(c, o);
+
+                                assert_eq!(
+                                    strides.shape.slice(),
+                                    [kd, kh, kw],
+                                    "Only supporting non-overlapping conv3d_transpose."
+                                );
 
                                 // front, top, left, back, down, right
-                                let d = padding.shape[0] + w + padding.shape[3];
+                                let d = padding.shape[0] + d + padding.shape[3];
                                 let h = padding.shape[1] + h + padding.shape[4];
                                 let w = padding.shape[2] + w + padding.shape[5];
                                 assert_eq!(strides.shape.ndim(), 3);
@@ -2900,7 +2907,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         let w = w * kernel_size.shape[2];
 
                                         AccessPatternData {
-                                            shape: IxDyn(&[n, o.try_into().unwrap(), d, h, w]),
+                                            shape: IxDyn(&[n, i.try_into().unwrap(), d, h, w]),
                                             item_shape: IxDyn(&[]),
                                             access_pattern_shape_settled: false,
                                             zero_regions: HashMap::default(),
