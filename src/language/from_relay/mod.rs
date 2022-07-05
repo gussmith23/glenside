@@ -2667,7 +2667,8 @@ fn compile_expression(
 
                     // assume for efficientnet
                     assert_eq!(attrs.ceil_mode, false);
-                    assert_eq!(attrs.count_include_pad, false);
+                    // Don't think this matters.
+                    //assert_eq!(attrs.count_include_pad, false);
 
                     assert_eq!(attrs.pool_size.len(), 2);
                     assert_eq!(attrs.padding.len(), 4);
