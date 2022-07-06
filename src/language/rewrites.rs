@@ -663,9 +663,32 @@ pub fn dot_product_with_vta() -> RW {
     fn dim_supported(x: Var) -> impl Fn(&mut EG, egg::Id, &egg::Subst) -> bool {
         move |egraph, _, subst| match &egraph[subst[x]].data {
             MyAnalysisData::AccessPattern(access) => {
-                access.shape.ndim() + access.item_shape.ndim() == 2
+                if access.shape.ndim() + access.item_shape.ndim() != 2 {
+                    return false;
+                }
+                for &n in access
+                    .shape
+                    .slice()
+                    .iter()
+                    .chain(access.item_shape.slice().iter())
+                {
+                    if n % 16 != 0 {
+                        return false;
+                    }
+                }
+                return true;
             }
-            MyAnalysisData::Shape(shape) => shape.shape.ndim() == 2,
+            MyAnalysisData::Shape(shape) => {
+                if shape.shape.ndim() != 2 {
+                    return false;
+                }
+                for &n in shape.shape.slice().iter() {
+                    if n % 16 != 0 {
+                        return false;
+                    }
+                }
+                return true;
+            }
             _ => false,
         }
     }

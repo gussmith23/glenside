@@ -316,6 +316,11 @@ pub enum RelayOperator {
     /// )
     RelayAvgPool2D,
 
+    /// (relay-operator relay-adaptive-avg-pool2d <data: access>
+    /// <output_size: shape> <layout: RelayActivationLayout>
+    /// )
+    RelayAdaptiveAvgPool2D,
+
     /// (relay-operator relay-upsampling <data: access> <scale_h: Float64> <scale_w: Float64>
     /// <layout: RelayActivationLayout>)
     RelayUpSampling,
@@ -441,6 +446,7 @@ impl FromStr for RelayOperator {
             "relay-layer-norm" => Ok(RelayOperator::RelayLayerNorm),
             "relay-batch-matmul" => Ok(RelayOperator::RelayBatchMatmul),
             "relay-zeros" => Ok(RelayOperator::RelayZeros),
+            "relay-adaptive-avg-pool2d" => Ok(RelayOperator::RelayAdaptiveAvgPool2D),
             _ => Err(()),
         }
     }
@@ -487,6 +493,7 @@ impl Display for RelayOperator {
                 RelayOperator::RelayLayerNorm => "relay-layer-norm",
                 RelayOperator::RelayBatchMatmul => "relay-batch-matmul",
                 RelayOperator::RelayZeros => "relay-zeros",
+                RelayOperator::RelayAdaptiveAvgPool2D => "relay-adaptive-avg-pool2d",
             }
         )
     }
@@ -1874,6 +1881,60 @@ impl egg::Analysis<Language> for MyAnalysis {
                 };
 
                 match op_type {
+                    crate::language::RelayOperator::RelayAdaptiveAvgPool2D => {
+                        let s = match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::Shape(s), MyAnalysisData::RelayActivationLayout(layout)] =>
+                            {
+                                if match layout {
+                                    crate::language::RelayActivationLayout::NCHW => false,
+                                    _ => true,
+                                } {
+                                    panic!("Adaptive Avg Pool2D only accepts NCHW for now");
+                                }
+                                // if output_size is not provided, we use the H and W from data
+                                if s.shape.ndim() == 0 {
+                                    data.shape
+                                        .slice()
+                                        .iter()
+                                        .chain(data.item_shape.slice().iter())
+                                        .map(|&x| x)
+                                        .collect::<Vec<_>>()
+                                } else if s.shape.ndim() == 1 {
+                                    let output_size = s.shape[0];
+                                    let ret = data
+                                        .shape
+                                        .slice()
+                                        .iter()
+                                        .chain(data.item_shape.slice().iter())
+                                        .take(2)
+                                        .map(|&x| x)
+                                        .collect::<Vec<_>>();
+                                    [ret, [output_size, output_size].to_vec()].concat()
+                                } else {
+                                    data.shape
+                                        .slice()
+                                        .iter()
+                                        .chain(data.item_shape.slice().iter())
+                                        .take(2)
+                                        .chain(s.shape.slice().iter())
+                                        .map(|&x| x)
+                                        .collect::<Vec<_>>()
+                                }
+                            }
+                            _ => panic!(),
+                        };
+                        MyAnalysisData::AccessPattern(AccessPatternData {
+                            shape: IxDyn(&s[..]),
+                            item_shape: IxDyn(&[]),
+                            zero_regions: HashMap::default(),
+                            relay_shape: Some(IxDyn(&s[..])),
+                            contains_accelerator_calls: false,
+                        })
+                    }
                     crate::language::RelayOperator::RelayZeros => {
                         let s = match params[1..]
                             .iter()

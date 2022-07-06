@@ -1002,6 +1002,34 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "nn.adaptive_avg_pool2d" => {
+                    let data = get_compiled_expression(call.args.get(0).unwrap().downcast::<Expr>().unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::nn::AdaptivePool2DAttrs>()
+                        .unwrap();
+                    // let kernel_layout = attrs.layout.clone();
+                    // assert_eq!(kernel_layout.as_str().unwrap(), "NCHW");
+                    println!("Get output shapes 1");
+                    let output_size = attrs.output_size.clone();
+                    let relay_op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayAdaptiveAvgPool2D,
+                    ));
+                    println!("Get output shapes to vec");
+                    let output_shape = output_size
+                            .into_iter()
+                            .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
+                            .collect::<Vec<_>>();
+                    let layout_id = glenside_expr.add(Language::RelayActivationLayout(RelayActivationLayout::NCHW));
+                    let output_shape_id = shape(glenside_expr, output_shape);
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_op_id, data, output_shape_id, layout_id].into_boxed_slice(),
+                        )),
+                        None,
+                    )
+                }
                 "nn.layer_norm" => {
                     let data = get_compiled_expression(
                         call.args.get(0).unwrap().downcast::<Expr>().unwrap(),

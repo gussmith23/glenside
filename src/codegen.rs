@@ -684,6 +684,7 @@ fn codegen_helper(
             };
 
             match relay_op {
+                RelayOperator::RelayAdaptiveAvgPool2D => todo!(),
                 RelayOperator::RelayZeros => todo!(),
                 RelayOperator::RelayBatchMatmul => todo!(),
                 RelayOperator::RelayLayerNorm => todo!(),
