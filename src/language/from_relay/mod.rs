@@ -1011,12 +1011,10 @@ fn compile_expression(
                         .unwrap();
                     // let kernel_layout = attrs.layout.clone();
                     // assert_eq!(kernel_layout.as_str().unwrap(), "NCHW");
-                    println!("Get output shapes 1");
                     let output_size = attrs.output_size.clone();
                     let relay_op_id = glenside_expr.add(Language::RelayOperator(
                         crate::language::RelayOperator::RelayAdaptiveAvgPool2D,
                     ));
-                    println!("Get output shapes to vec");
                     let output_shape = output_size
                             .into_iter()
                             .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
