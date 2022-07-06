@@ -667,6 +667,8 @@ pub fn dtype_from_type(t: tvm::ir::ty::Type) -> crate::language::DataType {
         crate::language::DataType::Float(32)
     } else if dtype == "int32".parse().unwrap() {
         crate::language::DataType::Int(32)
+    } else if dtype == "int64".parse().unwrap() {
+        crate::language::DataType::Int(64)
     } else if dtype == "uint8".parse().unwrap() {
         crate::language::DataType::Uint(8)
     } else {
@@ -687,7 +689,8 @@ pub fn shape_from_type(t: tvm::ir::ty::Type) -> Vec<usize> {
         });
     assert!(
         tensor_type.dtype.clone() == "float32".parse().unwrap()
-            || tensor_type.dtype.clone() == "int32".parse().unwrap(),
+            || tensor_type.dtype.clone() == "int32".parse().unwrap()
+            || tensor_type.dtype.clone() == "int64".parse().unwrap(),
         "only supporting float32x1 and int32x1 at the moment"
     );
     let mut shape = Vec::<usize>::default();
@@ -1002,6 +1005,14 @@ fn compile_expression(
             .downcast::<tvm::ir::op::Op>()
         {
             match primitive_op.name.as_str().unwrap() {
+                "copy" => {
+                    let data = get_compiled_expression(call.args.get(0).unwrap().downcast::<Expr>().unwrap());
+                    let relay_op_id = glenside_expr.add(Language::RelayOperator(RelayOperator::RelayCopy));
+                    (
+                        glenside_expr.add(Language::RelayOperatorCall(vec![relay_op_id, data].into_boxed_slice())),
+                        None
+                    )
+                }
                 "nn.adaptive_avg_pool2d" => {
                     let data = get_compiled_expression(call.args.get(0).unwrap().downcast::<Expr>().unwrap());
                     let attrs = call
@@ -2343,21 +2354,21 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::reduce::ReduceAttrs>()
                         .unwrap();
-                    // TODO(mike): support reducing on multiple axis?
-                    assert_eq!(attrs.axis.len(), 1);
-                    let axis_id;
-                    if let Ok(axis) = attrs.axis.get(0) {
-                        axis_id = glenside_expr.add(Language::Usize(
-                            axis.clone()
-                                .downcast::<tvm::ir::tir::IntImm>()
-                                .unwrap()
-                                .value as usize,
-                        ));
-                    } else {
-                        axis_id = glenside_expr.add(Language::Usize(0 as usize));
+                    let mut axis_vec = attrs.axis.clone()
+                            .into_iter()
+                            .map(|x| x.clone()
+                                                .downcast::<tvm::ir::tir::IntImm>()
+                                                .unwrap()
+                                                .value as usize)
+                            .map(|x| glenside_expr.add(Language::Usize(x)))
+                            .collect::<Vec<_>>();
+                    let keep_dims_id = glenside_expr.add(Language::Usize(if attrs.keepdims { 1 } else { 0 }));
+                    if axis_vec.len() == 0 {
+                        axis_vec.push(glenside_expr.add(Language::Usize(0)));
                     }
+                    let axis_id = glenside_expr.add(Language::Shape(axis_vec.into_boxed_slice()));
                     let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
-                        vec![op_id, data_id, axis_id].into_boxed_slice(),
+                        vec![op_id, data_id, axis_id, keep_dims_id].into_boxed_slice(),
                     ));
                     (opaque_operator_call, None)
                 }
