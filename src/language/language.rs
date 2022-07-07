@@ -408,6 +408,8 @@ pub enum RelayOperator {
     RelayZeros,
 
     RelayCopy,
+
+    RelayArgmax,
 }
 impl FromStr for RelayOperator {
     type Err = ();
@@ -450,6 +452,7 @@ impl FromStr for RelayOperator {
             "relay-zeros" => Ok(RelayOperator::RelayZeros),
             "relay-adaptive-avg-pool2d" => Ok(RelayOperator::RelayAdaptiveAvgPool2D),
             "relay-copy" => Ok(RelayOperator::RelayCopy),
+            "relay-argmax" => Ok(RelayOperator::RelayArgmax),
             _ => Err(()),
         }
     }
@@ -460,6 +463,7 @@ impl Display for RelayOperator {
             f,
             "{}",
             match self {
+                RelayOperator::RelayArgmax => "relay-argmax",
                 RelayOperator::RelayCopy => "relay-copy",
                 RelayOperator::RelayStridedSlice => "relay-strided-slice",
                 RelayOperator::RelayBatchNormInference => "relay-batch-norm-inference",
@@ -2255,6 +2259,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             })
                             .cloned()
                             .collect::<Vec<_>>();
+                        
+                        // println!("In add/mult... {:?}: {:?}", op_type, new_shape);
 
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             shape: IxDyn(new_shape.as_slice()),
@@ -2372,7 +2378,8 @@ impl egg::Analysis<Language> for MyAnalysis {
                             _ => panic!("Invalid call to RelaySplit"),
                         }
                     }
-                    crate::language::RelayOperator::RelayMean => {
+                    crate::language::RelayOperator::RelayArgmax
+                    | crate::language::RelayOperator::RelayMean => {
                         let access = match params[1..]
                             .iter()
                             .map(|id| &egraph[*id].data)
@@ -2407,7 +2414,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     contains_accelerator_calls: a.contains_accelerator_calls,
                                 }
                             }
-                            _ => panic!("RelayMean expects <data> <axis> <keep_dims>"),
+                            _ => panic!("Reduce operators expects <data> <axis> <keep_dims>"),
                         };
                         MyAnalysisData::AccessPattern(access)
                     }
@@ -2573,7 +2580,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let new_shape = [batch, out_feat];
                                 AccessPatternData {
                                     shape: IxDyn(&[]),
-                                    item_shape: IxDyn(&[]),
+                                    item_shape: IxDyn(&new_shape),
                                     relay_shape: Some(IxDyn(&new_shape)),
                                     zero_regions,
                                     contains_accelerator_calls: a.contains_accelerator_calls
@@ -3255,7 +3262,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                         .item_shape
                         .remove_axis(ndarray::Axis(axis - access.shape.ndim()));
                 }
-
                 MyAnalysisData::AccessPattern(access)
             }
             &AccessPad([access_id, pad_type_id, axis_id, pad_before_id, pad_after_id]) => {
@@ -3596,9 +3602,6 @@ impl egg::Analysis<Language> for MyAnalysis {
             }
             ComputeType(t) => MyAnalysisData::ComputeType(t.clone()),
             &Compute([compute_type_id, access_id]) => {
-                // if (compute_type_id == Id::from(61) && access_id == Id::from(60)) || (compute_type_id == Id::from(53) && access_id == Id::from(50)) {
-                //     println!("compute_type: {:?}", egraph[compute_type_id].nodes[0]);
-                // }
                 let compute_type = match &egraph[compute_type_id].data {
                     MyAnalysisData::ComputeType(t) => t,
                     _ => panic!("Argument 0 of {:?} should be a ComputeType", enode),
@@ -3667,7 +3670,6 @@ impl egg::Analysis<Language> for MyAnalysis {
                     | self::ComputeType::ElementwiseMul
                     | self::ComputeType::ElementwiseDiv => {
                         assert!(a0.item_shape.ndim() >= 1);
-                        // println!("Add shape {:?} {:?}", a0.shape, a0.item_shape);
                         MyAnalysisData::AccessPattern(AccessPatternData {
                             // TODO(@gussmith23) Implement zero regions
                             // It's harmless (I think) if `zero_regions` defaults to

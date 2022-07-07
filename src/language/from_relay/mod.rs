@@ -1345,7 +1345,8 @@ fn compile_expression(
                     }
 
                     match attrs.axis {
-                        -1 => {
+                        1
+                        | -1 => {
                             let data_id = access(
                                 glenside_expr,
                                 data_id,
@@ -2341,6 +2342,35 @@ fn compile_expression(
                     let data_id = get_compiled_expression(call.args.get(0).unwrap());
                     let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
                         vec![op_id, data_id].into_boxed_slice(),
+                    ));
+                    (opaque_operator_call, None)
+                }
+                "argmax" => {
+                    let op_id = glenside_expr.add(Language::RelayOperator(
+                        crate::language::RelayOperator::RelayArgmax,
+                    ));
+                    let data_id = get_compiled_expression(call.args.get(0).unwrap());
+                    let attrs = call
+                        .attrs
+                        .clone()
+                        .downcast::<tvm::ir::relay::attrs::reduce::ArgReduceAttrs>()
+                        .unwrap();
+                    // TODO(mike): support `exclude` attrs, assume to be false for now
+                    let mut axis_vec = attrs.axis.clone()
+                            .into_iter()
+                            .map(|x| x.clone()
+                                                .downcast::<tvm::ir::tir::IntImm>()
+                                                .unwrap()
+                                                .value as usize)
+                            .map(|x| glenside_expr.add(Language::Usize(x)))
+                            .collect::<Vec<_>>();
+                    let keep_dims_id = glenside_expr.add(Language::Usize(if attrs.keepdims { 1 } else { 0 }));
+                    if axis_vec.len() == 0 {
+                        axis_vec.push(glenside_expr.add(Language::Usize(0)));
+                    }
+                    let axis_id = glenside_expr.add(Language::Shape(axis_vec.into_boxed_slice()));
+                    let opaque_operator_call = glenside_expr.add(Language::RelayOperatorCall(
+                        vec![op_id, data_id, axis_id, keep_dims_id].into_boxed_slice(),
                     ));
                     (opaque_operator_call, None)
                 }
