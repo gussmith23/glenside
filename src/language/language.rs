@@ -1814,7 +1814,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(_act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(_weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(_group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
                             {
                                 let mut data_shape = data
                                     .shape
@@ -1835,11 +1835,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let h = access_window_shape[1];
                                 let w = access_window_shape[2];
                                 AccessPatternData {
-                                    shape: IxDyn(&[n, c, h, w]),
-                                    item_shape: IxDyn(&[]),
-                                    relay_shape: Some(IxDyn(&[n, c, h, w])),
-                                    zero_regions: HashMap::default(),
-                                    contains_accelerator_calls: true,
+                                        shape: IxDyn(&[n, c, h, w]),
+                                        item_shape: IxDyn(&[]),
+                                        relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                        zero_regions: HashMap::default(),
+                                        contains_accelerator_calls: true,
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
@@ -2240,6 +2240,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                         let a_ndim = a.shape.ndim() + a.item_shape.ndim();
                         let b_ndim = b.shape.ndim() + b.item_shape.ndim();
 
+                        // println!("{:?} :: a: {:?} | b {:?}", op_type,
+                        // [a.shape.slice(), a.item_shape.slice()].concat(), [b.shape.slice(), b.item_shape.slice()].concat());
+
                         let new_shape = std::iter::repeat(&1usize)
                             .take(if b_ndim > a_ndim { b_ndim - a_ndim } else { 0 })
                             .chain(a.shape.slice().iter())
@@ -2467,12 +2470,12 @@ impl egg::Analysis<Language> for MyAnalysis {
                             .map(|id| &egraph[*id].data)
                             .collect::<Vec<_>>()[..]
                         {
-                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(_ker_layout)] =>
+                            [MyAnalysisData::AccessPattern(data), MyAnalysisData::AccessPattern(weight), MyAnalysisData::Shape(strides), MyAnalysisData::Shape(padding), MyAnalysisData::Usize(group), MyAnalysisData::Usize(channels), MyAnalysisData::Shape(kernel_size), MyAnalysisData::RelayActivationLayout(act_layout), MyAnalysisData::RelayKernelLayout(ker_layout)] =>
                             {
-                                match act_layout {
-                                    crate::language::RelayActivationLayout::NCHW => (),
-                                    crate::language::RelayActivationLayout::NHWC => warn!("Conv2d with NHWC layout detected. The conv2d RelayOperator for Conv2d is broken, but we don't currently have time to fix it before PLDI."),
-                                }
+                                // match act_layout {
+                                //     crate::language::RelayActivationLayout::NCHW => (),
+                                //     crate::language::RelayActivationLayout::NHWC => warn!("Conv2d with NHWC layout detected. The conv2d RelayOperator for Conv2d is broken, but we don't currently have time to fix it before PLDI."),
+                                // }
                                 let mut data_shape = data
                                     .shape
                                     .slice()
@@ -2483,7 +2486,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 data_shape[2] += padding.shape[0] + padding.shape[2];
                                 data_shape[3] += padding.shape[1] + padding.shape[3];
                                 let n = data_shape[0].clone();
-                                let c = channels.clone();
+                                let out_channels = channels.clone();
                                 match *group {
                                     1 => {
                                         let access_window_shape = access_windows_resulting_shape(
@@ -2494,9 +2497,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                                         let h = access_window_shape[1];
                                         let w = access_window_shape[2];
                                         AccessPatternData {
-                                            shape: IxDyn(&[n, c, h, w]),
+                                            shape: IxDyn(&[n, out_channels, h, w]),
                                             item_shape: IxDyn(&[]),
-                                            relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                            relay_shape: Some(IxDyn(&[n, out_channels, h, w])),
                                             zero_regions: HashMap::default(),
                                             contains_accelerator_calls: data
                                                 .contains_accelerator_calls
@@ -2508,7 +2511,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                                             crate::language::RelayActivationLayout::NCHW => (),
                                             crate::language::RelayActivationLayout::NHWC => todo!("Not currently supported, supporting only NCHW for PLDI push.")
                                         }
-                                        match _ker_layout {
+                                        match ker_layout {
                                             crate::language::RelayKernelLayout::OIHW => (),
                                             crate::language::RelayKernelLayout::HWIO => todo!("Not currently supported, supporting only OIHW for PLDI push.")
                                         }

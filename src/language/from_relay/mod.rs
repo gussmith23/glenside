@@ -423,7 +423,10 @@ pub fn conv2d(
     // Transpose from NCHW to original layout
     match data_layout {
         "NCHW" => data_id,
-        "NHWC" => (access_transpose(expr, data_id.0, &[0, 2, 3, 1]), data_id.1),
+        "NHWC" => (access_transpose(expr, data_id.0, &[0, 2, 3, 1]),
+                    if let Some(relay_call) = data_id.1
+                        { Some(access_transpose(expr, relay_call, &[0, 2, 3, 1])) } 
+                    else { None }),
         _ => unreachable!(),
     }
 }
