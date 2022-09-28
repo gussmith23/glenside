@@ -245,7 +245,7 @@ pub fn conv2d(
 
     let operator_id = expr.add(Language::RelayOperator(RelayOperator::RelayConv2D));
 
-    let data_id = match groups as usize {
+    let mut data_id = match groups as usize {
         1 => {
             let data_id = access(expr, data_id, 1);
 
@@ -421,12 +421,14 @@ pub fn conv2d(
     };
 
     // Transpose from NCHW to original layout
+    if data_layout == "NHWC" {
+        if let Some(relay_call) = data_id.1 {
+            data_id.1 = Some(access_transpose(expr, relay_call, &[0, 2, 3, 1]));
+        }
+    }
     match data_layout {
         "NCHW" => data_id,
-        "NHWC" => (access_transpose(expr, data_id.0, &[0, 2, 3, 1]),
-                    if let Some(relay_call) = data_id.1
-                        { Some(access_transpose(expr, relay_call, &[0, 2, 3, 1])) } 
-                    else { None }),
+        "NHWC" => (access_transpose(expr, data_id.0, &[0, 2, 3, 1]), data_id.1),
         _ => unreachable!(),
     }
 }
@@ -1009,15 +1011,22 @@ fn compile_expression(
         {
             match primitive_op.name.as_str().unwrap() {
                 "copy" => {
-                    let data = get_compiled_expression(call.args.get(0).unwrap().downcast::<Expr>().unwrap());
-                    let relay_op_id = glenside_expr.add(Language::RelayOperator(RelayOperator::RelayCopy));
+                    let data = get_compiled_expression(
+                        call.args.get(0).unwrap().downcast::<Expr>().unwrap(),
+                    );
+                    let relay_op_id =
+                        glenside_expr.add(Language::RelayOperator(RelayOperator::RelayCopy));
                     (
-                        glenside_expr.add(Language::RelayOperatorCall(vec![relay_op_id, data].into_boxed_slice())),
-                        None
+                        glenside_expr.add(Language::RelayOperatorCall(
+                            vec![relay_op_id, data].into_boxed_slice(),
+                        )),
+                        None,
                     )
                 }
                 "nn.adaptive_avg_pool2d" => {
-                    let data = get_compiled_expression(call.args.get(0).unwrap().downcast::<Expr>().unwrap());
+                    let data = get_compiled_expression(
+                        call.args.get(0).unwrap().downcast::<Expr>().unwrap(),
+                    );
                     let attrs = call
                         .attrs
                         .clone()
@@ -1030,10 +1039,11 @@ fn compile_expression(
                         crate::language::RelayOperator::RelayAdaptiveAvgPool2D,
                     ));
                     let output_shape = output_size
-                            .into_iter()
-                            .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
-                            .collect::<Vec<_>>();
-                    let layout_id = glenside_expr.add(Language::RelayActivationLayout(RelayActivationLayout::NCHW));
+                        .into_iter()
+                        .map(|x| x.downcast::<IntImm>().unwrap().value as usize)
+                        .collect::<Vec<_>>();
+                    let layout_id = glenside_expr
+                        .add(Language::RelayActivationLayout(RelayActivationLayout::NCHW));
                     let output_shape_id = shape(glenside_expr, output_shape);
                     (
                         glenside_expr.add(Language::RelayOperatorCall(
@@ -1348,8 +1358,7 @@ fn compile_expression(
                     }
 
                     match attrs.axis {
-                        1
-                        | -1 => {
+                        1 | -1 => {
                             let data_id = access(
                                 glenside_expr,
                                 data_id,
@@ -2359,15 +2368,17 @@ fn compile_expression(
                         .downcast::<tvm::ir::relay::attrs::reduce::ArgReduceAttrs>()
                         .unwrap();
                     // TODO(mike): support `exclude` attrs, assume to be false for now
-                    let mut axis_vec = attrs.axis.clone()
-                            .into_iter()
-                            .map(|x| x.clone()
-                                                .downcast::<tvm::ir::tir::IntImm>()
-                                                .unwrap()
-                                                .value as usize)
-                            .map(|x| glenside_expr.add(Language::Usize(x)))
-                            .collect::<Vec<_>>();
-                    let keep_dims_id = glenside_expr.add(Language::Usize(if attrs.keepdims { 1 } else { 0 }));
+                    let mut axis_vec = attrs
+                        .axis
+                        .clone()
+                        .into_iter()
+                        .map(|x| {
+                            x.clone().downcast::<tvm::ir::tir::IntImm>().unwrap().value as usize
+                        })
+                        .map(|x| glenside_expr.add(Language::Usize(x)))
+                        .collect::<Vec<_>>();
+                    let keep_dims_id =
+                        glenside_expr.add(Language::Usize(if attrs.keepdims { 1 } else { 0 }));
                     if axis_vec.len() == 0 {
                         axis_vec.push(glenside_expr.add(Language::Usize(0)));
                     }
@@ -2387,15 +2398,17 @@ fn compile_expression(
                         .clone()
                         .downcast::<tvm::ir::relay::attrs::reduce::ReduceAttrs>()
                         .unwrap();
-                    let mut axis_vec = attrs.axis.clone()
-                            .into_iter()
-                            .map(|x| x.clone()
-                                                .downcast::<tvm::ir::tir::IntImm>()
-                                                .unwrap()
-                                                .value as usize)
-                            .map(|x| glenside_expr.add(Language::Usize(x)))
-                            .collect::<Vec<_>>();
-                    let keep_dims_id = glenside_expr.add(Language::Usize(if attrs.keepdims { 1 } else { 0 }));
+                    let mut axis_vec = attrs
+                        .axis
+                        .clone()
+                        .into_iter()
+                        .map(|x| {
+                            x.clone().downcast::<tvm::ir::tir::IntImm>().unwrap().value as usize
+                        })
+                        .map(|x| glenside_expr.add(Language::Usize(x)))
+                        .collect::<Vec<_>>();
+                    let keep_dims_id =
+                        glenside_expr.add(Language::Usize(if attrs.keepdims { 1 } else { 0 }));
                     if axis_vec.len() == 0 {
                         axis_vec.push(glenside_expr.add(Language::Usize(0)));
                     }

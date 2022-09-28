@@ -1835,11 +1835,11 @@ impl egg::Analysis<Language> for MyAnalysis {
                                 let h = access_window_shape[1];
                                 let w = access_window_shape[2];
                                 AccessPatternData {
-                                        shape: IxDyn(&[n, c, h, w]),
-                                        item_shape: IxDyn(&[]),
-                                        relay_shape: Some(IxDyn(&[n, c, h, w])),
-                                        zero_regions: HashMap::default(),
-                                        contains_accelerator_calls: true,
+                                    shape: IxDyn(&[n, c, h, w]),
+                                    item_shape: IxDyn(&[]),
+                                    relay_shape: Some(IxDyn(&[n, c, h, w])),
+                                    zero_regions: HashMap::default(),
+                                    contains_accelerator_calls: true,
                                 }
                             }
                             _ => panic!("Cannot parse arguments for Conv2D"),
@@ -1890,10 +1890,14 @@ impl egg::Analysis<Language> for MyAnalysis {
 
                 match op_type {
                     crate::language::RelayOperator::RelayCopy => {
-                        match params[1..].iter()
-                        .map(|id| &egraph[*id].data)
-                        .collect::<Vec<_>>()[..]  {
-                            [MyAnalysisData::AccessPattern(access)] => MyAnalysisData::AccessPattern(access.clone()),
+                        match params[1..]
+                            .iter()
+                            .map(|id| &egraph[*id].data)
+                            .collect::<Vec<_>>()[..]
+                        {
+                            [MyAnalysisData::AccessPattern(access)] => {
+                                MyAnalysisData::AccessPattern(access.clone())
+                            }
                             _ => panic!("copy op only takes 1 access pattern"),
                         }
                     }
@@ -2262,7 +2266,7 @@ impl egg::Analysis<Language> for MyAnalysis {
                             })
                             .cloned()
                             .collect::<Vec<_>>();
-                        
+
                         // println!("In add/mult... {:?}: {:?}", op_type, new_shape);
 
                         MyAnalysisData::AccessPattern(AccessPatternData {
@@ -2406,7 +2410,9 @@ impl egg::Analysis<Language> for MyAnalysis {
                                     } else if i == shape_length - 1 {
                                         relay_shape.pop();
                                     } else {
-                                        relay_shape = [&relay_shape[..i], &relay_shape[i + 1..]].concat().to_vec();
+                                        relay_shape = [&relay_shape[..i], &relay_shape[i + 1..]]
+                                            .concat()
+                                            .to_vec();
                                     }
                                 }
                                 AccessPatternData {
