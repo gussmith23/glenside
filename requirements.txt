@@ -1,7 +1,7 @@
 decorator==4.4.0
 numpy==1.17.2
 psutil==5.6.6
-scipy==1.4.1
+scipy==1.10.0
 tornado==6.0.3
 xgboost==0.90
 antlr4-python3-runtime==4.7.2
