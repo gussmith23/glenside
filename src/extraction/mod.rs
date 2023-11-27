@@ -133,6 +133,7 @@ impl egg::CostFunction<Language> for MonolithicCostFunction<'_> {
             | Language::RelayOperator(_)
             | Language::RelayActivationLayout(_)
             | Language::RelayKernelLayout(_) => Self::INFINITY_VALUE,
+                    other @ _ => todo!("{:?}", other),
         };
 
         enode.fold(base_cost, |sum, id| sum + costs(id))
@@ -219,6 +220,7 @@ impl CostFunction<Language> for SimpleCostFunction {
             Shape(_) | ShapeOf(_) | SliceShape(_) | ShapeInsertAxis(_) | ShapeRemoveAxis(_)
             | List(_) | AccessShape(_) | Num(_) | PadType(_) | ComputeType(_) | Symbol(_)
             | Literal(_) | NotNanFloat64(_) => 1,
+            other @ _ => todo!("{:?}", other),
         };
 
         enode.fold(base_cost, |sum, id| sum.saturating_add(costs(id)))
@@ -294,6 +296,7 @@ impl CostFunction<Language> for AcceleratorCostFunction {
             | Language::AccessConcatenate(_)
             | Language::AccessShiftRight(_)
             | Language::AccessPair(_) => self.0 * 100.0,
+            other @ _ => todo!("{:?}", other),
         };
         enode.fold(base_cost, |sum, id| sum + costs(id))
     }
